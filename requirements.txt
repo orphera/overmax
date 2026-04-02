@@ -1,0 +1,26 @@
+# DJMAX Respect V 난이도 오버레이
+# Python 3.10+ 권장
+
+# 화면 캡처
+mss>=9.0.1
+
+# 컴퓨터 비전 (하이라이트 감지)
+opencv-python>=4.9.0
+
+# OCR (한글+영어)
+easyocr>=1.7.1
+
+# Windows API (창 추적)
+pywin32>=306
+
+# UI
+PyQt6>=6.6.0
+
+# 퍼지 문자열 매칭 (OCR 오인식 보정)
+rapidfuzz>=3.6.1
+
+# HTTP (V-Archive API)
+httpx>=0.27.0
+
+# 수치 연산 (OpenCV 의존)
+numpy>=1.26.0

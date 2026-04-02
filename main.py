@@ -1,5 +1,5 @@
 """
-DJMAX Respect V 난이도 오버레이
+Overmax - DJMAX Respect V 비공식 난이도 오버레이
 메인 진입점 - 모든 컴포넌트를 조립하고 실행
 """
 
@@ -7,6 +7,9 @@ import sys
 import os
 import threading
 from pathlib import Path
+
+# PyInstaller 패키징 환경 대응 패치 (반드시 다른 import보다 먼저)
+import runtime_patch
 
 # 프로젝트 루트를 path에 추가
 sys.path.insert(0, str(Path(__file__).parent))
@@ -16,13 +19,15 @@ from window_tracker import WindowTracker
 from screen_capture import ScreenCapture
 from overlay import OverlayController
 
-# songs.json 위치 (같은 폴더에 있으면 자동 사용)
-LOCAL_SONGS_JSON = Path(__file__).parent / "cache" / "songs.json"
+# songs.json 위치
+# - 개발: 프로젝트 폴더/cache/songs.json
+# - 패키징: exe 옆 cache/songs.json
+LOCAL_SONGS_JSON = runtime_patch.get_data_dir() / "cache" / "songs.json"
 
 
 def main():
     print("=" * 50)
-    print("  DJMAX Respect V 난이도 오버레이")
+    print("  Overmax - DJMAX Respect V 난이도 오버레이")
     print("  V-Archive 데이터 기반")
     print("=" * 50)
 

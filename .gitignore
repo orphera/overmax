@@ -1,0 +1,88 @@
+# =============================================================
+#  Overmax .gitignore
+# =============================================================
+
+# ---------------------------
+# Python
+# ---------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+pip-wheel-metadata/
+
+# 가상환경
+.venv/
+venv/
+env/
+ENV/
+
+# ---------------------------
+# PyInstaller
+# ---------------------------
+build/
+dist/
+*.spec.bak
+overmax_debug.spec
+
+# ---------------------------
+# EasyOCR 모델 캐시
+# 수백 MB - git에 넣지 않음
+# ---------------------------
+models/
+.EasyOCR/
+
+# ---------------------------
+# V-Archive 데이터 캐시
+# songs.json은 API에서 최신본을 받는 게 맞으므로 트래킹 제외
+# 초기 배포용 스냅샷이 필요하면 별도 릴리즈 첨부
+# ---------------------------
+cache/
+
+# ---------------------------
+# 개발 도구
+# ---------------------------
+.idea/
+.vscode/
+*.code-workspace
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ---------------------------
+# OS
+# ---------------------------
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS (혹시라도)
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ---------------------------
+# 기타
+# ---------------------------
+*.log
+*.tmp
+*.bak
+*.swp

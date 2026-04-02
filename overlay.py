@@ -12,14 +12,14 @@ from typing import Optional
 try:
     from PyQt6.QtWidgets import (
         QApplication, QWidget, QLabel, QVBoxLayout, QHBoxLayout,
-        QFrame, QGraphicsOpacityEffect
+        QFrame, QGraphicsOpacityEffect, QSystemTrayIcon, QMenu, QStyle
     )
     from PyQt6.QtCore import (
         Qt, QTimer, pyqtSignal, QObject, QPoint, QRect
     )
     from PyQt6.QtGui import (
         QColor, QPainter, QFont, QFontMetrics, QPen, QBrush,
-        QLinearGradient, QKeySequence, QShortcut
+        QLinearGradient, QKeySequence, QShortcut, QIcon, QAction
     )
     PYQT_AVAILABLE = True
 except ImportError:
@@ -319,6 +319,7 @@ class OverlayController:
         self.signals = OverlaySignals()
         self._app: Optional[QApplication] = None
         self._window: Optional[OverlayWindow] = None
+        self._tray_icon: Optional[QSystemTrayIcon] = None
 
     def notify_song(self, title: str):
         """OCR 스레드에서 호출 - 곡명으로 패턴 조회 후 시그널 emit"""
@@ -353,4 +354,44 @@ class OverlayController:
         self._app.setQuitOnLastWindowClosed(False)
         self._window = OverlayWindow(self.db, self.signals)
         self._window.hide()  # 처음엔 숨김
+
+        # 트레이 아이콘 설정
+        self._setup_tray_icon()
+
         self._app.exec()
+
+    def _setup_tray_icon(self):
+        """트레이 아이콘 설정"""
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            print("[Overlay] 시스템 트레이를 사용할 수 없음")
+            return
+
+        # 트레이 아이콘 생성 (아이콘은 기본 Qt 아이콘 사용)
+        self._tray_icon = QSystemTrayIcon(self._app)
+        self._tray_icon.setIcon(self._app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))  # 임시 아이콘
+        self._tray_icon.setToolTip("Overmax - DJMAX Respect V 난이도 오버레이")
+
+        # 트레이 메뉴 생성
+        tray_menu = QMenu()
+
+        # 오버레이 표시/숨김 액션
+        toggle_action = QAction("오버레이 표시/숨김 (F9)", self._app)
+        toggle_action.triggered.connect(self._window.toggle_visibility)
+        tray_menu.addAction(toggle_action)
+
+        tray_menu.addSeparator()
+
+        # 종료 액션
+        quit_action = QAction("종료", self._app)
+        quit_action.triggered.connect(self._app.quit)
+        tray_menu.addAction(quit_action)
+
+        self._tray_icon.setContextMenu(tray_menu)
+        self._tray_icon.show()
+
+        # 트레이 아이콘 더블클릭으로 오버레이 토글
+        self._tray_icon.activated.connect(self._on_tray_activated)
+
+    def _on_tray_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self._window.toggle_visibility()

@@ -321,6 +321,7 @@ class OverlayController:
         self._window: Optional[OverlayWindow] = None
         self._tray_icon: Optional[QSystemTrayIcon] = None
         self._debug_log_cb = None   # set by main.py after DebugController init
+        self._debug_toggle_cb = None
 
     def notify_song(self, title: str):
         """OCR 스레드에서 호출 - 곡명으로 패턴 조회 후 시그널 emit"""
@@ -367,7 +368,10 @@ class OverlayController:
 
         # 디버그 창 생성 (QApplication 생성 후)
         if debug_ctrl is not None:
-            debug_ctrl.create_window()
+            debug_ctrl.show_window()
+            self._debug_toggle_cb = debug_ctrl.toggle_window
+        else:
+            self._debug_toggle_cb = None
 
         # 트레이 아이콘 설정
         self._setup_tray_icon()
@@ -392,6 +396,12 @@ class OverlayController:
         toggle_action = QAction("오버레이 표시/숨김 (F9)", self._app)
         toggle_action.triggered.connect(self._window.toggle_visibility)
         tray_menu.addAction(toggle_action)
+
+        # 디버그 창 표시/숨김 액션
+        if self._debug_toggle_cb is not None:
+            debug_action = QAction("디버그 창 표시/숨김", self._app)
+            debug_action.triggered.connect(self._debug_toggle_cb)
+            tray_menu.addAction(debug_action)
 
         tray_menu.addSeparator()
 

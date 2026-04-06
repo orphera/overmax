@@ -196,9 +196,33 @@ class DebugController:
         """Qt App 생성 후에 호출해야 함"""
         if not PYQT_AVAILABLE:
             return None
-        self._window = DebugWindow(self.signals)
-        self._window.show()
+        if self._window is None:
+            self._window = DebugWindow(self.signals)
         return self._window
+
+    def show_window(self):
+        window = self.create_window()
+        if window is not None:
+            window.show()
+            window.raise_()
+            window.activateWindow()
+
+    def hide_window(self):
+        if self._window is not None:
+            self._window.hide()
+
+    def toggle_window(self):
+        if not PYQT_AVAILABLE:
+            return
+        window = self.create_window()
+        if window is None:
+            return
+        if window.isVisible():
+            window.hide()
+        else:
+            window.show()
+            window.raise_()
+            window.activateWindow()
 
     def log(self, msg: str):
         """스레드-안전 로그 emit"""

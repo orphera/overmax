@@ -17,6 +17,7 @@ import numpy as np
 from typing import Optional, Callable
 import mss
 import cv2
+from settings import SETTINGS
 
 try:
     import winrt.windows.media.ocr as ocr
@@ -31,32 +32,34 @@ from window_tracker import WindowTracker, WindowRect
 # ------------------------------------------------------------------
 # 설정 상수 (비율 기반) — 1920x1080 실측값
 # ------------------------------------------------------------------
+SCREEN_CAPTURE_SETTINGS = SETTINGS.get("screen_capture", {})
 
 # 곡 리스트 영역 x 범위 (왼쪽 패널)
-LIST_X_START = 0.031   # x=60/1920
-LIST_X_END   = 0.167   # x=320/1920
+LIST_X_START = float(SCREEN_CAPTURE_SETTINGS.get("list_x_start", 0.031))   # x=60/1920
+LIST_X_END   = float(SCREEN_CAPTURE_SETTINGS.get("list_x_end", 0.167))   # x=320/1920
 
 # 수직 샘플링 X (리스트 중앙)
-SAMPLING_X_RATIO = 0.08
+SAMPLING_X_RATIO = float(SCREEN_CAPTURE_SETTINGS.get("sampling_x_ratio", 0.08))
 
 # OCR 할 제목 영역 (하이라이트 행의 x 범위) — 리스트와 동일
-TITLE_X_START = 0.031
-TITLE_X_END   = 0.167
+TITLE_X_START = float(SCREEN_CAPTURE_SETTINGS.get("title_x_start", 0.031))
+TITLE_X_END   = float(SCREEN_CAPTURE_SETTINGS.get("title_x_end", 0.167))
 
 # 하이라이트 행 감지 (HSV 주황)
-HIGHLIGHT_HUE_MIN  = 10
-HIGHLIGHT_HUE_MAX  = 32
-HIGHLIGHT_SAT_MIN  = 130
-HIGHLIGHT_VAL_MIN  = 160
+HIGHLIGHT_HUE_MIN  = int(SCREEN_CAPTURE_SETTINGS.get("highlight_hue_min", 10))
+HIGHLIGHT_HUE_MAX  = int(SCREEN_CAPTURE_SETTINGS.get("highlight_hue_max", 32))
+HIGHLIGHT_SAT_MIN  = int(SCREEN_CAPTURE_SETTINGS.get("highlight_sat_min", 130))
+HIGHLIGHT_VAL_MIN  = int(SCREEN_CAPTURE_SETTINGS.get("highlight_val_min", 160))
 
 # 하이라이트 행으로 인정하는 연속 픽셀 높이 (px)
-HIGHLIGHT_ROW_MIN_PX = 40
-HIGHLIGHT_ROW_MAX_PX = 200
+HIGHLIGHT_ROW_MIN_PX = int(SCREEN_CAPTURE_SETTINGS.get("highlight_row_min_px", 40))
+HIGHLIGHT_ROW_MAX_PX = int(SCREEN_CAPTURE_SETTINGS.get("highlight_row_max_px", 200))
 
 # 각 행에서 주황 픽셀 최소 개수
-HIGHLIGHT_ROW_THRESHOLD = 8
+HIGHLIGHT_ROW_THRESHOLD = int(SCREEN_CAPTURE_SETTINGS.get("highlight_row_threshold", 8))
 
-OCR_INTERVAL = 0.35   # 초
+OCR_INTERVAL = float(SCREEN_CAPTURE_SETTINGS.get("ocr_interval_sec", 0.35))   # 초
+IDLE_SLEEP_INTERVAL = float(SCREEN_CAPTURE_SETTINGS.get("idle_sleep_sec", 0.5))
 
 
 class ScreenCapture:
@@ -135,7 +138,7 @@ class ScreenCapture:
             while self._running:
                 rect = self.tracker.rect
                 if rect is None or not self.tracker.is_foreground():
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(IDLE_SLEEP_INTERVAL)
                     continue
                 try:
                     await self._process_frame(sct, rect)

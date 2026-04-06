@@ -10,7 +10,9 @@ a = Analysis(
     ["main.py"],
     pathex=[str(Path(".").resolve())],
     binaries=[], # torch_libs 제거 
-    datas=[],    # easyocr_datas 제거 
+    datas=[
+        ("settings.json", "."),
+    ],    # easyocr_datas 제거 
     hiddenimports=[
         "PyQt6.QtCore",
         "PyQt6.QtGui",

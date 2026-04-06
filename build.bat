@@ -94,6 +94,13 @@ echo [6/6] Post-processing...
 
 if not exist "%DIST_DIR%\cache" mkdir "%DIST_DIR%\cache"
 
+if exist "%PROJECT_DIR%settings.json" (
+    copy /y "%PROJECT_DIR%settings.json" "%DIST_DIR%\settings.json" >nul
+    echo        settings.json included
+) else (
+    echo        settings.json not found - defaults will be used
+)
+
 if exist "%PROJECT_DIR%cache\songs.json" (
     copy /y "%PROJECT_DIR%cache\songs.json" "%DIST_DIR%\cache\songs.json" >nul
     echo        songs.json included

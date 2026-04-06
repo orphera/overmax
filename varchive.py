@@ -8,6 +8,7 @@ import os
 import time
 from pathlib import Path
 from typing import Optional
+from settings import SETTINGS
 try:
     import httpx
     HTTPX_AVAILABLE = True
@@ -21,18 +22,22 @@ except ImportError:
     RAPIDFUZZ_AVAILABLE = False
     import difflib
 
-SONGS_API_URL = "https://v-archive.net/db/v2/songs.json"
-CACHE_PATH = Path(__file__).parent / "cache" / "songs.json"
-CACHE_TTL = 60 * 60 * 24  # 24시간
+VARCHIVE_SETTINGS = SETTINGS.get("varchive", {})
 
-BUTTON_MODES = ["4B", "5B", "6B", "8B"]
-DIFFICULTIES = ["NM", "HD", "MX", "SC"]
-DIFF_COLORS = {
+SONGS_API_URL = str(VARCHIVE_SETTINGS.get("songs_api_url", "https://v-archive.net/db/v2/songs.json"))
+CACHE_PATH = Path(__file__).parent / str(VARCHIVE_SETTINGS.get("cache_path", "cache/songs.json"))
+CACHE_TTL = int(VARCHIVE_SETTINGS.get("cache_ttl_sec", 60 * 60 * 24))  # 24시간
+DOWNLOAD_TIMEOUT = float(VARCHIVE_SETTINGS.get("download_timeout_sec", 10))
+FUZZY_THRESHOLD = int(VARCHIVE_SETTINGS.get("fuzzy_threshold", 80))
+
+BUTTON_MODES = list(VARCHIVE_SETTINGS.get("button_modes", ["4B", "5B", "6B", "8B"]))
+DIFFICULTIES = list(VARCHIVE_SETTINGS.get("difficulties", ["NM", "HD", "MX", "SC"]))
+DIFF_COLORS = dict(VARCHIVE_SETTINGS.get("diff_colors", {
     "NM": "#4A90D9",
     "HD": "#F5A623",
     "MX": "#D0021B",
     "SC": "#9B59B6",
-}
+}))
 
 
 class VArchiveDB:
@@ -77,7 +82,7 @@ class VArchiveDB:
             raise ImportError("httpx 미설치 - 'pip install httpx' 후 재시도")
         print("[VArchive] API에서 최신 데이터 다운로드 중...")
         try:
-            resp = httpx.get(SONGS_API_URL, timeout=10)
+            resp = httpx.get(SONGS_API_URL, timeout=DOWNLOAD_TIMEOUT)
             resp.raise_for_status()
             CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
             CACHE_PATH.write_bytes(resp.content)
@@ -103,7 +108,7 @@ class VArchiveDB:
         """정확한 곡명 검색 (대소문자 무시)"""
         return self._title_map.get(title.lower().strip())
 
-    def find_fuzzy(self, title: str, threshold: int = 80) -> Optional[dict]:
+    def find_fuzzy(self, title: str, threshold: int = FUZZY_THRESHOLD) -> Optional[dict]:
         """
         퍼지 검색 - OCR 오인식 대응
         threshold: 0~100, 높을수록 엄격
@@ -133,7 +138,7 @@ class VArchiveDB:
 
     def search(self, title: str) -> Optional[dict]:
         """정확 검색 → 퍼지 검색 순으로 시도"""
-        return self.find_exact(title) or self.find_fuzzy(title)
+        return self.find_exact(title) or self.find_fuzzy(title, threshold=FUZZY_THRESHOLD)
 
     # ------------------------------------------------------------------
     # 패턴 정보 포맷

@@ -8,6 +8,7 @@ PyQt6 투명 오버레이 창
 import sys
 import threading
 from typing import Optional
+from settings import SETTINGS
 
 try:
     from PyQt6.QtWidgets import (
@@ -27,6 +28,11 @@ except ImportError:
     PYQT_AVAILABLE = False
 
 from varchive import VArchiveDB, BUTTON_MODES, DIFFICULTIES, DIFF_COLORS
+
+OVERLAY_SETTINGS = SETTINGS.get("overlay", {})
+TOGGLE_HOTKEY = str(OVERLAY_SETTINGS.get("toggle_hotkey", "F9"))
+TRAY_TOOLTIP = str(OVERLAY_SETTINGS.get("tray_tooltip", "Overmax - DJMAX Respect V 난이도 오버레이"))
+HINT_LABEL = str(OVERLAY_SETTINGS.get("hint_label", f"{TOGGLE_HOTKEY}: 표시/숨김  |  드래그로 위치 이동"))
 
 
 # ------------------------------------------------------------------
@@ -227,7 +233,7 @@ class OverlayWindow(QWidget):
             main_layout.addWidget(panel)
 
         # 단축키 힌트
-        hint_label = QLabel("F9: 표시/숨김  |  드래그로 위치 이동")
+        hint_label = QLabel(HINT_LABEL)
         hint_label.setStyleSheet("color: rgba(255,255,255,60); font-size: 8px;")
         hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(hint_label)
@@ -239,8 +245,8 @@ class OverlayWindow(QWidget):
         self.signals.screen_changed.connect(self._on_screen_changed)
         self.signals.position_changed.connect(self._on_game_window_moved)
 
-        # F9: 표시/숨김 토글
-        shortcut = QShortcut(QKeySequence("F9"), self)
+        # 표시/숨김 단축키 토글
+        shortcut = QShortcut(QKeySequence(TOGGLE_HOTKEY), self)
         shortcut.activated.connect(self.toggle_visibility)
 
     # ------------------------------------------------------------------
@@ -387,13 +393,13 @@ class OverlayController:
         # 트레이 아이콘 생성 (아이콘은 기본 Qt 아이콘 사용)
         self._tray_icon = QSystemTrayIcon(self._app)
         self._tray_icon.setIcon(self._app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))  # 임시 아이콘
-        self._tray_icon.setToolTip("Overmax - DJMAX Respect V 난이도 오버레이")
+        self._tray_icon.setToolTip(TRAY_TOOLTIP)
 
         # 트레이 메뉴 생성
         tray_menu = QMenu()
 
         # 오버레이 표시/숨김 액션
-        toggle_action = QAction("오버레이 표시/숨김 (F9)", self._app)
+        toggle_action = QAction(f"오버레이 표시/숨김 ({TOGGLE_HOTKEY})", self._app)
         toggle_action.triggered.connect(self._window.toggle_visibility)
         tray_menu.addAction(toggle_action)
 

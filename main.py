@@ -17,8 +17,11 @@ from window_tracker import WindowTracker
 from screen_capture import ScreenCapture
 from overlay import OverlayController
 from debug_window import DebugController
+from settings import SETTINGS
 
 LOCAL_SONGS_JSON = runtime_patch.get_data_dir() / "cache" / "songs.json"
+WINDOW_TITLE = str(SETTINGS.get("window_tracker", {}).get("window_title", "DJMAX RESPECT V"))
+TOGGLE_HOTKEY = str(SETTINGS.get("overlay", {}).get("toggle_hotkey", "F9"))
 
 
 def main():
@@ -81,8 +84,8 @@ def main():
     capture_thread = threading.Thread(target=capture.start, daemon=True)
     capture_thread.start()
 
-    print("\n[Main] 실행 중... (F9: 오버레이 표시/숨김, Ctrl+C: 종료)")
-    print(f"[Main] 게임 창 대기 중: 'DJMAX RESPECT V'")
+    print(f"\n[Main] 실행 중... ({TOGGLE_HOTKEY}: 오버레이 표시/숨김, Ctrl+C: 종료)")
+    print(f"[Main] 게임 창 대기 중: '{WINDOW_TITLE}'")
 
     # 6. Qt 이벤트 루프 (메인 스레드)
     #    OverlayController.run() 안에서 QApplication 생성 후 디버그 창도 띄움

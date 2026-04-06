@@ -368,7 +368,7 @@ class OverlayController:
 
         # 디버그 창 생성 (QApplication 생성 후)
         if debug_ctrl is not None:
-            debug_ctrl.show_window()
+            debug_ctrl.create_window()
             self._debug_toggle_cb = debug_ctrl.toggle_window
         else:
             self._debug_toggle_cb = None

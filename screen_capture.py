@@ -61,6 +61,16 @@ HIGHLIGHT_ROW_THRESHOLD = int(SCREEN_CAPTURE_SETTINGS.get("highlight_row_thresho
 OCR_INTERVAL = float(SCREEN_CAPTURE_SETTINGS.get("ocr_interval_sec", 0.35))   # 초
 IDLE_SLEEP_INTERVAL = float(SCREEN_CAPTURE_SETTINGS.get("idle_sleep_sec", 0.5))
 
+# 선곡화면 로고(좌상단 FREESTYLE) 감지 영역
+LOGO_X_START = float(SCREEN_CAPTURE_SETTINGS.get("logo_x_start", 0.028))
+LOGO_X_END   = float(SCREEN_CAPTURE_SETTINGS.get("logo_x_end", 0.210))
+LOGO_Y_START = float(SCREEN_CAPTURE_SETTINGS.get("logo_y_start", 0.015))
+LOGO_Y_END   = float(SCREEN_CAPTURE_SETTINGS.get("logo_y_end", 0.090))
+
+# 로고 OCR 판정
+LOGO_OCR_KEYWORD = str(SCREEN_CAPTURE_SETTINGS.get("logo_ocr_keyword", "FREESTYLE")).upper()
+LOGO_OCR_COOLDOWN_SEC = float(SCREEN_CAPTURE_SETTINGS.get("logo_ocr_cooldown_sec", 1.0))
+
 
 class ScreenCapture:
     def __init__(self, tracker: WindowTracker):
@@ -77,6 +87,10 @@ class ScreenCapture:
 
         # 스레드 내 asyncio 이벤트 루프 (한 번만 생성)
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+
+        # 로고 OCR 결과 캐시 (매 프레임 OCR 과부하 방지)
+        self._last_logo_ocr_ts = 0.0
+        self._last_logo_ocr_ok = False
 
         # Windows OCR 엔진
         self.ocr_engine = None
@@ -152,7 +166,7 @@ class ScreenCapture:
 
     async def _process_frame(self, sct, rect: WindowRect):
         # 1. 선곡화면 감지
-        is_song_select, y_range = self._detect_song_select(sct, rect)
+        is_song_select, y_range = await self._detect_song_select(sct, rect)
 
         if is_song_select != self._is_song_select:
             self._is_song_select = is_song_select
@@ -191,14 +205,17 @@ class ScreenCapture:
     # 선곡화면 감지 (주황 클러스터 방식)
     # ------------------------------------------------------------------
 
-    def _detect_song_select(self, sct, rect: WindowRect):
+    async def _detect_song_select(self, sct, rect: WindowRect):
         """
-        곡 리스트 열(LIST_X_START~LIST_X_END)을 수직으로 스캔.
-        주황색 픽셀(선택 행 배경)이 연속으로 40~200px 나타나면 선곡화면.
+        1) 좌상단 FREESTYLE 로고 특징으로 선곡화면 여부를 1차 판정
+        2) 선곡화면이면 기존 주황 하이라이트 클러스터로 선택 행 y 범위를 탐색
 
         Returns:
             (is_song_select, y_range)  — y_range는 rect 기준 절대 y
         """
+        if not await self._detect_freestyle_logo(sct, rect):
+            return False, None
+
         scan_region = {
             "top":    rect.top,
             "left":   rect.left + int(rect.width * LIST_X_START),
@@ -220,7 +237,8 @@ class ScreenCapture:
         highlight_rows = np.where(row_counts > HIGHLIGHT_ROW_THRESHOLD)[0]
 
         if len(highlight_rows) < HIGHLIGHT_ROW_MIN_PX:
-            return False, None
+            # 선곡화면은 맞지만 선택 행 탐지 실패한 경우
+            return True, None
 
         # 연속 클러스터 탐색
         clusters = []
@@ -239,10 +257,31 @@ class ScreenCapture:
             if HIGHLIGHT_ROW_MIN_PX <= (e - s) <= HIGHLIGHT_ROW_MAX_PX
         ]
         if not valid:
-            return False, None
+            return True, None
 
         best_s, best_e = max(valid, key=lambda x: x[1] - x[0])
         return True, (best_s, best_e)
+
+    async def _detect_freestyle_logo(self, sct, rect: WindowRect) -> bool:
+        """
+        좌상단 로고 영역 OCR 결과에 FREESTYLE 키워드가 포함되는지 판정.
+        """
+        logo_region = {
+            "top": rect.top + int(rect.height * LOGO_Y_START),
+            "left": rect.left + int(rect.width * LOGO_X_START),
+            "width": max(1, int(rect.width * (LOGO_X_END - LOGO_X_START))),
+            "height": max(1, int(rect.height * (LOGO_Y_END - LOGO_Y_START))),
+        }
+        logo_img = np.array(sct.grab(logo_region))  # BGRA
+        now = time.time()
+        if now - self._last_logo_ocr_ts >= LOGO_OCR_COOLDOWN_SEC:
+            text = await self._ocr_windows(logo_img)
+            normalized = text.upper().replace("\n", " ").replace(" ", "")
+            self._last_logo_ocr_ok = LOGO_OCR_KEYWORD.replace(" ", "") in normalized
+            self._last_logo_ocr_ts = now
+            self.log(f"로고 OCR: '{text}' -> {self._last_logo_ocr_ok}")
+
+        return self._last_logo_ocr_ok
 
     # ------------------------------------------------------------------
     # Windows OCR (async 메서드)

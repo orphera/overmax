@@ -173,7 +173,7 @@ class ScreenCapture:
 
     async def _process_frame(self, sct, rect: WindowRect):
         # 1. 선곡화면 감지
-        is_song_select, y_range = await self._detect_song_select(sct, rect)
+        is_song_select = await self._detect_song_select(sct, rect)
 
         if is_song_select != self._is_song_select:
             self._is_song_select = is_song_select
@@ -184,15 +184,6 @@ class ScreenCapture:
         if not is_song_select:
             return
 
-        if y_range is not None:
-            y_start, y_end = y_range
-            self.log(
-                f"하이라이트 행: y={y_start}~{y_end} "
-                f"(비율 {y_start/rect.height:.3f}~{y_end/rect.height:.3f})"
-            )
-        else:
-            self.log("하이라이트 행 미검출: 고정 ROI로 곡명 OCR 시도")
-
         left_region = self._region_from_ratio(
             rect,
             LEFT_TITLE_X_START, LEFT_TITLE_X_END,
@@ -201,22 +192,11 @@ class ScreenCapture:
         left_raw = await self._ocr_windows(np.array(sct.grab(left_region)))
         left_title = self._normalize_title_text(left_raw)
 
-        if y_range is not None:
-            y_start, y_end = y_range
-            right_top = max(0, y_start - RIGHT_TITLE_PAD_PX)
-            right_bottom = min(rect.height, y_end + RIGHT_TITLE_PAD_PX)
-            right_region = {
-                "top": rect.top + right_top,
-                "left": rect.left + int(rect.width * RIGHT_TITLE_X_START),
-                "width": max(1, int(rect.width * (RIGHT_TITLE_X_END - RIGHT_TITLE_X_START))),
-                "height": max(1, right_bottom - right_top),
-            }
-        else:
-            right_region = self._region_from_ratio(
-                rect,
-                RIGHT_TITLE_X_START, RIGHT_TITLE_X_END,
-                RIGHT_TITLE_Y_START, RIGHT_TITLE_Y_END,
-            )
+        right_region = self._region_from_ratio(
+            rect,
+            RIGHT_TITLE_X_START, RIGHT_TITLE_X_END,
+            RIGHT_TITLE_Y_START, RIGHT_TITLE_Y_END,
+        )
         right_raw = await self._ocr_windows(np.array(sct.grab(right_region)))
         right_title = self._normalize_title_text(right_raw)
 
@@ -298,10 +278,10 @@ class ScreenCapture:
     async def _detect_song_select(self, sct, rect: WindowRect):
         """
         1) 좌상단 FREESTYLE 로고 특징으로 선곡화면 여부를 1차 판정
-        2) LIST SCAN 없이 고정 OCR ROI 사용
+        2) 고정 OCR ROI 사용
 
         Returns:
-            (is_song_select, y_range)  — y_range는 rect 기준 절대 y
+            is_song_select
         """
         logo_now = await self._detect_freestyle_logo(sct, rect)
         self._freestyle_history.append(logo_now)
@@ -329,9 +309,9 @@ class ScreenCapture:
         )
 
         if not is_logo_majority:
-            return False, None
+            return False
 
-        return True, None
+        return True
 
     async def _detect_freestyle_logo(self, sct, rect: WindowRect) -> bool:
         """

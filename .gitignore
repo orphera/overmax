@@ -86,3 +86,5 @@ $RECYCLE.BIN/
 *.tmp
 *.bak
 *.swp
+
+overlay_position.json

@@ -59,6 +59,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "toggle_hotkey": "F9",
         "tray_tooltip": "Overmax - DJMAX Respect V 난이도 오버레이",
         "hint_label": "F9: 표시/숨김  |  드래그로 위치 이동",
+        "position_file": "overlay_position.json",
     },
     "varchive": {
         "songs_api_url": "https://v-archive.net/db/v2/songs.json",

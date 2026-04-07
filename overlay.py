@@ -7,8 +7,10 @@ PyQt6 투명 오버레이 창
 
 import sys
 import threading
+import json
 from typing import Optional
 from settings import SETTINGS
+import runtime_patch
 
 try:
     from PyQt6.QtWidgets import (
@@ -33,6 +35,7 @@ OVERLAY_SETTINGS = SETTINGS.get("overlay", {})
 TOGGLE_HOTKEY = str(OVERLAY_SETTINGS.get("toggle_hotkey", "F9"))
 TRAY_TOOLTIP = str(OVERLAY_SETTINGS.get("tray_tooltip", "Overmax - DJMAX Respect V 난이도 오버레이"))
 HINT_LABEL = str(OVERLAY_SETTINGS.get("hint_label", f"{TOGGLE_HOTKEY}: 표시/숨김  |  드래그로 위치 이동"))
+OVERLAY_POSITION_FILE = str(OVERLAY_SETTINGS.get("position_file", "overlay_position.json"))
 SCREEN_CAPTURE_SETTINGS = SETTINGS.get("screen_capture", {})
 
 LIST_X_START = float(SCREEN_CAPTURE_SETTINGS.get("list_x_start", 0.031))
@@ -293,6 +296,8 @@ class OverlayWindow(QWidget):
         self._song_label: Optional[QLabel] = None
         self._dragging = False
         self._drag_pos = QPoint()
+        self._manual_position = False
+        self._user_move_cb = None
 
         self._setup_window()
         self._setup_ui()
@@ -385,6 +390,8 @@ class OverlayWindow(QWidget):
 
     def _on_game_window_moved(self, left, top, width, height):
         """게임 창 위치 변경 시 오버레이도 이동 (기본 위치: 게임 창 우측 하단)"""
+        if self._manual_position:
+            return
         # 게임 창 오른쪽에 붙이기
         ox = left + width + 10
         oy = top + height - self.height() - 40
@@ -393,6 +400,13 @@ class OverlayWindow(QWidget):
         if ox + self.width() > screen.width():
             ox = left - self.width() - 10
         self.move(ox, max(oy, top))
+
+    def set_user_move_callback(self, callback):
+        self._user_move_cb = callback
+
+    def apply_saved_position(self, x: int, y: int):
+        self._manual_position = True
+        self.move(x, y)
 
     def toggle_visibility(self):
         if self.isVisible():
@@ -414,7 +428,13 @@ class OverlayWindow(QWidget):
             self.move(event.globalPosition().toPoint() - self._drag_pos)
 
     def mouseReleaseEvent(self, event):
-        self._dragging = False
+        if self._dragging:
+            self._dragging = False
+            self._manual_position = True
+            if self._user_move_cb is not None:
+                self._user_move_cb(self.x(), self.y())
+        else:
+            self._dragging = False
 
     # ------------------------------------------------------------------
     # 배경 그리기
@@ -443,6 +463,7 @@ class OverlayController:
         self._debug_log_cb = None   # set by main.py after DebugController init
         self._debug_toggle_cb = None
         self._last_window_rect: Optional[tuple[int, int, int, int]] = None
+        self._position_path = runtime_patch.get_data_dir() / OVERLAY_POSITION_FILE
 
     def notify_song(self, title: str, composer: str = ""):
         """OCR 스레드에서 호출 - 곡명/작곡가로 패턴 조회 후 시그널 emit"""
@@ -494,6 +515,31 @@ class OverlayController:
         if self._debug_log_cb:
             self._debug_log_cb(full)
 
+    def _load_overlay_position(self) -> Optional[tuple[int, int]]:
+        try:
+            if not self._position_path.exists():
+                return None
+            with open(self._position_path, encoding="utf-8") as f:
+                data = json.load(f)
+            x = int(data.get("x"))
+            y = int(data.get("y"))
+            return (x, y)
+        except Exception as e:
+            self.log(f"오버레이 위치 로드 실패: {e}")
+            return None
+
+    def _save_overlay_position(self, x: int, y: int):
+        try:
+            self._position_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._position_path, "w", encoding="utf-8") as f:
+                json.dump({"x": int(x), "y": int(y)}, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            self.log(f"오버레이 위치 저장 실패: {e}")
+
+    def _on_overlay_user_moved(self, x: int, y: int):
+        self._save_overlay_position(x, y)
+        self.log(f"오버레이 위치 저장: ({x},{y})")
+
     def run(self, debug_ctrl=None):
         """Qt 이벤트 루프 실행 (메인 스레드에서 호출)"""
         if not PYQT_AVAILABLE:
@@ -507,9 +553,19 @@ class OverlayController:
         self._app.setQuitOnLastWindowClosed(False)
         self._window = OverlayWindow(self.db, self.signals)
         self._window.hide()  # 처음엔 숨김
+        self._window.set_user_move_callback(self._on_overlay_user_moved)
         self._roi_window = RoiOverlayWindow()
         self._roi_window.hide()  # 기본 OFF
         self.signals.position_changed.connect(self._roi_window.set_game_rect)
+
+        saved_pos = self._load_overlay_position()
+        if saved_pos is not None:
+            sx, sy = saved_pos
+            screen = self._app.primaryScreen().geometry()
+            sx = max(0, min(sx, max(0, screen.width() - self._window.width())))
+            sy = max(0, min(sy, max(0, screen.height() - self._window.height())))
+            self._window.apply_saved_position(sx, sy)
+            self.log(f"오버레이 위치 복원: ({sx},{sy})")
 
         # 디버그 창 생성 (QApplication 생성 후)
         if debug_ctrl is not None:

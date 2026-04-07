@@ -14,6 +14,7 @@ import time
 import threading
 import asyncio
 import re
+from collections import deque
 import numpy as np
 from typing import Optional, Callable
 import mss
@@ -67,6 +68,13 @@ LOGO_Y_END   = float(SCREEN_CAPTURE_SETTINGS.get("logo_y_end", 0.090))
 # 로고 OCR 판정
 LOGO_OCR_KEYWORD = str(SCREEN_CAPTURE_SETTINGS.get("logo_ocr_keyword", "FREESTYLE")).upper()
 LOGO_OCR_COOLDOWN_SEC = float(SCREEN_CAPTURE_SETTINGS.get("logo_ocr_cooldown_sec", 1.0))
+FREESTYLE_HISTORY_SIZE = int(SCREEN_CAPTURE_SETTINGS.get("freestyle_history_size", 7))
+FREESTYLE_MAJORITY_RATIO = float(SCREEN_CAPTURE_SETTINGS.get("freestyle_majority_ratio", 0.60))
+FREESTYLE_MIN_SAMPLES = int(SCREEN_CAPTURE_SETTINGS.get("freestyle_min_samples", 3))
+FREESTYLE_ON_RATIO = float(SCREEN_CAPTURE_SETTINGS.get("freestyle_on_ratio", FREESTYLE_MAJORITY_RATIO))
+FREESTYLE_ON_MIN_SAMPLES = int(SCREEN_CAPTURE_SETTINGS.get("freestyle_on_min_samples", FREESTYLE_MIN_SAMPLES))
+FREESTYLE_OFF_RATIO = float(SCREEN_CAPTURE_SETTINGS.get("freestyle_off_ratio", 0.35))
+FREESTYLE_OFF_MIN_SAMPLES = int(SCREEN_CAPTURE_SETTINGS.get("freestyle_off_min_samples", FREESTYLE_HISTORY_SIZE))
 
 # 좌측 패널 곡명 OCR ROI
 LEFT_TITLE_X_START = float(SCREEN_CAPTURE_SETTINGS.get("left_title_x_start", 0.028))
@@ -109,6 +117,7 @@ class ScreenCapture:
         # 로고 OCR 결과 캐시 (매 프레임 OCR 과부하 방지)
         self._last_logo_ocr_ts = 0.0
         self._last_logo_ocr_ok = False
+        self._freestyle_history = deque(maxlen=max(1, FREESTYLE_HISTORY_SIZE))
 
         # Windows OCR 엔진
         self.ocr_engine = None
@@ -314,7 +323,32 @@ class ScreenCapture:
         Returns:
             (is_song_select, y_range)  — y_range는 rect 기준 절대 y
         """
-        if not await self._detect_freestyle_logo(sct, rect):
+        logo_now = await self._detect_freestyle_logo(sct, rect)
+        self._freestyle_history.append(logo_now)
+        sample_count = len(self._freestyle_history)
+        hit_count = sum(1 for v in self._freestyle_history if v)
+        ratio = (hit_count / sample_count) if sample_count > 0 else 0.0
+        if self._is_song_select:
+            # 느리게 OFF: 충분한 샘플이 쌓이고 ratio가 낮을 때만 해제
+            should_turn_off = (
+                sample_count >= max(1, FREESTYLE_OFF_MIN_SAMPLES)
+                and ratio <= FREESTYLE_OFF_RATIO
+            )
+            is_logo_majority = not should_turn_off
+        else:
+            # 빠르게 ON: 비교적 적은 샘플에서도 ratio가 높으면 진입
+            is_logo_majority = (
+                sample_count >= max(1, FREESTYLE_ON_MIN_SAMPLES)
+                and ratio >= FREESTYLE_ON_RATIO
+            )
+        self.log(
+            f"선곡판정 버퍼: hit={hit_count}/{sample_count} "
+            f"(ratio={ratio:.2f}, on>={FREESTYLE_ON_RATIO:.2f}/{FREESTYLE_ON_MIN_SAMPLES}, "
+            f"off<={FREESTYLE_OFF_RATIO:.2f}/{FREESTYLE_OFF_MIN_SAMPLES}) -> "
+            f"{'선곡' if is_logo_majority else '기타'}"
+        )
+
+        if not is_logo_majority:
             return False, None
 
         scan_region = {

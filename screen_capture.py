@@ -13,6 +13,7 @@ screen_capture.py - 화면 캡처 및 OCR 모듈 (Windows OCR 버전)
 import time
 import threading
 import asyncio
+import re
 import numpy as np
 from typing import Optional, Callable
 import mss
@@ -41,10 +42,6 @@ LIST_X_END   = float(SCREEN_CAPTURE_SETTINGS.get("list_x_end", 0.167))   # x=320
 # 수직 샘플링 X (리스트 중앙)
 SAMPLING_X_RATIO = float(SCREEN_CAPTURE_SETTINGS.get("sampling_x_ratio", 0.08))
 
-# OCR 할 제목 영역 (하이라이트 행의 x 범위) — 리스트와 동일
-TITLE_X_START = float(SCREEN_CAPTURE_SETTINGS.get("title_x_start", 0.031))
-TITLE_X_END   = float(SCREEN_CAPTURE_SETTINGS.get("title_x_end", 0.167))
-
 # 하이라이트 행 감지 (HSV 주황)
 HIGHLIGHT_HUE_MIN  = int(SCREEN_CAPTURE_SETTINGS.get("highlight_hue_min", 10))
 HIGHLIGHT_HUE_MAX  = int(SCREEN_CAPTURE_SETTINGS.get("highlight_hue_max", 32))
@@ -70,6 +67,21 @@ LOGO_Y_END   = float(SCREEN_CAPTURE_SETTINGS.get("logo_y_end", 0.090))
 # 로고 OCR 판정
 LOGO_OCR_KEYWORD = str(SCREEN_CAPTURE_SETTINGS.get("logo_ocr_keyword", "FREESTYLE")).upper()
 LOGO_OCR_COOLDOWN_SEC = float(SCREEN_CAPTURE_SETTINGS.get("logo_ocr_cooldown_sec", 1.0))
+
+# 좌측 패널 곡명 OCR ROI
+LEFT_TITLE_X_START = float(SCREEN_CAPTURE_SETTINGS.get("left_title_x_start", 0.028))
+LEFT_TITLE_X_END   = float(SCREEN_CAPTURE_SETTINGS.get("left_title_x_end", 0.265))
+LEFT_TITLE_Y_START = float(SCREEN_CAPTURE_SETTINGS.get("left_title_y_start", 0.180))
+LEFT_TITLE_Y_END   = float(SCREEN_CAPTURE_SETTINGS.get("left_title_y_end", 0.305))
+
+# 우측 선곡창 곡명 OCR ROI (하이라이트 y를 못 찾을 때 fallback)
+RIGHT_TITLE_X_START = float(SCREEN_CAPTURE_SETTINGS.get("right_title_x_start", 0.325))
+RIGHT_TITLE_X_END   = float(SCREEN_CAPTURE_SETTINGS.get("right_title_x_end", 0.660))
+RIGHT_TITLE_Y_START = float(SCREEN_CAPTURE_SETTINGS.get("right_title_y_start", 0.535))
+RIGHT_TITLE_Y_END   = float(SCREEN_CAPTURE_SETTINGS.get("right_title_y_end", 0.602))
+
+# 하이라이트 y를 찾았을 때 우측 ROI에 추가할 여유(padding px)
+RIGHT_TITLE_PAD_PX = int(SCREEN_CAPTURE_SETTINGS.get("right_title_pad_px", 6))
 
 
 class ScreenCapture:
@@ -174,32 +186,96 @@ class ScreenCapture:
             if self.on_screen_changed:
                 self.on_screen_changed(is_song_select)
 
-        if not is_song_select or y_range is None:
+        if not is_song_select:
             return
 
-        y_start, y_end = y_range
-        self.log(
-            f"하이라이트 행: y={y_start}~{y_end} "
-            f"(비율 {y_start/rect.height:.3f}~{y_end/rect.height:.3f})"
+        if y_range is not None:
+            y_start, y_end = y_range
+            self.log(
+                f"하이라이트 행: y={y_start}~{y_end} "
+                f"(비율 {y_start/rect.height:.3f}~{y_end/rect.height:.3f})"
+            )
+        else:
+            self.log("하이라이트 행 미검출: 고정 ROI로 곡명 OCR 시도")
+
+        left_region = self._region_from_ratio(
+            rect,
+            LEFT_TITLE_X_START, LEFT_TITLE_X_END,
+            LEFT_TITLE_Y_START, LEFT_TITLE_Y_END,
         )
+        left_raw = await self._ocr_windows(np.array(sct.grab(left_region)))
+        left_title = self._normalize_title_text(left_raw)
 
-        # 2. 제목 영역 캡처
-        title_region = {
-            "top":    rect.top  + y_start,
-            "left":   rect.left + int(rect.width * TITLE_X_START),
-            "width":  int(rect.width * (TITLE_X_END - TITLE_X_START)),
-            "height": max(1, y_end - y_start),
-        }
-        img_bgra = np.array(sct.grab(title_region))
+        if y_range is not None:
+            y_start, y_end = y_range
+            right_top = max(0, y_start - RIGHT_TITLE_PAD_PX)
+            right_bottom = min(rect.height, y_end + RIGHT_TITLE_PAD_PX)
+            right_region = {
+                "top": rect.top + right_top,
+                "left": rect.left + int(rect.width * RIGHT_TITLE_X_START),
+                "width": max(1, int(rect.width * (RIGHT_TITLE_X_END - RIGHT_TITLE_X_START))),
+                "height": max(1, right_bottom - right_top),
+            }
+        else:
+            right_region = self._region_from_ratio(
+                rect,
+                RIGHT_TITLE_X_START, RIGHT_TITLE_X_END,
+                RIGHT_TITLE_Y_START, RIGHT_TITLE_Y_END,
+            )
+        right_raw = await self._ocr_windows(np.array(sct.grab(right_region)))
+        right_title = self._normalize_title_text(right_raw)
 
-        # 3. OCR
-        title = await self._ocr_windows(img_bgra)
-        self.log(f"OCR 원문: '{title}'")
+        title = self._choose_title(left_title, right_title)
+        self.log(
+            f"OCR 후보: left='{left_title}' / right='{right_title}' -> 선택='{title}'"
+        )
 
         if title and title != self._last_title:
             self._last_title = title
             if self.on_song_changed:
                 self.on_song_changed(title)
+
+    def _region_from_ratio(
+        self,
+        rect: WindowRect,
+        x_start: float, x_end: float,
+        y_start: float, y_end: float,
+    ) -> dict:
+        return {
+            "top": rect.top + int(rect.height * y_start),
+            "left": rect.left + int(rect.width * x_start),
+            "width": max(1, int(rect.width * (x_end - x_start))),
+            "height": max(1, int(rect.height * (y_end - y_start))),
+        }
+
+    def _normalize_title_text(self, raw: str) -> str:
+        if not raw:
+            return ""
+        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        if not lines:
+            return ""
+        # 첫 줄(곡명)을 우선 사용하되, 너무 짧으면 다음 줄 보조
+        title = lines[0]
+        if len(title) < 2 and len(lines) > 1:
+            title = lines[1]
+        title = re.sub(r"\s+", " ", title).strip()
+        return title
+
+    def _score_title(self, title: str, prefer_right: bool) -> int:
+        if not title:
+            return -999
+        has_alnum_or_cjk = bool(re.search(r"[0-9A-Za-z\u3131-\u318E\uAC00-\uD7A3\u3040-\u30FF\u4E00-\u9FFF]", title))
+        score = len(title) * 2
+        if has_alnum_or_cjk:
+            score += 8
+        if prefer_right:
+            score += 6
+        return score
+
+    def _choose_title(self, left_title: str, right_title: str) -> str:
+        left_score = self._score_title(left_title, prefer_right=False)
+        right_score = self._score_title(right_title, prefer_right=True)
+        return right_title if right_score >= left_score else left_title
 
     # ------------------------------------------------------------------
     # 선곡화면 감지 (주황 클러스터 방식)
@@ -321,11 +397,10 @@ class ScreenCapture:
             if not success:
                 return ""
 
-            data_writer = streams.DataWriter()
-            data_writer.write_bytes(encoded.tobytes())
-
             stream = streams.InMemoryRandomAccessStream()
-            await data_writer.store_async(stream)
+            data_writer = streams.DataWriter(stream)
+            data_writer.write_bytes(encoded.tobytes())
+            await data_writer.store_async()
             data_writer.detach_stream()
             stream.seek(0)
 

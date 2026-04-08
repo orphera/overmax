@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 # ------------------------------------------------------------------
-# 분석 (EasyOCR/Torch 관련 데이터 및 라이브러리 제거)
+# 분석 (현재 런타임 의존성 기준)
 # ------------------------------------------------------------------
 a = Analysis(
     ["main.py"],
@@ -32,6 +32,9 @@ a = Analysis(
         "rapidfuzz",
         "httpx",
         "numpy",
+        "imagehash",
+        "PIL.Image",
+        "skimage.feature",
     ],
     hookspath=[], # 커스텀 훅 불필요
     excludes=[
@@ -40,7 +43,6 @@ a = Analysis(
         "easyocr",    # 제거 [cite: 30]
         "matplotlib",
         "pandas",
-        "scipy",
     ],
     noarchive=False,
 )

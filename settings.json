@@ -43,6 +43,19 @@
     "hint_label": "F9: 표시/숨김  |  드래그로 위치 이동",
     "position_file": "overlay_position.json"
   },
+  "jacket_matcher": {
+    "db_path": "image_index.db",
+    "similarity_threshold": 0.5,
+    "match_interval_sec": 0.8,
+    "jacket_change_threshold": 2.5,
+    "jacket_force_recheck_sec": 2.0,
+    "register_hotkey": "F10",
+    "log_similarity": true,
+    "jacket_x_start": 0.371,
+    "jacket_x_end": 0.400,
+    "jacket_y_start": 0.495,
+    "jacket_y_end": 0.548
+  },
   "varchive": {
     "songs_api_url": "https://v-archive.net/db/v2/songs.json",
     "cache_path": "cache/songs.json",

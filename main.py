@@ -1,13 +1,18 @@
 """
 Overmax - DJMAX Respect V 비공식 난이도 오버레이
 메인 진입점 — 모든 컴포넌트를 조립하고 실행
+
+변경 사항:
+  - ImageDB 초기화 추가
+  - ScreenCapture에 image_db 주입
+  - F10 단축키: 현재 재킷을 현재 OCR 곡명으로 등록
 """
 
 import sys
 import threading
 from pathlib import Path
+from typing import Optional
 
-# PyInstaller 패키징 환경 대응 패치 (반드시 다른 import보다 먼저)
 import runtime_patch
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -17,11 +22,13 @@ from window_tracker import WindowTracker
 from screen_capture import ScreenCapture
 from overlay import OverlayController
 from debug_window import DebugController
+from image_db import ImageDB
 from settings import SETTINGS
 
 LOCAL_SONGS_JSON = runtime_patch.get_data_dir() / "cache" / "songs.json"
 WINDOW_TITLE = str(SETTINGS.get("window_tracker", {}).get("window_title", "DJMAX RESPECT V"))
 TOGGLE_HOTKEY = str(SETTINGS.get("overlay", {}).get("toggle_hotkey", "F9"))
+JACKET_REGISTER_HOTKEY = str(SETTINGS.get("jacket_matcher", {}).get("register_hotkey", "F10"))
 
 
 def main():
@@ -30,7 +37,7 @@ def main():
     print("  V-Archive 데이터 기반")
     print("=" * 50)
 
-    # 1. DB 로드
+    # 1. VArchive DB 로드
     db = VArchiveDB()
     local = str(LOCAL_SONGS_JSON) if LOCAL_SONGS_JSON.exists() else None
     try:
@@ -40,14 +47,31 @@ def main():
         print("  songs.json을 cache/ 폴더에 넣거나 인터넷 연결을 확인하세요.")
         sys.exit(1)
 
-    # 2. 디버그 컨트롤러 생성 (Qt App 전에 signals 준비)
+    # 2. ImageDB 초기화 (실패해도 계속 실행 - OCR fallback 동작)
+    image_cfg = SETTINGS.get("jacket_matcher", {})
+    image_db = ImageDB(
+        db_path=str(image_cfg.get("db_path", "image_index.db")),
+        similarity_threshold=float(image_cfg.get("similarity_threshold", 0.5)),
+    )
+    image_ok = image_db.initialize()
+    if image_ok:
+        image_db.load()
+        print(f"[Main] ImageDB 준비 완료: {image_db.song_count}곡 등록됨")
+    else:
+        print("[Main] ImageDB 초기화 실패 - OCR 전용 모드로 실행")
+        image_db = None
+
+    # 3. 디버그 컨트롤러
     debug_ctrl = DebugController()
 
-    # 3. 오버레이 컨트롤러 생성
+    # 4. 오버레이 컨트롤러
     controller = OverlayController(db)
 
-    # 4. 창 추적기 시작
+    # 5. 창 추적기
     tracker = WindowTracker()
+
+    # 현재 인식된 곡명 추적 (재킷 등록 시 song_id로 사용)
+    _current_song_id: dict[str, str] = {"value": ""}
 
     def on_window_found(rect):
         debug_ctrl.log(
@@ -67,33 +91,54 @@ def main():
     tracker.on_changed(on_window_changed)
     tracker.start()
 
-    # 5. 화면 캡처 + OCR
-    capture = ScreenCapture(tracker)
+    # 6. 화면 캡처 + OCR
+    capture = ScreenCapture(tracker, image_db=image_db)
 
-    def on_song_changed(title: str, composer: str):
+    def on_song_changed(title: str, composer: str, song_id: Optional[int] = None):
+        if song_id:
+            song = db.search_by_id(song_id)
+            if song:
+                title = song.get("name", title)
+                composer = song.get("composer", composer)
+
+        _current_song_id["value"] = title
         debug_ctrl.log(f"[Main] 곡명 감지: '{title}' / composer: '{composer}'")
-        controller.notify_song(title, composer)
+        controller.notify_song(title=title, composer=composer, song_id=song_id)
 
     def on_screen_changed(is_song_select: bool):
         debug_ctrl.log(f"[Main] 화면 상태: {'선곡화면' if is_song_select else '기타화면'}")
         controller.notify_screen(is_song_select)
 
-    capture.on_song_changed  = on_song_changed
+    capture.on_song_changed   = on_song_changed
     capture.on_screen_changed = on_screen_changed
-    # ScreenCapture 자체 로그도 debug 창으로
-    capture.on_debug_log = debug_ctrl.log
+    capture.on_debug_log      = debug_ctrl.log
+    controller._debug_log_cb  = debug_ctrl.log
 
-    # OverlayController 로그도 연결
-    controller._debug_log_cb = debug_ctrl.log
+    # 7. 재킷 수동 등록 단축키 (F10)
+    #    Qt 이벤트 루프 밖이므로 keyboard 라이브러리 또는
+    #    overlay.py의 QShortcut으로 처리.
+    #    여기서는 콜백 형태로 overlay에 등록
+    def on_jacket_register_hotkey():
+        song_id = _current_song_id["value"]
+        if not song_id:
+            debug_ctrl.log("[Main] 재킷 등록 실패: 현재 곡명 없음")
+            return
+        debug_ctrl.log(f"[Main] 재킷 등록 시작: '{song_id}'")
+        capture.trigger_jacket_register(song_id)
+
+    # controller에 재킷 등록 콜백 주입 (overlay.py에서 QShortcut 처리)
+    controller._jacket_register_cb = on_jacket_register_hotkey
 
     capture_thread = threading.Thread(target=capture.start, daemon=True)
     capture_thread.start()
 
-    print(f"\n[Main] 실행 중... ({TOGGLE_HOTKEY}: 오버레이 표시/숨김, Ctrl+C: 종료)")
+    print(f"\n[Main] 실행 중...")
+    print(f"  {TOGGLE_HOTKEY}: 오버레이 표시/숨김")
+    print(f"  {JACKET_REGISTER_HOTKEY}: 현재 재킷 DB 등록")
+    print(f"  Ctrl+C: 종료")
     print(f"[Main] 게임 창 대기 중: '{WINDOW_TITLE}'")
 
-    # 6. Qt 이벤트 루프 (메인 스레드)
-    #    OverlayController.run() 안에서 QApplication 생성 후 디버그 창도 띄움
+    # 8. Qt 이벤트 루프
     try:
         controller.run(debug_ctrl=debug_ctrl)
     except KeyboardInterrupt:

@@ -37,6 +37,7 @@ TRAY_TOOLTIP = str(OVERLAY_SETTINGS.get("tray_tooltip", "Overmax - DJMAX Respect
 HINT_LABEL = str(OVERLAY_SETTINGS.get("hint_label", f"{TOGGLE_HOTKEY}: 표시/숨김  |  드래그로 위치 이동"))
 OVERLAY_POSITION_FILE = str(OVERLAY_SETTINGS.get("position_file", "overlay_position.json"))
 SCREEN_CAPTURE_SETTINGS = SETTINGS.get("screen_capture", {})
+JACKET_SETTINGS = SETTINGS.get("jacket_matcher", {})
 
 LOGO_X_START = float(SCREEN_CAPTURE_SETTINGS.get("logo_x_start", 0.028))
 LOGO_X_END = float(SCREEN_CAPTURE_SETTINGS.get("logo_x_end", 0.210))
@@ -54,6 +55,10 @@ LEFT_COMPOSER_X_START = float(SCREEN_CAPTURE_SETTINGS.get("left_composer_x_start
 LEFT_COMPOSER_X_END = float(SCREEN_CAPTURE_SETTINGS.get("left_composer_x_end", 0.300))
 LEFT_COMPOSER_Y_START = float(SCREEN_CAPTURE_SETTINGS.get("left_composer_y_start", 0.245))
 LEFT_COMPOSER_Y_END = float(SCREEN_CAPTURE_SETTINGS.get("left_composer_y_end", 0.285))
+JACKET_X_START = float(JACKET_SETTINGS.get("jacket_x_start", 0.370))
+JACKET_X_END   = float(JACKET_SETTINGS.get("jacket_x_end",   0.401))
+JACKET_Y_START = float(JACKET_SETTINGS.get("jacket_y_start", 0.494))
+JACKET_Y_END   = float(JACKET_SETTINGS.get("jacket_y_end",   0.549))
 
 
 # ------------------------------------------------------------------
@@ -273,6 +278,12 @@ class RoiOverlayWindow(QWidget):
             QColor("#FFD84D"),
             "COMPOSER OCR",
         )
+        self._draw_box(
+            painter,
+            self._ratio_rect(JACKET_X_START, JACKET_Y_START, JACKET_X_END, JACKET_Y_END),
+            QColor("#FF0000"),
+            "JACKET",
+        )
 
 
 # ------------------------------------------------------------------
@@ -291,6 +302,7 @@ class OverlayWindow(QWidget):
         self._drag_pos = QPoint()
         self._manual_position = False
         self._user_move_cb = None
+        self._jacket_register_cb = None
 
         self._setup_window()
         self._setup_ui()
@@ -355,10 +367,20 @@ class OverlayWindow(QWidget):
         self.signals.song_changed.connect(self._on_song_changed)
         self.signals.screen_changed.connect(self._on_screen_changed)
         self.signals.position_changed.connect(self._on_game_window_moved)
-
-        # 표시/숨김 단축키 토글
+ 
+        # 표시/숨김 단축키
         shortcut = QShortcut(QKeySequence(TOGGLE_HOTKEY), self)
         shortcut.activated.connect(self.toggle_visibility)
+ 
+        # 재킷 등록 단축키 (F10)
+        jacket_hotkey = SETTINGS.get("jacket_matcher", {}).get("register_hotkey", "F10")
+        jacket_shortcut = QShortcut(QKeySequence(jacket_hotkey), self)
+        jacket_shortcut.activated.connect(self._on_jacket_register_hotkey)
+ 
+    def _on_jacket_register_hotkey(self):
+        """재킷 등록 단축키 핸들러 - main.py에서 주입된 콜백 호출"""
+        if self._jacket_register_cb is not None:
+            self._jacket_register_cb()
 
     # ------------------------------------------------------------------
     # 슬롯
@@ -454,19 +476,26 @@ class OverlayController:
         self._roi_window: Optional[RoiOverlayWindow] = None
         self._tray_icon: Optional[QSystemTrayIcon] = None
         self._debug_log_cb = None   # set by main.py after DebugController init
+        self._jacket_register_cb = None
         self._debug_toggle_cb = None
         self._last_window_rect: Optional[tuple[int, int, int, int]] = None
         self._position_path = runtime_patch.get_data_dir() / OVERLAY_POSITION_FILE
 
-    def notify_song(self, title: str, composer: str = ""):
+    def notify_song(self, title: str = "", composer: str = "", song_id: Optional[int] = None):
         """OCR 스레드에서 호출 - 곡명/작곡가로 패턴 조회 후 시그널 emit"""
-        if composer:
+        song = None
+        if song_id:
+            self.log(f"곡 검색: ID={song_id} (title='{title}', composer='{composer}')")
+            song = self.db.search_by_id(song_id)
+        elif composer:
             self.log(f"곡 검색: '{title}' / composer='{composer}'")
+            song = self.db.search(title, composer=composer)
         else:
             self.log(f"곡 검색: '{title}'")
-        song = self.db.search(title, composer=composer)
+            song = self.db.search(title, composer=composer)
+
         if not song:
-            self.log(f"'{title}' (composer='{composer}') DB에서 찾을 수 없음")
+            self.log(f"'{title}' (composer='{composer}', id={song_id}) DB에서 찾을 수 없음")
             return
 
         all_patterns = []
@@ -576,6 +605,10 @@ class OverlayController:
             self._debug_toggle_cb = debug_ctrl.toggle_window
         else:
             self._debug_toggle_cb = None
+
+        # 재킷 등록 콜백 창에 주입
+        if self._jacket_register_cb is not None:
+            self._window._jacket_register_cb = self._jacket_register_cb
 
         # 트레이 아이콘 설정
         self._setup_tray_icon()

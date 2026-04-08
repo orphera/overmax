@@ -181,6 +181,13 @@ class VArchiveDB:
 
         return None
 
+    def search_by_id(self, song_id: int) -> Optional[dict]:
+        """ID로 곡 검색"""
+        for song in self.songs:
+            if int(song.get("title")) == song_id:
+                return song
+        return None
+
     def search(self, title: str, composer: str = "") -> Optional[dict]:
         """정확 검색 → 퍼지 검색 순으로 시도 (composer로 동명이곡 분기)"""
         return (

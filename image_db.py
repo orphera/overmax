@@ -22,6 +22,7 @@ class ImageDB:
 
     def initialize(self) -> bool:
         try:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute(
                     """
@@ -38,6 +39,20 @@ class ImageDB:
                 )
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_images_image_id ON images (image_id)"
+                )
+                # image_id(song_id) 중복을 제거한 뒤 unique 인덱스를 보장한다.
+                conn.execute(
+                    """
+                    DELETE FROM images
+                    WHERE id NOT IN (
+                        SELECT MAX(id)
+                        FROM images
+                        GROUP BY image_id
+                    )
+                    """
+                )
+                conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_images_image_id ON images (image_id)"
                 )
                 conn.commit()
             self.is_ready = True
@@ -61,6 +76,110 @@ class ImageDB:
         except Exception as e:
             print(f"[ImageDB] 로드 실패: {e}")
             return 0
+
+    def get_stats(self) -> Optional[dict[str, int]]:
+        if not self.is_ready:
+            return None
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                row = conn.execute(
+                    """
+                    SELECT
+                        COUNT(*) AS total_rows,
+                        COUNT(DISTINCT image_id) AS distinct_song_ids
+                    FROM images
+                    """
+                ).fetchone()
+            if not row:
+                return {"total_rows": 0, "distinct_song_ids": 0}
+            return {
+                "total_rows": int(row[0]),
+                "distinct_song_ids": int(row[1]),
+            }
+        except Exception as e:
+            print(f"[ImageDB] 통계 조회 실패: {e}")
+            return None
+
+    def list_entries(self, limit: int = 100, offset: int = 0) -> list[dict]:
+        if not self.is_ready:
+            return []
+        safe_limit = max(1, int(limit))
+        safe_offset = max(0, int(offset))
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                rows = conn.execute(
+                    """
+                    SELECT id, image_id, orb
+                    FROM images
+                    ORDER BY id ASC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (safe_limit, safe_offset),
+                ).fetchall()
+            return [
+                {
+                    "id": int(row[0]),
+                    "image_id": str(row[1]),
+                    "has_orb": row[2] is not None,
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            print(f"[ImageDB] 목록 조회 실패: {e}")
+            return []
+
+    def get_entry(self, song_id: str) -> Optional[dict]:
+        if not self.is_ready:
+            return None
+        sid = str(song_id).strip()
+        if not sid:
+            return None
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                row = conn.execute(
+                    """
+                    SELECT id, image_id, phash, dhash, ahash, hog, orb
+                    FROM images
+                    WHERE image_id = ?
+                    """,
+                    (sid,),
+                ).fetchone()
+            if not row:
+                return None
+            return {
+                "id": int(row[0]),
+                "image_id": str(row[1]),
+                "phash": str(row[2]),
+                "dhash": str(row[3]),
+                "ahash": str(row[4]),
+                "hog_size": len(row[5]) if row[5] is not None else 0,
+                "has_orb": row[6] is not None,
+                "orb_size": len(row[6]) if row[6] is not None else 0,
+            }
+        except Exception as e:
+            print(f"[ImageDB] 단건 조회 실패: {e}")
+            return None
+
+    def delete_entry(self, song_id: str) -> bool:
+        if not self.is_ready:
+            return False
+        sid = str(song_id).strip()
+        if not sid:
+            return False
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cur = conn.execute(
+                    "DELETE FROM images WHERE image_id = ?",
+                    (sid,),
+                )
+                conn.commit()
+            deleted = int(cur.rowcount) > 0
+            if deleted:
+                self.load()
+            return deleted
+        except Exception as e:
+            print(f"[ImageDB] 항목 삭제 실패: {e}")
+            return False
 
     def register(self, song_id: str, img: np.ndarray) -> bool:
         if not self.is_ready:
@@ -87,13 +206,19 @@ class ImageDB:
                     """
                     INSERT INTO images (image_id, phash, dhash, ahash, hog, orb)
                     VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(image_id) DO UPDATE SET
+                        phash = excluded.phash,
+                        dhash = excluded.dhash,
+                        ahash = excluded.ahash,
+                        hog = excluded.hog,
+                        orb = excluded.orb
                     """,
                     (sid, ph, dh, ah, hog_vec.tobytes(), orb_blob),
                 )
                 conn.commit()
 
             self.load()
-            print(f"[ImageDB] 등록 완료: '{sid}'")
+            print(f"[ImageDB] 등록/갱신 완료: '{sid}'")
             return True
         except Exception as e:
             print(f"[ImageDB] 등록 실패: {e}")
@@ -227,3 +352,9 @@ class ImageDB:
             if m.distance < 0.75 * n.distance:
                 good += 1
         return good
+
+
+if __name__ == "__main__":
+    from image_db_cli import run_cli
+
+    run_cli()

@@ -65,6 +65,11 @@ _DIFF_X_OFFSETS: dict[str, float] = {
     "SC": 360.0,
 }
 
+# 난이도 없음 기준색 (BGR)
+_NOT_EXISTS_DIFF_COLOR   = (0x30, 0x30, 0x30)   # #303030
+
+_COLOR_TOLERANCE   = 20   # 기준색과의 최대 유클리드 거리
+
 
 # ------------------------------------------------------------------
 # 내부 유틸
@@ -139,6 +144,7 @@ def detect_difficulty(frame_bgra: np.ndarray) -> Optional[str]:
 
     판정 로직:
       각 난이도의 위치1과 위치2을 확인:
+        - 위치1 색이 "난이도 없음" 기준색보다 밝다 (난이도 존재 여부 확인)
         - 위치1 과 위치2 색 차이가 작다 (같은 영역이므로 일관성 확인)
       만족하면 해당 난이도 "선택됨"으로 판정.
     """
@@ -159,8 +165,9 @@ def detect_difficulty(frame_bgra: np.ndarray) -> Optional[str]:
         c2 = _pixel_at(frame_bgra, p2_rx, p2_ry)
 
         dist_c1_c2 = _color_dist(c1, c2)
+        diff_exists = all(c1[i] > _NOT_EXISTS_DIFF_COLOR[i] for i in range(3))
 
-        if dist_c1_c2 < best_dist:
+        if diff_exists and dist_c1_c2 < best_dist:
             best_dist = dist_c1_c2
             selected_diff = diff
 

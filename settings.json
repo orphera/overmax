@@ -33,6 +33,13 @@
     "ocr_interval_sec": 0.35,
     "idle_sleep_sec": 0.5
   },
+  "mode_diff_detector": {
+    "interval_sec": 0.15,
+    "history_size": 3,
+    "color_tolerance": 20,
+    "same_pix_tolerance": 18,
+    "btn_mode_max_dist": 60
+  },
   "debug_window": {
     "max_lines": 500,
     "title": "Overmax Debug Log"

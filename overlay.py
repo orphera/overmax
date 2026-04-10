@@ -3,6 +3,7 @@ PyQt6 투명 오버레이 창
 - Always-on-top, 클릭 투과
 - 선곡화면에서만 표시
 - 현재 선택 곡의 버튼 모드별 난이도 표시
+- 감지된 버튼 모드 패널 및 선택 난이도 카드 하이라이트
 """
 
 import sys
@@ -66,10 +67,11 @@ JACKET_Y_END   = float(JACKET_SETTINGS["jacket_y_end"])
 # ------------------------------------------------------------------
 
 class OverlaySignals(QObject):
-    song_changed = pyqtSignal(str, list)   # (곡명, 패턴 정보 리스트)
-    screen_changed = pyqtSignal(bool)      # 선곡화면 여부
-    position_changed = pyqtSignal(int, int, int, int)  # 창 위치
-    roi_enabled_changed = pyqtSignal(bool)  # ROI 표시 on/off
+    song_changed = pyqtSignal(str, list)          # (곡명, 패턴 정보 리스트)
+    screen_changed = pyqtSignal(bool)             # 선곡화면 여부
+    position_changed = pyqtSignal(int, int, int, int)   # 창 위치
+    roi_enabled_changed = pyqtSignal(bool)        # ROI 표시 on/off
+    mode_diff_changed = pyqtSignal(str, str)      # (button_mode, difficulty)
 
 
 # ------------------------------------------------------------------
@@ -83,6 +85,7 @@ class DiffCard(QFrame):
         self.color = QColor(DIFF_COLORS.get(diff, "#FFFFFF"))
         self._level = None
         self._floor_name = None
+        self._selected = False   # 현재 선택된 난이도 여부
 
         self.setFixedSize(72, 64)
         self.setStyleSheet("background: transparent;")
@@ -92,9 +95,15 @@ class DiffCard(QFrame):
         self._floor_name = floor_name
         self.update()
 
+    def set_selected(self, selected: bool):
+        if self._selected != selected:
+            self._selected = selected
+            self.update()
+
     def clear(self):
         self._level = None
         self._floor_name = None
+        self._selected = False
         self.update()
 
     def paintEvent(self, event):
@@ -115,6 +124,12 @@ class DiffCard(QFrame):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(0, 0, self.width(), self.height(), 6, 6)
 
+        # 선택 테두리
+        if self._selected:
+            painter.setPen(QPen(QColor(255, 255, 255, 230), 2.5))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(1, 1, self.width() - 2, self.height() - 2, 5, 5)
+
         # 난이도 라벨 (NM/HD/MX/SC)
         painter.setPen(QPen(QColor(255, 255, 255, 200)))
         font = QFont("Arial", 9, QFont.Weight.Bold)
@@ -134,7 +149,6 @@ class DiffCard(QFrame):
             painter.setFont(font)
             painter.drawText(QRect(0, 44, self.width(), 16), Qt.AlignmentFlag.AlignHCenter, self._floor_name)
         else:
-            # 비공식 없으면 "-" 표시
             painter.setPen(QPen(QColor(200, 200, 200, 120)))
             font = QFont("Arial", 9)
             painter.setFont(font)
@@ -150,16 +164,17 @@ class ButtonModePanel(QFrame):
         super().__init__(parent)
         self.mode = mode
         self._cards: dict[str, DiffCard] = {}
+        self._active = False   # 현재 감지된 버튼 모드 여부
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(4)
 
         # 모드 라벨
-        mode_label = QLabel(mode)
-        mode_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        mode_label.setStyleSheet("color: #CCCCCC; font-size: 11px; font-weight: bold;")
-        layout.addWidget(mode_label)
+        self._mode_label = QLabel(mode)
+        self._mode_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._mode_label.setStyleSheet("color: #CCCCCC; font-size: 11px; font-weight: bold;")
+        layout.addWidget(self._mode_label)
 
         # 난이도 카드 (가로 배열)
         cards_layout = QHBoxLayout()
@@ -170,13 +185,42 @@ class ButtonModePanel(QFrame):
             cards_layout.addWidget(card)
         layout.addLayout(cards_layout)
 
-        self.setStyleSheet("""
-            ButtonModePanel {
-                background: rgba(20, 20, 30, 160);
-                border: 1px solid rgba(255,255,255,30);
-                border-radius: 8px;
-            }
-        """)
+        self._apply_style()
+
+    def _apply_style(self):
+        if self._active:
+            self.setStyleSheet("""
+                ButtonModePanel {
+                    background: rgba(30, 30, 55, 200);
+                    border: 1px solid rgba(150, 150, 255, 120);
+                    border-radius: 8px;
+                }
+            """)
+            self._mode_label.setStyleSheet(
+                "color: #AAAAFF; font-size: 11px; font-weight: bold;"
+            )
+        else:
+            self.setStyleSheet("""
+                ButtonModePanel {
+                    background: rgba(20, 20, 30, 160);
+                    border: 1px solid rgba(255,255,255,30);
+                    border-radius: 8px;
+                }
+            """)
+            self._mode_label.setStyleSheet(
+                "color: #CCCCCC; font-size: 11px; font-weight: bold;"
+            )
+
+    def set_active(self, active: bool):
+        """이 패널이 현재 선택된 버튼 모드인지 표시."""
+        if self._active != active:
+            self._active = active
+            self._apply_style()
+
+    def set_selected_diff(self, diff: Optional[str]):
+        """특정 난이도 카드를 선택 상태로, 나머지는 해제."""
+        for d, card in self._cards.items():
+            card.set_selected(d == diff)
 
     def update_patterns(self, patterns: list[dict]):
         """패턴 정보로 카드 업데이트"""
@@ -191,6 +235,7 @@ class ButtonModePanel(QFrame):
     def clear(self):
         for card in self._cards.values():
             card.clear()
+        self.set_selected_diff(None)
 
 
 class RoiOverlayWindow(QWidget):
@@ -285,6 +330,27 @@ class RoiOverlayWindow(QWidget):
             "JACKET",
         )
 
+        # 버튼 모드 감지 영역 (80~84, 130~134)
+        self._draw_box(
+            painter,
+            self._ratio_rect(80/1920, 130/1080, 85/1920, 135/1080),
+            QColor("#00FF88"),
+            "BTN MODE",
+        )
+
+        # 난이도 감지 위치 (NM 기준 위치1/위치2)
+        for i, (diff, x_off) in enumerate({"NM": 0, "HD": 120, "MX": 240, "SC": 360}.items()):
+            dx = x_off / 1920
+            # 위치1
+            rx1 = (97 / 1920) + dx
+            ry1 = 487 / 1080
+            self._draw_box(
+                painter,
+                self._ratio_rect(rx1 - 1/1920, ry1 - 1/1080, rx1 + 3/1920, ry1 + 3/1080),
+                QColor("#FFAA00"),
+                diff,
+            )
+
 
 # ------------------------------------------------------------------
 # 메인 오버레이 창
@@ -295,9 +361,11 @@ class OverlayWindow(QWidget):
         super().__init__()
         self.db = db
         self.signals = signals
-        self._current_mode = "4B"  # 기본 버튼 모드
+        self._current_mode: Optional[str] = None
+        self._current_diff: Optional[str] = None
         self._panels: dict[str, ButtonModePanel] = {}
         self._song_label: Optional[QLabel] = None
+        self._mode_indicator: Optional[QLabel] = None
         self._dragging = False
         self._drag_pos = QPoint()
         self._manual_position = False
@@ -311,7 +379,7 @@ class OverlayWindow(QWidget):
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool  # 작업표시줄에 안 나타남
+            | Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
@@ -348,6 +416,14 @@ class OverlayWindow(QWidget):
 
         main_layout.addWidget(header)
 
+        # 현재 모드/난이도 인디케이터
+        self._mode_indicator = QLabel("— / —")
+        self._mode_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._mode_indicator.setStyleSheet(
+            "color: rgba(200,200,255,160); font-size: 10px; font-weight: bold;"
+        )
+        main_layout.addWidget(self._mode_indicator)
+
         # 버튼 모드 패널들
         for mode in BUTTON_MODES:
             panel = ButtonModePanel(mode)
@@ -366,7 +442,8 @@ class OverlayWindow(QWidget):
         self.signals.song_changed.connect(self._on_song_changed)
         self.signals.screen_changed.connect(self._on_screen_changed)
         self.signals.position_changed.connect(self._on_game_window_moved)
- 
+        self.signals.mode_diff_changed.connect(self._on_mode_diff_changed)
+
         # 표시/숨김 단축키
         shortcut = QShortcut(QKeySequence(TOGGLE_HOTKEY), self)
         shortcut.activated.connect(self.toggle_visibility)
@@ -385,6 +462,8 @@ class OverlayWindow(QWidget):
             mode = item["mode"]
             if mode in self._panels:
                 self._panels[mode].update_patterns(item["patterns"])
+        # 곡 변경 후 현재 선택 상태 재적용
+        self._apply_mode_diff_highlight()
 
     def _on_screen_changed(self, is_song_select: bool):
         if is_song_select:
@@ -393,17 +472,35 @@ class OverlayWindow(QWidget):
             self.hide()
 
     def _on_game_window_moved(self, left, top, width, height):
-        """게임 창 위치 변경 시 오버레이도 이동 (기본 위치: 게임 창 우측 하단)"""
         if self._manual_position:
             return
-        # 게임 창 오른쪽에 붙이기
         ox = left + width + 10
         oy = top + height - self.height() - 40
-        # 화면 밖으로 나가면 게임 창 안쪽으로
         screen = QApplication.primaryScreen().geometry()
         if ox + self.width() > screen.width():
             ox = left - self.width() - 10
         self.move(ox, max(oy, top))
+
+    def _on_mode_diff_changed(self, mode: str, diff: str):
+        """버튼 모드 / 난이도 변경 시 하이라이트 갱신."""
+        self._current_mode = mode if mode else None
+        self._current_diff = diff if diff else None
+        self._apply_mode_diff_highlight()
+
+    def _apply_mode_diff_highlight(self):
+        """패널 활성화 + 난이도 카드 선택 상태 반영."""
+        for mode, panel in self._panels.items():
+            is_active = (mode == self._current_mode)
+            panel.set_active(is_active)
+            if is_active:
+                panel.set_selected_diff(self._current_diff)
+            else:
+                panel.set_selected_diff(None)
+
+        # 인디케이터 텍스트 갱신
+        mode_str = self._current_mode or "—"
+        diff_str = self._current_diff or "—"
+        self._mode_indicator.setText(f"현재: {mode_str}  /  {diff_str}")
 
     def set_user_move_callback(self, callback):
         self._user_move_cb = callback
@@ -464,7 +561,7 @@ class OverlayController:
         self._window: Optional[OverlayWindow] = None
         self._roi_window: Optional[RoiOverlayWindow] = None
         self._tray_icon: Optional[QSystemTrayIcon] = None
-        self._debug_log_cb = None   # set by main.py after DebugController init
+        self._debug_log_cb = None
         self._debug_toggle_cb = None
         self._last_window_rect: Optional[tuple[int, int, int, int]] = None
         self._position_path = runtime_patch.get_data_dir() / OVERLAY_POSITION_FILE
@@ -513,12 +610,16 @@ class OverlayController:
         self.signals.position_changed.emit(left, top, width, height)
 
     def notify_window_lost(self):
-        """게임 창 소실 시 오버레이/ROI 상태 정리"""
         self.log("게임 창 소실 알림 수신: 오버레이 숨김 + ROI OFF")
         self._last_window_rect = None
         self.signals.screen_changed.emit(False)
         self.signals.roi_enabled_changed.emit(False)
         self.signals.position_changed.emit(0, 0, 0, 0)
+
+    def notify_mode_diff(self, mode: str, diff: str):
+        """버튼 모드/난이도 변경 알림 (ScreenCapture 콜백에서 호출)"""
+        self.log(f"모드/난이도: {mode} / {diff}")
+        self.signals.mode_diff_changed.emit(mode, diff)
 
     def set_roi_overlay_enabled(self, enabled: bool):
         if self._roi_window is None:
@@ -580,10 +681,10 @@ class OverlayController:
         self._app = QApplication(sys.argv)
         self._app.setQuitOnLastWindowClosed(False)
         self._window = OverlayWindow(self.db, self.signals)
-        self._window.hide()  # 처음엔 숨김
+        self._window.hide()
         self._window.set_user_move_callback(self._on_overlay_user_moved)
         self._roi_window = RoiOverlayWindow()
-        self._roi_window.hide()  # 기본 OFF
+        self._roi_window.hide()
         self.signals.position_changed.connect(self._roi_window.set_game_rect)
         self.signals.roi_enabled_changed.connect(self._roi_window.set_enabled)
 
@@ -610,25 +711,20 @@ class OverlayController:
         self._app.exec()
 
     def _setup_tray_icon(self):
-        """트레이 아이콘 설정"""
         if not QSystemTrayIcon.isSystemTrayAvailable():
             print("[Overlay] 시스템 트레이를 사용할 수 없음")
             return
 
-        # 트레이 아이콘 생성 (아이콘은 기본 Qt 아이콘 사용)
         self._tray_icon = QSystemTrayIcon(self._app)
-        self._tray_icon.setIcon(self._app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))  # 임시 아이콘
+        self._tray_icon.setIcon(self._app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
         self._tray_icon.setToolTip(TRAY_TOOLTIP)
 
-        # 트레이 메뉴 생성
         tray_menu = QMenu()
 
-        # 오버레이 표시/숨김 액션
         toggle_action = QAction(f"오버레이 표시/숨김 ({TOGGLE_HOTKEY})", self._app)
         toggle_action.triggered.connect(self._window.toggle_visibility)
         tray_menu.addAction(toggle_action)
 
-        # 디버그 창 표시/숨김 액션
         if self._debug_toggle_cb is not None:
             debug_action = QAction("디버그 창 표시/숨김", self._app)
             debug_action.triggered.connect(self._debug_toggle_cb)
@@ -636,7 +732,6 @@ class OverlayController:
 
         tray_menu.addSeparator()
 
-        # 종료 액션
         quit_action = QAction("종료", self._app)
         quit_action.triggered.connect(self._app.quit)
         tray_menu.addAction(quit_action)
@@ -644,7 +739,6 @@ class OverlayController:
         self._tray_icon.setContextMenu(tray_menu)
         self._tray_icon.show()
 
-        # 트레이 아이콘 더블클릭으로 오버레이 토글
         self._tray_icon.activated.connect(self._on_tray_activated)
 
     def _on_tray_activated(self, reason):

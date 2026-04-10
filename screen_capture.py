@@ -4,6 +4,11 @@ screen_capture.py - 화면 캡처 및 OCR 모듈 (재킷 매칭 우선 버전)
 곡 감지 우선순위:
   1. 재킷 이미지 매칭 (image_db.py)
   2. OCR 기반 곡명/작곡가 추출 (fallback)
+
+추가:
+  - 버튼 모드(4B/5B/6B/8B) 감지
+  - 선택된 난이도(NM/HD/MX/SC) 감지
+  - on_mode_diff_changed 콜백
 """
 
 import time
@@ -28,6 +33,7 @@ except ImportError:
 
 from window_tracker import WindowTracker, WindowRect
 from image_db import ImageDB
+from mode_diff_detector import detect_mode_and_difficulty
 
 # ------------------------------------------------------------------
 # 설정 상수 (비율 기반)
@@ -83,6 +89,11 @@ JACKET_SIMILARITY_LOG = bool(JACKET_SETTINGS["log_similarity"])
 JACKET_CHANGE_THRESHOLD = float(JACKET_SETTINGS["jacket_change_threshold"])
 JACKET_FORCE_RECHECK_SEC = float(JACKET_SETTINGS["jacket_force_recheck_sec"])
 
+# 모드/난이도 감지 관련
+_MODE_DIFF_SETTINGS = SETTINGS.get("mode_diff_detector", {})
+MODE_DIFF_INTERVAL = float(_MODE_DIFF_SETTINGS.get("interval_sec", 0.15))
+MODE_DIFF_HISTORY  = int(_MODE_DIFF_SETTINGS.get("history_size", 3))
+
 
 class ScreenCapture:
     def __init__(self, tracker: WindowTracker, image_db: Optional[ImageDB] = None):
@@ -95,9 +106,11 @@ class ScreenCapture:
         self._is_song_select = False
 
         # 콜백
-        self.on_song_changed:   Optional[Callable[[str, str], None]]  = None
-        self.on_screen_changed: Optional[Callable[[bool], None]] = None
-        self.on_debug_log:      Optional[Callable[[str], None]]  = None
+        self.on_song_changed:      Optional[Callable[[str, str], None]]       = None
+        self.on_screen_changed:    Optional[Callable[[bool], None]]           = None
+        self.on_debug_log:         Optional[Callable[[str], None]]            = None
+        self.on_mode_diff_changed: Optional[Callable[[str, str], None]]       = None
+        # ^ (button_mode, difficulty)  ex) ("4B", "MX")
 
         # asyncio
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -112,6 +125,14 @@ class ScreenCapture:
         self._last_jacket_thumb: Optional[np.ndarray] = None
         self._last_jacket_match_ts = 0.0
         self._last_jacket_matched = False
+
+        # 모드/난이도 감지 상태
+        self._last_mode_diff_ts = 0.0
+        self._last_mode: Optional[str] = None
+        self._last_diff: Optional[str] = None
+        # 안정화 히스토리 (연속 N회 일치해야 콜백 발화)
+        self._mode_history: deque[Optional[str]] = deque(maxlen=MODE_DIFF_HISTORY)
+        self._diff_history: deque[Optional[str]] = deque(maxlen=MODE_DIFF_HISTORY)
 
         # Windows OCR 엔진
         self.ocr_engine = None
@@ -197,18 +218,35 @@ class ScreenCapture:
 
         if not is_song_select:
             self._last_jacket_matched = False
+            # 선곡화면이 아니면 모드/난이도 상태 초기화
+            self._mode_history.clear()
+            self._diff_history.clear()
             return
 
-        # 2. 재킷 이미지 캡처
-        jacket_region = self._region_from_ratio(
-            rect,
-            JACKET_X_START, JACKET_X_END,
-            JACKET_Y_START, JACKET_Y_END,
-        )
-        jacket_img = np.array(sct.grab(jacket_region))
+        # 2. 전체 화면 스냅샷 (모드/난이도 감지 + 재킷 공유용)
+        full_region = {
+            "top":    rect.top,
+            "left":   rect.left,
+            "width":  rect.width,
+            "height": rect.height,
+        }
+        full_frame = np.array(sct.grab(full_region))  # BGRA
 
-        # 3. 재킷 매칭 시도 (주기 제한)
+        # 3. 버튼 모드 / 난이도 감지 (주기 제한)
         now = time.time()
+        if now - self._last_mode_diff_ts >= MODE_DIFF_INTERVAL:
+            self._last_mode_diff_ts = now
+            self._update_mode_diff(full_frame)
+
+        # 4. 재킷 이미지 캡처 (full_frame에서 ROI 잘라내기)
+        h, w = full_frame.shape[:2]
+        jx1 = int(w * JACKET_X_START)
+        jy1 = int(h * JACKET_Y_START)
+        jx2 = int(w * JACKET_X_END)
+        jy2 = int(h * JACKET_Y_END)
+        jacket_img = full_frame[jy1:jy2, jx1:jx2]
+
+        # 5. 재킷 매칭 시도 (주기 제한)
         jacket_matched = (
             self._last_jacket_matched
             and self.image_db is not None
@@ -244,7 +282,6 @@ class ScreenCapture:
                     song_key = f"jacket::{song_id}"
                     if song_key != self._last_song_key:
                         self._last_song_key = song_key
-                        # numeric song_id면 DB id lookup, 아니면 OCR fallback 유지
                         if str(song_id).isdigit():
                             if self.on_song_changed:
                                 self.on_song_changed("", "", song_id=int(song_id))
@@ -265,9 +302,58 @@ class ScreenCapture:
                     if JACKET_SIMILARITY_LOG:
                         self.log("재킷 매칭 실패 → OCR fallback")
 
-        # 4. OCR fallback (재킷 매칭 실패 시)
+        # 6. OCR fallback (재킷 매칭 실패 시)
         if not jacket_matched:
             await self._ocr_fallback(sct, rect)
+
+    # ------------------------------------------------------------------
+    # 버튼 모드 / 난이도 감지 (히스토리 안정화 포함)
+    # ------------------------------------------------------------------
+
+    def _update_mode_diff(self, full_frame: np.ndarray):
+        """full_frame(BGRA)에서 모드/난이도를 감지하고 히스토리 안정화 후 콜백."""
+        raw_mode, raw_diff = detect_mode_and_difficulty(full_frame)
+
+        self._mode_history.append(raw_mode)
+        self._diff_history.append(raw_diff)
+
+        # 히스토리가 가득 차지 않으면 아직 판정하지 않음
+        if (
+            len(self._mode_history) < MODE_DIFF_HISTORY
+            or len(self._diff_history) < MODE_DIFF_HISTORY
+        ):
+            return
+
+        # 과반수 값을 stable 값으로 채택
+        stable_mode = self._majority(self._mode_history)
+        stable_diff = self._majority(self._diff_history)
+
+        self.log(
+            f"모드/난이도 감지: raw=({raw_mode},{raw_diff}) "
+            f"stable=({stable_mode},{stable_diff})"
+        )
+
+        # 값이 바뀐 경우에만 콜백
+        if stable_mode != self._last_mode or stable_diff != self._last_diff:
+            self._last_mode = stable_mode
+            self._last_diff = stable_diff
+            if self.on_mode_diff_changed and stable_mode and stable_diff:
+                self.on_mode_diff_changed(stable_mode, stable_diff)
+
+    @staticmethod
+    def _majority(history: deque) -> Optional[str]:
+        """None이 아닌 값 중 최빈값 반환. 동률이면 최근 값 우선."""
+        counts: dict[str, int] = {}
+        for v in history:
+            if v is not None:
+                counts[v] = counts.get(v, 0) + 1
+        if not counts:
+            return None
+        return max(counts, key=lambda k: counts[k])
+
+    # ------------------------------------------------------------------
+    # OCR fallback
+    # ------------------------------------------------------------------
 
     async def _ocr_fallback(self, sct, rect: WindowRect):
         """OCR로 곡명/작곡가 추출 (재킷 매칭 실패 시 사용)"""
@@ -306,7 +392,6 @@ class ScreenCapture:
             if song_key != self._last_song_key:
                 self._last_song_key = song_key
                 if self.on_song_changed:
-                    # 빈 title 전달로 UI 초기 상태 복귀를 유도
                     self.on_song_changed("", "")
             return
 
@@ -425,7 +510,6 @@ class ScreenCapture:
                     is_detected = True
                 else:
                     min_partial_len = min(6, len(keyword))
-                    # 예: REESTYLE, EESTYL 같은 OCR 누락을 허용하기 위한 부분 일치
                     for i in range(0, len(keyword) - min_partial_len + 1):
                         part = keyword[i : i + min_partial_len]
                         if part and part in normalized:
@@ -433,7 +517,6 @@ class ScreenCapture:
                             break
 
                     if not is_detected:
-                        # 연속 부분문자열이 안 잡혀도 전체 유사도가 충분하면 선곡 로고로 본다.
                         ratio = difflib.SequenceMatcher(None, keyword, normalized).ratio()
                         is_detected = ratio >= 0.72
 

@@ -5,6 +5,7 @@ Overmax - DJMAX Respect V 비공식 난이도 오버레이
 변경 사항:
   - ImageDB 초기화 추가
   - ScreenCapture에 image_db 주입
+  - on_mode_diff_changed 콜백 연결
 """
 
 import sys
@@ -34,10 +35,6 @@ _ERROR_ALREADY_EXISTS = 183
 
 
 def _acquire_single_instance_mutex() -> Optional[int]:
-    """
-    Windows named mutex 기반 단일 실행 보장.
-    이미 실행 중이면 None 반환.
-    """
     if os.name != "nt":
         return 1
 
@@ -83,7 +80,7 @@ def main():
             print("  songs.json을 cache/ 폴더에 넣거나 인터넷 연결을 확인하세요.")
             sys.exit(1)
 
-        # 2. ImageDB 초기화 (실패해도 계속 실행 - OCR fallback 동작)
+        # 2. ImageDB 초기화
         image_cfg = SETTINGS["jacket_matcher"]
         image_db = ImageDB(
             db_path=str(image_cfg["db_path"]),
@@ -141,10 +138,15 @@ def main():
             debug_ctrl.log(f"[Main] 화면 상태: {'선곡화면' if is_song_select else '기타화면'}")
             controller.notify_screen(is_song_select)
 
-        capture.on_song_changed   = on_song_changed
-        capture.on_screen_changed = on_screen_changed
-        capture.on_debug_log      = debug_ctrl.log
-        controller._debug_log_cb  = debug_ctrl.log
+        def on_mode_diff_changed(mode: str, diff: str):
+            debug_ctrl.log(f"[Main] 버튼 모드/난이도: {mode} / {diff}")
+            controller.notify_mode_diff(mode, diff)
+
+        capture.on_song_changed      = on_song_changed
+        capture.on_screen_changed    = on_screen_changed
+        capture.on_debug_log         = debug_ctrl.log
+        capture.on_mode_diff_changed = on_mode_diff_changed
+        controller._debug_log_cb     = debug_ctrl.log
 
         capture_thread = threading.Thread(target=capture.start, daemon=True)
         capture_thread.start()
@@ -154,7 +156,7 @@ def main():
         print(f"  Ctrl+C: 종료")
         print(f"[Main] 게임 창 대기 중: '{WINDOW_TITLE}'")
 
-        # 8. Qt 이벤트 루프
+        # 7. Qt 이벤트 루프
         try:
             controller.run(debug_ctrl=debug_ctrl)
         except KeyboardInterrupt:

@@ -65,9 +65,6 @@ _DIFF_X_OFFSETS: dict[str, float] = {
     "SC": 360.0,
 }
 
-_COLOR_TOLERANCE   = 20   # 기준색과의 최대 유클리드 거리
-_SAME_PIX_TOLERANCE = 18  # 위치1 ↔ 위치2 색 차이 임계치 (같다고 판단)
-
 
 # ------------------------------------------------------------------
 # 내부 유틸
@@ -148,6 +145,7 @@ def detect_difficulty(frame_bgra: np.ndarray) -> Optional[str]:
     h, w = frame_bgra.shape[:2]
 
     selected_diff: Optional[str] = None
+    best_dist = float("inf")
 
     for diff, x_offset_px in _DIFF_X_OFFSETS.items():
         dx = x_offset_px / _W
@@ -160,13 +158,11 @@ def detect_difficulty(frame_bgra: np.ndarray) -> Optional[str]:
         c1 = _pixel_at(frame_bgra, p1_rx, p1_ry)
         c2 = _pixel_at(frame_bgra, p2_rx, p2_ry)
 
-        dist_c1_c2         = _color_dist(c1, c2)
+        dist_c1_c2 = _color_dist(c1, c2)
 
-        is_same_pixels   = dist_c1_c2 < _SAME_PIX_TOLERANCE
-
-        if is_same_pixels:
+        if dist_c1_c2 < best_dist:
+            best_dist = dist_c1_c2
             selected_diff = diff
-            break
 
     return selected_diff
 

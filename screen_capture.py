@@ -89,7 +89,7 @@ class ScreenCapture:
         self._is_song_select = False
 
         # 콜백
-        self.on_song_changed:      Optional[Callable[[str, str], None]]       = None
+        self.on_song_changed:      Optional[Callable[[int], None]]            = None
         self.on_screen_changed:    Optional[Callable[[bool], None]]           = None
         self.on_debug_log:         Optional[Callable[[str], None]]            = None
         self.on_mode_diff_changed: Optional[Callable[[str, str], None]]       = None
@@ -272,7 +272,7 @@ class ScreenCapture:
                         self._last_song_key = song_key
                         if str(song_id).isdigit():
                             if self.on_song_changed:
-                                self.on_song_changed("", "", song_id=int(song_id))
+                                self.on_song_changed(int(song_id))
                             jacket_matched = True
                             self._last_jacket_matched = True
                         else:

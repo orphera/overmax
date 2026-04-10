@@ -124,12 +124,14 @@ def main():
         # 6. 화면 캡처 + OCR
         capture = ScreenCapture(tracker, image_db=image_db)
 
-        def on_song_changed(title: str, composer: str, song_id: Optional[int] = None):
-            if song_id:
-                song = db.search_by_id(song_id)
-                if song:
-                    title = song.get("name", title)
-                    composer = song.get("composer", composer)
+        def on_song_changed(song_id: int):
+            song = db.search_by_id(song_id)
+            if not song:
+                debug_ctrl.log(f"[Main] 곡 정보를 찾을 수 없습니다: {song_id}")
+                return
+
+            title = song.get("name", "")
+            composer = song.get("composer", "")
 
             debug_ctrl.log(f"[Main] 곡명 감지: '{title}' / composer: '{composer}'")
             controller.notify_song(title=title, composer=composer, song_id=song_id)

@@ -540,23 +540,15 @@ class OverlayController:
         all_patterns = [{"mode": mode, "patterns": []} for mode in BUTTON_MODES]
         self.signals.song_changed.emit("곡을 선택하세요", all_patterns)
 
-    def notify_song(self, title: str = "", composer: str = "", song_id: Optional[int] = None):
+    def notify_song(self, title: str = "", composer: str = "", song_id: int = None):
         """OCR 스레드에서 호출 - 곡명/작곡가로 패턴 조회 후 시그널 emit"""
-        if not title and not song_id:
+        if not title:
             self.log("곡명 인식 실패: UI 초기 상태로 복귀")
             self._emit_initial_state()
             return
 
-        song = None
-        if song_id:
-            self.log(f"곡 검색: ID={song_id} (title='{title}', composer='{composer}')")
-            song = self.db.search_by_id(song_id)
-        elif composer:
-            self.log(f"곡 검색: '{title}' / composer='{composer}'")
-            song = self.db.search(title, composer=composer)
-        else:
-            self.log(f"곡 검색: '{title}'")
-            song = self.db.search(title, composer=composer)
+        self.log(f"곡 검색: ID={song_id} (title='{title}', composer='{composer}')")
+        song = self.db.search_by_id(song_id)
 
         if not song:
             self.log(f"'{title}' (composer='{composer}', id={song_id}) DB에서 찾을 수 없음")

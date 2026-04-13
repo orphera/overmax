@@ -156,9 +156,11 @@ class RecommendOverlay(QWidget):
         self.signals     = signals
         self._entries:   list[RecommendEntry] = []
         self._pivot_str: str  = ""
-        self._no_selection: bool = True
+        self._no_selection = True
         self._dragging  = False
         self._drag_pos  = QPoint()
+        self._user_move_cb = None
+        self._manual_position = False
 
         self._setup_window()
         self._setup_ui()
@@ -209,19 +211,36 @@ class RecommendOverlay(QWidget):
         line.setStyleSheet("color: rgba(255,255,255,25);")
         inner.addWidget(line)
 
-        # 스크롤 영역 대신 고정 높이 컨테이너
-        self._list_container = QWidget()
-        self._list_container.setFixedHeight(430)
-        self._list_container.setStyleSheet("background: transparent;")
-        list_layout = QVBoxLayout(self._list_container)
-        list_layout.setContentsMargins(0, 0, 0, 0)
-        list_layout.setSpacing(3)
+        # 스크롤 영역 설정
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFixedHeight(430)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.setStyleSheet("""
+            QScrollArea { background: transparent; }
+            QScrollBar:vertical {
+                background: transparent;
+                width: 5px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(123, 104, 238, 100);
+                min-height: 20px;
+                border-radius: 2px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
 
-        self._scroll = None  # 스크롤 제거
-        self._list_widget = self._list_container
-        self._list_layout = list_layout
-
-        inner.addWidget(self._list_container)
+        self._list_widget = QWidget()
+        self._list_widget.setStyleSheet("background: transparent;")
+        self._list_layout = QVBoxLayout(self._list_widget)
+        self._list_layout.setContentsMargins(0, 0, 5, 0)
+        self._list_layout.setSpacing(4)
+        
+        self._scroll.setWidget(self._list_widget)
+        inner.addWidget(self._scroll)
 
         # 하단 카운트
         self._count_label = QLabel("")
@@ -298,7 +317,20 @@ class RecommendOverlay(QWidget):
             self.move(event.globalPosition().toPoint() - self._drag_pos)
 
     def mouseReleaseEvent(self, event):
-        self._dragging = False
+        if self._dragging:
+            self._dragging = False
+            self._manual_position = True
+            if self._user_move_cb:
+                self._user_move_cb(self.x(), self.y())
+        else:
+            self._dragging = False
+
+    def set_user_move_callback(self, cb):
+        self._user_move_cb = cb
+
+    def apply_saved_position(self, x, y):
+        self._manual_position = True
+        self.move(x, y)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -333,6 +365,8 @@ class RecommendController:
         self._song_id:     Optional[int] = None
         self._button_mode: Optional[str] = None
         self._difficulty:  Optional[str] = None
+        
+        self._pos_file = runtime_patch.get_data_dir() / "cache/recommend_position.json"
 
     def create_window(self) -> Optional[RecommendOverlay]:
         try:
@@ -340,11 +374,32 @@ class RecommendController:
                 return None
             if self._window is None:
                 self._window = RecommendOverlay(self.signals)
+                self._window.set_user_move_callback(self._save_position)
+                self._load_position()
                 self._window.hide()
             return self._window
         except Exception as e:
             print(f"[RecommendController] create_window 오류: {e}")
             return None
+
+    def _save_position(self, x, y):
+        try:
+            import json
+            self._pos_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._pos_file, "w", encoding="utf-8") as f:
+                json.dump({"x": x, "y": y}, f)
+        except Exception as e:
+            print(f"[RecommendController] _save_position 오류: {e}")
+
+    def _load_position(self):
+        if self._window and self._pos_file.exists():
+            try:
+                import json
+                with open(self._pos_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                self._window.apply_saved_position(data["x"], data["y"])
+            except Exception as e:
+                print(f"[RecommendController] _load_position 오류: {e}")
 
     def toggle(self):
         # 백그라운드 스레드(Hotkey)에서 안전하게 호출하기 위해 시그널 사용

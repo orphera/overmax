@@ -51,26 +51,26 @@ class PatternRow(QFrame):
 
     def _setup_ui(self):
         try:
-            self.setFixedHeight(44)
-            self.setStyleSheet("background: rgba(25, 25, 40, 180); border: 1px solid rgba(255,255,255,20); border-radius: 5px;")
+            self.setFixedHeight(34)
+            self.setStyleSheet("background: rgba(25, 25, 40, 180); border: 1px solid rgba(255,255,255,20); border-radius: 4px;")
 
             layout = QHBoxLayout(self)
-            layout.setContentsMargins(10, 4, 10, 4)
-            layout.setSpacing(8)
+            layout.setContentsMargins(8, 2, 8, 2)
+            layout.setSpacing(6)
 
             e = self.entry
 
             # 난이도 뱃지
-            badge = QLabel(f"{e.button_mode}\n{e.difficulty}")
-            badge.setFixedWidth(44)
+            badge = QLabel(e.difficulty)
+            badge.setFixedWidth(32)
             badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            badge.setStyleSheet(f"background: {e.color}; color: white; font-size: 9px; font-weight: bold; border-radius: 3px; padding: 2px;")
+            badge.setStyleSheet(f"background: {e.color}; color: white; font-size: 10px; font-weight: bold; border-radius: 2px; padding: 1px;")
             layout.addWidget(badge)
 
             # floor 표시
             floor_str = e.floor_name if e.floor_name else (f"Lv.{e.level}" if e.level else "?")
             floor_label = QLabel(floor_str)
-            floor_label.setFixedWidth(36)
+            floor_label.setFixedWidth(34)
             floor_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             floor_label.setStyleSheet("color: #FFD6A5; font-size: 11px; font-weight: bold;")
             layout.addWidget(floor_label)
@@ -88,26 +88,26 @@ class PatternRow(QFrame):
 
             song_label = QLabel(e.song_name)
             song_label.setStyleSheet("color: #FFFFFF; font-size: 11px; font-weight: bold;")
-            song_label.setMaximumWidth(210)
+            song_label.setMaximumWidth(180)
             try:
                 elided = song_label.fontMetrics().elidedText(
-                    e.song_name, Qt.TextElideMode.ElideRight, 210
+                    e.song_name, Qt.TextElideMode.ElideRight, 180
                 )
                 song_label.setText(elided)
             except Exception:
-                song_label.setText(e.song_name[:20] + "..." if len(e.song_name) > 20 else e.song_name)
+                song_label.setText(e.song_name[:18] + "..." if len(e.song_name) > 18 else e.song_name)
             name_col.addWidget(song_label)
 
             comp_label = QLabel(e.composer)
             comp_label.setStyleSheet("color: #777777; font-size: 9px;")
-            comp_label.setMaximumWidth(210)
+            comp_label.setMaximumWidth(180)
             try:
                 comp_elided = comp_label.fontMetrics().elidedText(
-                    e.composer, Qt.TextElideMode.ElideRight, 210
+                    e.composer, Qt.TextElideMode.ElideRight, 180
                 )
                 comp_label.setText(comp_elided)
             except Exception:
-                comp_label.setText(e.composer[:20] + "..." if len(e.composer) > 20 else e.composer)
+                comp_label.setText(e.composer[:18] + "..." if len(e.composer) > 18 else e.composer)
             name_col.addWidget(comp_label)
 
             layout.addLayout(name_col)
@@ -176,7 +176,7 @@ class RecommendOverlay(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.setFixedWidth(420)
+        self.setFixedWidth(360)
 
     def _setup_ui(self):
         outer = QVBoxLayout(self)
@@ -215,7 +215,7 @@ class RecommendOverlay(QWidget):
         # 스크롤 영역 설정
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
-        self._scroll.setFixedHeight(430)
+        self._scroll.setFixedHeight(400)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setStyleSheet("""
             QScrollArea { background: transparent; }

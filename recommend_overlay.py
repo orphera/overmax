@@ -27,6 +27,7 @@ except ImportError:
 from recommend import Recommender, RecommendEntry
 from varchive import VArchiveDB
 from record_db import RecordDB
+import runtime_patch
 
 
 # ------------------------------------------------------------------

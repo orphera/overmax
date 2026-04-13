@@ -79,7 +79,7 @@ class Recommender:
         song_id: int,
         button_mode: str,
         difficulty: str,
-        floor_range: float = 1.0,
+        floor_range: float = 0.0,
         max_results: int = 10,
         same_mode_only: bool = True,
     ) -> list[RecommendEntry]:
@@ -90,7 +90,7 @@ class Recommender:
             song_id:        현재 곡 ID
             button_mode:    현재 버튼 모드 ex) "4B"
             difficulty:     현재 난이도   ex) "SC"
-            floor_range:    ±이 범위 안의 floor만 포함 (기본 ±1.0)
+            floor_range:    ±이 범위 안의 floor만 포함 (기본 ±0.0)
             max_results:    최대 반환 수
             same_mode_only: True면 같은 button_mode 패턴만
         """

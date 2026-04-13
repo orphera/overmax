@@ -29,7 +29,7 @@ class RecordDB:
                         button_mode TEXT NOT NULL,
                         difficulty  TEXT NOT NULL,
                         rate        REAL NOT NULL,
-                        updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+                        updated_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
                         PRIMARY KEY (song_id, button_mode, difficulty)
                     )
                 """)
@@ -53,7 +53,7 @@ class RecordDB:
                     VALUES (?, ?, ?, ?)
                     ON CONFLICT(song_id, button_mode, difficulty) DO UPDATE SET
                         rate       = MAX(rate, excluded.rate),
-                        updated_at = strftime('%s','now')
+                        updated_at = CAST(strftime('%s', 'now') AS INTEGER)
                 """, (sid, button_mode, difficulty, float(rate)))
                 conn.commit()
             return True

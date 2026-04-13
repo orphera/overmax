@@ -423,12 +423,12 @@ class ScreenCapture:
         """OCR 결과에서 Rate(%) 수치 추출."""
         text = text.strip()
         # 정상 케이스: 숫자.숫자%  ex) 99.04%, 100.00%, 0.00%
-        m = re.search(r"(\d{1,3})[.,](\d{2})\s*%?", text)
+        m = re.search(r"(\d{1,3})\s*[.,]\s*(\d{2})\s*%?", text)
         if m:
             val = float(f"{m.group(1)}.{m.group(2)}")
             if 0.0 <= val <= 100.0:
                 return val
-        # 소수점 없이 붙은 경우 ex) 9904 → 99.04, 10000 → 100.00
+        # 소수점 없이 붙은 경우 ex) 9904 → 99.04
         m = re.search(r"\b(\d{4,5})\b", text)
         if m:
             raw = m.group(1)
@@ -613,8 +613,11 @@ class ScreenCapture:
             decoder = await imaging.BitmapDecoder.create_async(stream)
             software_bitmap = await decoder.get_software_bitmap_async()
             result = await self.ocr_engine.recognize_async(software_bitmap)
+            
+            # 명시적 리소스 해제 권장
+            stream.close()
+            
             return result.text.strip()
-
         except Exception as e:
             self.log(f"OCR 실행 오류: {e}")
             return ""

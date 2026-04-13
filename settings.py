@@ -40,9 +40,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "title": "Overmax Debug Log",
     },
     "overlay": {
-        "toggle_hotkey": "F9",
+        "toggle_hotkey": "F3",
         "tray_tooltip": "Overmax - DJMAX Respect V 난이도 오버레이",
-        "hint_label": "F9: 표시/숨김  |  드래그로 위치 이동",
+        "hint_label": "F3: 표시/숨김  |  드래그로 위치 이동",
         "position_file": "cache/overlay_position.json",
     },
     "jacket_matcher": {

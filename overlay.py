@@ -23,7 +23,7 @@ try:
     )
     from PyQt6.QtGui import (
         QColor, QPainter, QFont, QFontMetrics, QPen, QBrush,
-        QLinearGradient, QKeySequence, QShortcut, QIcon, QAction
+        QLinearGradient, QKeySequence, QIcon, QAction
     )
     PYQT_AVAILABLE = True
 except ImportError:
@@ -414,10 +414,6 @@ class OverlayWindow(QWidget):
         self.signals.position_changed.connect(self._on_game_window_moved)
         self.signals.mode_diff_changed.connect(self._on_mode_diff_changed)
 
-        # 표시/숨김 단축키
-        shortcut = QShortcut(QKeySequence(TOGGLE_HOTKEY), self)
-        shortcut.activated.connect(self.toggle_visibility)
-
     # ------------------------------------------------------------------
     # 슬롯
     # ------------------------------------------------------------------
@@ -630,6 +626,10 @@ class OverlayController:
     def _on_overlay_user_moved(self, x: int, y: int):
         self._save_overlay_position(x, y)
         self.log(f"오버레이 위치 저장: ({x},{y})")
+
+    def toggle_visibility(self):
+        if self._window is not None:
+            self._window.toggle_visibility()
 
     def run(self, debug_ctrl=None):
         """Qt 이벤트 루프 실행 (메인 스레드에서 호출)"""

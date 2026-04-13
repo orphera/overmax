@@ -23,6 +23,7 @@ from varchive import VArchiveDB
 from window_tracker import WindowTracker
 from screen_capture import ScreenCapture
 from overlay import OverlayController
+from global_hotkey import GlobalHotkey
 from debug_window import DebugController
 from image_db import ImageDB
 from settings import SETTINGS
@@ -149,6 +150,13 @@ def main():
         capture.on_debug_log         = debug_ctrl.log
         capture.on_mode_diff_changed = on_mode_diff_changed
         controller._debug_log_cb     = debug_ctrl.log
+        
+        hotkey = GlobalHotkey()
+
+        # 표시/숨김 단축키
+        hotkey.register(TOGGLE_HOTKEY, controller.toggle_visibility)  # 오버레이 토글
+        # hotkey.register("F8", debug_ctrl.toggle_window)  # 디버그 창도 가능
+        hotkey.start()
 
         capture_thread = threading.Thread(target=capture.start, daemon=True)
         capture_thread.start()

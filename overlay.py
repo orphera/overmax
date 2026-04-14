@@ -601,19 +601,23 @@ class OverlayWindow(QWidget):
         self.move(ox, max(oy, top))
 
     def _on_mode_diff_changed(self, mode: str, diff: str, verified: bool):
-        """버튼 모드 / 난이도 변경 시 하이라이트 갱신."""
-        self._current_mode = mode if mode else None
-        self._current_diff = diff if diff else None
+        """버튼 모드 / 난이도 변경 시 하이라이트 혹은 램프만 갱신."""
         
-        # 상태 램프 업데이트
+        # 상태 램프 업데이트 (즉시 반영)
         if verified:
-            self._status_lamp.setStyleSheet("background-color: #2ECC71; border-radius: 4px;")
+            # 파란불 (#00D4FF)
+            self._status_lamp.setStyleSheet("background-color: #00D4FF; border-radius: 4px;")
             self._status_lamp.setToolTip("인식 완료")
+            
+            # 모든게 안정이 됐을 때만 UI 실질 데이터 갱신
+            self._current_mode = mode if mode else None
+            self._current_diff = diff if diff else None
+            self._apply_mode_diff_highlight()
         else:
+            # 빨간불
             self._status_lamp.setStyleSheet("background-color: #FF4B4B; border-radius: 4px;")
             self._status_lamp.setToolTip("인식 검증 중...")
-
-        self._apply_mode_diff_highlight()
+            # 검증 중일 때는 데이터 갱신을 생략하여 UI를 고정함 (사용자 요청)
 
     def _apply_mode_diff_highlight(self):
         """단일 패널에 현재 모드 데이터 적용 및 하이라이트."""

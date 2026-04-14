@@ -53,9 +53,8 @@ _BTN_COLORS: dict[str, list[tuple[int, int, int]]] = {
 }
 
 # ── 난이도 감지 ──────────────────────────────────────────────────
-# NM 기준 위치1, 위치2
-_NM_P1 = _r(97.0, 487.0)
-_NM_P2 = _r(100.0, 492.0)
+# NM 기준 패널 영역 (x1, y1, x2, y2)
+_DIFF_ROI = (102.0, 492.0, 204.0, 508.0)
 
 # 각 난이도의 x 오프셋 (픽셀)
 _DIFF_X_OFFSETS: dict[str, float] = {
@@ -140,38 +139,40 @@ def detect_button_mode(frame_bgra: np.ndarray) -> Optional[str]:
 def detect_difficulty(frame_bgra: np.ndarray) -> Optional[str]:
     """
     현재 선택된 난이도 감지 (NM / HD / MX / SC).
-    감지 실패 시 None 반환.
-
-    판정 로직:
-      각 난이도의 위치1과 위치2을 확인:
-        - 위치1 색이 "난이도 없음" 기준색보다 밝다 (난이도 존재 여부 확인)
-        - 위치1 과 위치2 색 차이가 작다 (같은 영역이므로 일관성 확인)
-      만족하면 해당 난이도 "선택됨"으로 판정.
+    각 패널 영역의 평균 밝기를 계산하여 가장 밝은 패널을 선택된 것으로 판정.
     """
     h, w = frame_bgra.shape[:2]
 
-    selected_diff: Optional[str] = None
-    best_dist = float("inf")
+    best_diff: Optional[str] = None
+    max_brightness = -1.0
+
+    # 1920x1080 기준 ROI
+    rx1, ry1, rx2, ry2 = _DIFF_ROI[0]/_W, _DIFF_ROI[1]/_H, _DIFF_ROI[2]/_W, _DIFF_ROI[3]/_H
 
     for diff, x_offset_px in _DIFF_X_OFFSETS.items():
         dx = x_offset_px / _W
+        
+        # 해당 난이도 영역의 평균 BGR 추출
+        mean_bgr = _region_mean_bgr(
+            frame_bgra,
+            rx1 + dx, ry1,
+            rx2 + dx, ry2
+        )
+        
+        # 밝기 계산 (표준 가중치 또는 단순 평균)
+        # 여기서는 단순히 (B+G+R)/3 사용
+        brightness = sum(mean_bgr) / 3.0
 
-        p1_rx = _NM_P1[0] + dx
-        p1_ry = _NM_P1[1]
-        p2_rx = _NM_P2[0] + dx
-        p2_ry = _NM_P2[1]
+        if brightness > max_brightness:
+            max_brightness = brightness
+            best_diff = diff
 
-        c1 = _pixel_at(frame_bgra, p1_rx, p1_ry)
-        c2 = _pixel_at(frame_bgra, p2_rx, p2_ry)
+    # 모든 패널이 너무 어두우면 (ex. 곡 전환 중) 인식 실패로 처리
+    # 0x30 = 48 -> 평균 48 미만이면 무시
+    if max_brightness < 45:
+        return None
 
-        dist_c1_c2 = _color_dist(c1, c2)
-        diff_exists = all(c1[i] > _NOT_EXISTS_DIFF_COLOR[i] for i in range(3))
-
-        if diff_exists and dist_c1_c2 < best_dist:
-            best_dist = dist_c1_c2
-            selected_diff = diff
-
-    return selected_diff
+    return best_diff
 
 
 def detect_mode_and_difficulty(

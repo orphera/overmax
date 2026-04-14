@@ -152,9 +152,9 @@ def main():
             debug_ctrl.log(f"[Main] 화면 상태: {'선곡화면' if is_song_select else '기타화면'}")
             controller.notify_screen(is_song_select)
 
-        def on_mode_diff_changed(mode: str, diff: str):
-            debug_ctrl.log(f"[Main] 버튼 모드/난이도: {mode} / {diff}")
-            controller.notify_mode_diff(mode, diff)
+        def on_mode_diff_changed(mode: str, diff: str, verified: bool):
+            debug_ctrl.log(f"[Main] 버튼 모드/난이도: {mode} / {diff} (Verified: {verified})")
+            controller.notify_mode_diff(mode, diff, verified)
 
         capture.on_song_changed      = on_song_changed
         capture.on_screen_changed    = on_screen_changed

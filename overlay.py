@@ -62,7 +62,7 @@ class OverlaySignals(QObject):
     screen_changed = pyqtSignal(bool)             # 선곡화면 여부
     position_changed = pyqtSignal(int, int, int, int)   # 창 위치
     roi_enabled_changed = pyqtSignal(bool)        # ROI 표시 on/off
-    mode_diff_changed = pyqtSignal(str, str)      # (button_mode, difficulty)
+    mode_diff_changed = pyqtSignal(str, str, bool)      # (button_mode, difficulty, verified)
     recommend_ready = pyqtSignal(list, str, bool) # (entries, pivot_str, no_selection)
 
 
@@ -453,6 +453,16 @@ class OverlayWindow(QWidget):
         badge.setStyleSheet("color: #7B68EE; font-size: 10px; font-weight: bold;")
         header_layout.addWidget(badge)
 
+        # 상태 램프 (검증 여부 표시)
+        self._status_lamp = QLabel()
+        self._status_lamp.setFixedSize(8, 8)
+        self._status_lamp.setStyleSheet("""
+            background-color: #FF4B4B; 
+            border-radius: 4px;
+        """)
+        self._status_lamp.setToolTip("인식 검증 중...")
+        header_layout.addWidget(self._status_lamp)
+
         self._song_label = QLabel("곡을 선택하세요")
         self._song_label.setStyleSheet("color: #FFFFFF; font-size: 13px; font-weight: bold;")
         self._song_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -590,10 +600,19 @@ class OverlayWindow(QWidget):
             ox = left - self.width() - 10
         self.move(ox, max(oy, top))
 
-    def _on_mode_diff_changed(self, mode: str, diff: str):
+    def _on_mode_diff_changed(self, mode: str, diff: str, verified: bool):
         """버튼 모드 / 난이도 변경 시 하이라이트 갱신."""
         self._current_mode = mode if mode else None
         self._current_diff = diff if diff else None
+        
+        # 상태 램프 업데이트
+        if verified:
+            self._status_lamp.setStyleSheet("background-color: #2ECC71; border-radius: 4px;")
+            self._status_lamp.setToolTip("인식 완료")
+        else:
+            self._status_lamp.setStyleSheet("background-color: #FF4B4B; border-radius: 4px;")
+            self._status_lamp.setToolTip("인식 검증 중...")
+
         self._apply_mode_diff_highlight()
 
     def _apply_mode_diff_highlight(self):
@@ -705,14 +724,25 @@ class OverlayController:
         self.signals.roi_enabled_changed.emit(False)
         self.signals.position_changed.emit(0, 0, 0, 0)
 
-    def notify_mode_diff(self, mode: str, diff: str):
+    def notify_mode_diff(self, mode: str, diff: str, verified: bool = False):
         """버튼 모드/난이도 변경 알림 (ScreenCapture 콜백에서 호출)"""
-        self.log(f"모드/난이도: {mode} / {diff}")
-        if self._current_mode != mode or self._current_diff != diff:
+        self.log(f"모드/난이도: {mode} / {diff} (Verified: {verified})")
+        
+        # 상태가 바뀌었거나 검증 수치가 달라졌을 때만 처리
+        if (
+            self._current_mode != mode 
+            or self._current_diff != diff 
+            or getattr(self, "_last_verified", None) != verified
+        ):
             self._current_mode = mode
             self._current_diff = diff
-            self.signals.mode_diff_changed.emit(mode, diff)
-            self._refresh_recommendations()
+            self._last_verified = verified
+            
+            self.signals.mode_diff_changed.emit(mode, diff, verified)
+            
+            # 사용자 요청: 검증된 경우에만 추천 목록 갱신 (데이터 전송 중지 효과)
+            if verified:
+                self._refresh_recommendations()
 
     def notify_song(self, title: str = "", composer: str = "", song_id: int = None):
         """OCR 스레드에서 호출 - 곡명/작곡가로 패턴 조회 후 시그널 emit"""

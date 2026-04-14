@@ -34,7 +34,7 @@ except ImportError:
 
 from window_tracker import WindowTracker, WindowRect
 from image_db import ImageDB
-from mode_diff_detector import detect_mode_and_difficulty
+from mode_diff_detector import detect_mode_and_difficulty, get_difficulty_roi
 
 # ------------------------------------------------------------------
 # 설정 상수 (비율 기반)
@@ -127,6 +127,8 @@ class ScreenCapture:
         self._last_diff: Optional[str] = None
         self._mode_history: deque[Optional[str]] = deque(maxlen=MODE_DIFF_HISTORY)
         self._diff_history: deque[Optional[str]] = deque(maxlen=MODE_DIFF_HISTORY)
+        self._diff_verified = False
+        self._verified_diff: Optional[str] = None
 
         # Rate OCR 상태
         self._last_rate_ocr_ts: float = 0.0
@@ -340,12 +342,102 @@ class ScreenCapture:
             )
             self._last_mode = stable_mode
             self._last_diff = stable_diff
+            
+            # 난이도가 바뀌면 검증 상태 초기화
+            self._diff_verified = False
+            self._verified_diff = None
+            
             # 모드/난이도가 바뀌면 Rate 키 초기화 (새 조합 즉시 OCR 가능하게)
             self._last_rate_key = ""
             if self.on_mode_diff_changed and stable_mode and stable_diff:
-                self.on_mode_diff_changed(stable_mode, stable_diff)
+                self.on_mode_diff_changed(stable_mode, stable_diff, False) # 초기 상태는 미검증
         
+        # 난이도 검증 트리거 (미검증 상태이고 stable_diff가 있는 경우)
+        if stable_diff and not self._diff_verified:
+            # CPU/OCR 부하를 위해 별도 비동기 태스크로 실행
+            asyncio.create_task(self._verify_difficulty_async(full_frame, stable_diff))
+
         return raw_mode, raw_diff
+
+    async def _verify_difficulty_async(self, full_frame: np.ndarray, diff: str):
+        """밝기 기반으로 감지된 난이도가 실제 맞는지 OCR로 검증 (Fuzzy matching + Fallback)"""
+        if self._diff_verified and self._verified_diff == diff:
+            return
+
+        # ROI 추출
+        rx1, ry1, rx2, ry2 = get_difficulty_roi(diff)
+        h, w = full_frame.shape[:2]
+        x1, y1 = int(rx1 * w), int(ry1 * h)
+        x2, y2 = int(rx2 * w), int(ry2 * h)
+        roi_bgra = full_frame[y1:y2, x1:x2]
+
+        # 1차 시도
+        text = await self._ocr_windows(roi_bgra)
+        is_ok, match_info = self._check_difficulty_keywords(text, diff)
+
+        # 2차 시도 (1차 실패 시 반전 처리하여 재시도)
+        if not is_ok:
+            text_alt = await self._ocr_windows(roi_bgra, force_invert=True)
+            is_ok, match_info = self._check_difficulty_keywords(text_alt, diff)
+            if is_ok:
+                text = text_alt
+
+        if is_ok:
+            if not self._diff_verified:
+                self.log(f"난이도 검증 완료: {diff} (OCR: '{text}', match={match_info})")
+            self._diff_verified = True
+            self._verified_diff = diff
+            
+            # 오버레이에 검증 완료 알림
+            if self.on_mode_diff_changed:
+                self.on_mode_diff_changed(self._last_mode, diff, True)
+        else:
+            # 검증 실패 시 로그 (실제 OCR 결과를 보여주어 디버깅 용이하게 함)
+            if self._verified_diff != f"FAILED_{diff}_{text}":
+                self.log(f"난이도 검증 실패: {diff} (인식된 문자: '{text}') - 검증될 때까지 저장 안 함")
+                self._verified_diff = f"FAILED_{diff}_{text}"
+                self._diff_verified = False
+                
+                # 검증 실패 상태 알림 (이미 False였겠지만 명시적으로 보냄)
+                if self.on_mode_diff_changed:
+                    self.on_mode_diff_changed(self._last_mode, diff, False)
+
+    def _check_difficulty_keywords(self, text: str, expected_diff: str) -> tuple[bool, str]:
+        """OCR 텍스트와 기대 난이도 간의 키워드 매칭 (부분 일치 및 유사도 검사)"""
+        normalized = text.upper().strip().replace(" ", "")
+        if not normalized:
+            return False, ""
+
+        # 각 난이도별 허용 키워드
+        keywords_map = {
+            "NM": ["NORMAL", "NORM"],
+            "HD": ["HARD"],
+            "MX": ["MAX", "MAXIMUM", "MAXIMUN"],
+            "SC": ["SC", "5C", "8C", "BC", "CC", "OC", "S.C"] # SC 오인식 변종 대폭 추가
+        }
+        
+        target_keywords = keywords_map.get(expected_diff, [])
+        
+        # 1. 단순 포함 여부 확인
+        for k in target_keywords:
+            if k in normalized:
+                return True, f"'{k}'(exact)"
+
+        # 2. 유사도 기반 퍼지 매칭 (difflib 사용)
+        import difflib
+        for k in target_keywords:
+            ratio = difflib.SequenceMatcher(None, k, normalized).ratio()
+            if ratio >= 0.7:
+                return True, f"'{k}'(sim={ratio:.2f})"
+            
+            # 긴 단어(NORMAL, MAXIMUM)의 경우 텍스트 내 특정 단어와 유사도 체크
+            if len(normalized) >= 3:
+                for word in normalized.split():
+                    w_ratio = difflib.SequenceMatcher(None, k, word).ratio()
+                    if w_ratio >= 0.7:
+                        return True, f"'{k}'(sim={w_ratio:.2f} in '{word}')"
+
+        return False, ""
 
     @staticmethod
     def _majority(history: deque) -> Optional[str]:
@@ -380,8 +472,8 @@ class ScreenCapture:
         except (IndexError, ValueError):
             return
 
-        # 동기화 체크: 현재 프레임의 정보가 시스템이 알고 있는 stable 정보와 일치해야 함
-        if raw_mode != mode or raw_diff != diff:
+        # 동기화 및 검증 체크
+        if raw_mode != mode or raw_diff != diff or not self._diff_verified:
             # 잦은 로그 방지 (선택이 안정될 때까지 skip)
             return
 
@@ -604,6 +696,13 @@ class ScreenCapture:
                 _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
             else:
                 _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+
+            # 여백(Padding) 추가: Windows OCR은 글자가 가장자리에 붙어 있으면 인식률이 급감함
+            padding = 10
+            thresh = cv2.copyMakeBorder(
+                thresh, padding, padding, padding, padding,
+                cv2.BORDER_CONSTANT, value=0 # 검은색 배경 추가
+            )
 
             success, encoded = cv2.imencode(".bmp", thresh)
             if not success:

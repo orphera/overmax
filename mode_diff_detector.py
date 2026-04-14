@@ -54,7 +54,7 @@ _BTN_COLORS: dict[str, list[tuple[int, int, int]]] = {
 
 # ── 난이도 감지 ──────────────────────────────────────────────────
 # NM 기준 패널 영역 (x1, y1, x2, y2)
-_DIFF_ROI = (102.0, 492.0, 204.0, 508.0)
+_DIFF_ROI = (102.0, 492.0, 204.0, 510.0)
 
 # 각 난이도의 x 오프셋 (픽셀)
 _DIFF_X_OFFSETS: dict[str, float] = {
@@ -105,8 +105,17 @@ def _region_mean_bgr(
     return (b, g, r)
 
 
-# ------------------------------------------------------------------
-# 공개 API
+def get_difficulty_roi(diff: str) -> tuple[float, float, float, float]:
+    """해당 난이도 패널의 1920x1080 기준 비율 좌표 (rx1, ry1, rx2, ry2) 반환"""
+    x_offset = _DIFF_X_OFFSETS.get(diff, 0.0)
+    dx = x_offset / _W
+    rx1 = (_DIFF_ROI[0] + x_offset) / _W
+    ry1 = _DIFF_ROI[1] / _H
+    rx2 = (_DIFF_ROI[2] + x_offset) / _W
+    ry2 = _DIFF_ROI[3] / _H
+    return rx1, ry1, rx2, ry2
+
+
 # ------------------------------------------------------------------
 
 def detect_button_mode(frame_bgra: np.ndarray) -> Optional[str]:

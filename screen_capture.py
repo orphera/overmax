@@ -10,6 +10,11 @@ screen_capture.py - 화면 캡처 및 OCR 모듈 (재킷 매칭 우선 버전)
   - 선택된 난이도(NM/HD/MX/SC) 감지
   - on_mode_diff_changed 콜백
   - Rate OCR 자동 수집 → RecordDB 저장
+
+Rate OCR 구조:
+  매 프레임 끝에서 (song_id, mode, diff, verified) 스냅샷을 비교하여
+  스냅샷이 바뀌었을 때만 OCR 재허용. 각 값의 갱신 주기 차이로 인한
+  오저장 방지.
 """
 
 import time
@@ -80,8 +85,8 @@ MODE_DIFF_HISTORY  = int(_MODE_DIFF_SETTINGS.get("history_size", 3))
 
 # Rate OCR 관련 (1920x1080 기준 픽셀 좌표)
 _RATE_X1, _RATE_Y1 = 176, 583
-_RATE_X2, _RATE_Y2 = 270, 605   # 오른쪽 여유 확보 (100.00% 대응)
-RATE_OCR_INTERVAL  = 1.5        # 같은 패턴 재OCR 최소 간격 (초)
+_RATE_X2, _RATE_Y2 = 270, 605
+RATE_OCR_INTERVAL  = 1.5        # 같은 스냅샷 재OCR 최소 간격 (초)
 
 
 class ScreenCapture:
@@ -122,17 +127,18 @@ class ScreenCapture:
         self._last_jacket_matched = False
 
         # 모드/난이도 감지 상태
-        self._last_mode_diff_ts = 0.0
         self._last_mode: Optional[str] = None
         self._last_diff: Optional[str] = None
         self._mode_history: deque[Optional[str]] = deque(maxlen=MODE_DIFF_HISTORY)
         self._diff_history: deque[Optional[str]] = deque(maxlen=MODE_DIFF_HISTORY)
         self._diff_verified = False
         self._verified_diff: Optional[str] = None
+        self._verify_task_running: bool = False
 
-        # Rate OCR 상태
+        # 스냅샷 기반 Rate OCR 제어
+        # (song_id, mode, diff, verified) — 모두 같은 프레임에서 읽은 값
+        self._last_snapshot: tuple = (None, None, None, False)
         self._last_rate_ocr_ts: float = 0.0
-        self._last_rate_key:    str   = ""   # "song_id:mode:diff"
 
         # Windows OCR 엔진
         self.ocr_engine = None
@@ -285,8 +291,6 @@ class ScreenCapture:
                     song_key = f"jacket::{song_id}"
                     if song_key != self._last_song_key:
                         self._last_song_key = song_key
-                        # 곡이 바뀌면 Rate 키 초기화 (새 곡에서 즉시 OCR 가능하게)
-                        self._last_rate_key = ""
                         if str(song_id).isdigit():
                             if self.on_song_changed:
                                 self.on_song_changed(int(song_id))
@@ -303,18 +307,121 @@ class ScreenCapture:
                     self._last_jacket_matched = False
 
         # 5. 버튼 모드 / 난이도 감지
-        raw_mode, raw_diff = (None, None)
         if jacket_matched:
-            # 매 프레임 감지하여 히스토리 업데이트
-            raw_mode, raw_diff = self._update_mode_diff(full_frame)
+            self._update_mode_diff(full_frame)
 
-            # 6. Rate OCR (song_id + mode + diff 모두 확정된 경우)
-            # 현재 프레임의 raw_mode/diff가 stable한 last_mode/diff와 일치할 때만 수행
-            await self._try_record_rate(full_frame, now, raw_mode, raw_diff)
-
-        # 7. OCR fallback
+        # 6. OCR fallback
         if not jacket_matched:
             await self._ocr_fallback(sct, rect)
+
+        # 7. 스냅샷 비교 → Rate OCR
+        # jacket_matched 여부와 무관하게 항상 호출하여 스냅샷 불일치 시 즉시 리셋
+        await self._tick_snapshot(full_frame, now)
+
+    # ------------------------------------------------------------------
+    # 스냅샷 기반 Rate OCR 제어
+    # ------------------------------------------------------------------
+
+    async def _tick_snapshot(self, full_frame: np.ndarray, now: float):
+        """
+        매 프레임 끝에서 (song_id, mode, diff, verified) 스냅샷을 비교.
+        스냅샷이 바뀌면 Rate OCR 타이머를 리셋하여 즉시 재시도 허용.
+        스냅샷이 같고 RATE_OCR_INTERVAL 이 지났으면 Rate OCR 수행.
+        """
+        # 현재 song_id 추출
+        song_id: Optional[int] = None
+        if self._last_song_key.startswith("jacket::"):
+            try:
+                song_id = int(self._last_song_key.split("::")[1])
+            except (IndexError, ValueError):
+                pass
+
+        snapshot = (song_id, self._last_mode, self._last_diff, self._diff_verified)
+
+        # 스냅샷이 바뀌었으면 OCR 타이머 리셋
+        if snapshot != self._last_snapshot:
+            self._last_snapshot = snapshot
+            self._last_rate_ocr_ts = 0.0
+            self.log(
+                f"스냅샷 변경: song={song_id}, mode={self._last_mode}, "
+                f"diff={self._last_diff}, verified={self._diff_verified}"
+            )
+
+        # 진입 조건: 네 값 모두 유효 + 검증 완료
+        s_song_id, s_mode, s_diff, s_verified = snapshot
+        if not all([s_song_id, s_mode, s_diff]) or not s_verified:
+            return
+
+        # 같은 스냅샷 내 재OCR 간격 제어
+        if (now - self._last_rate_ocr_ts) < RATE_OCR_INTERVAL:
+            return
+
+        self._last_rate_ocr_ts = now
+        await self._do_record_rate(full_frame, s_song_id, s_mode, s_diff)
+
+    # ------------------------------------------------------------------
+    # Rate OCR + RecordDB 저장
+    # ------------------------------------------------------------------
+
+    async def _do_record_rate(
+        self,
+        full_frame: np.ndarray,
+        song_id: int,
+        mode: str,
+        diff: str,
+    ):
+        """
+        Rate 영역 OCR 수행 후 RecordDB에 저장.
+        진입 조건 판단은 _tick_snapshot에서 완료된 상태.
+        """
+        # Rate 영역 크롭 (해상도 대응)
+        h, w = full_frame.shape[:2]
+        sx, sy = w / 1920.0, h / 1080.0
+        x1 = int(_RATE_X1 * sx)
+        y1 = int(_RATE_Y1 * sy)
+        x2 = int(_RATE_X2 * sx)
+        y2 = int(_RATE_Y2 * sy)
+        roi_bgra = full_frame[y1:y2, x1:x2]
+
+        text = await self._ocr_windows(roi_bgra)
+        rate = self._parse_rate(text)
+
+        if rate is None:
+            if not text:
+                self.log(f"Rate OCR 빈 결과 ({song_id} {mode}/{diff}) - 이진화 재시도")
+                text = await self._ocr_windows(roi_bgra, force_invert=True)
+                rate = self._parse_rate(text)
+            if rate is None:
+                self.log(f"Rate OCR 파싱 실패: '{text}' ({song_id} {mode}/{diff})")
+                return
+
+        self.log(f"Rate OCR: {song_id} {mode}/{diff} = {rate:.2f}% (raw='{text}')")
+
+        if rate == 0.0:
+            self.log("Rate 0.00% - 미플레이로 간주, 저장 skip")
+            return
+
+        if self.record_db is not None and self.record_db.is_ready:
+            if self.record_db.upsert(song_id, mode, diff, rate):
+                if self.on_record_updated:
+                    self.on_record_updated()
+
+    @staticmethod
+    def _parse_rate(text: str) -> Optional[float]:
+        """OCR 결과에서 Rate(%) 수치 추출."""
+        text = text.strip()
+        m = re.search(r"(\d{1,3})\s*[.,]\s*(\d{2})\s*%?", text)
+        if m:
+            val = float(f"{m.group(1)}.{m.group(2)}")
+            if 0.0 <= val <= 100.0:
+                return val
+        m = re.search(r"\b(\d{4,5})\b", text)
+        if m:
+            raw = m.group(1)
+            val = float(f"{raw[:2]}.{raw[2:]}") if len(raw) == 4 else float(f"{raw[:3]}.{raw[3:]}")
+            if 0.0 <= val <= 100.0:
+                return val
+        return None
 
     # ------------------------------------------------------------------
     # 버튼 모드 / 난이도 감지
@@ -342,95 +449,93 @@ class ScreenCapture:
             )
             self._last_mode = stable_mode
             self._last_diff = stable_diff
-            
+
             # 난이도가 바뀌면 검증 상태 초기화
             self._diff_verified = False
             self._verified_diff = None
-            
-            # 모드/난이도가 바뀌면 Rate 키 초기화 (새 조합 즉시 OCR 가능하게)
-            self._last_rate_key = ""
+
             if self.on_mode_diff_changed and stable_mode and stable_diff:
-                self.on_mode_diff_changed(stable_mode, stable_diff, False) # 초기 상태는 미검증
-        
-        # 난이도 검증 트리거 (미검증 상태이고 stable_diff가 있는 경우)
-        if stable_diff and not self._diff_verified:
-            # CPU/OCR 부하를 위해 별도 비동기 태스크로 실행
-            asyncio.create_task(self._verify_difficulty_async(full_frame, stable_diff))
+                self.on_mode_diff_changed(stable_mode, stable_diff, False)
+
+        # 검증 태스크 실행 (미검증 + 태스크 미실행 상태일 때만)
+        if stable_diff and not self._diff_verified and not self._verify_task_running:
+            self._verify_task_running = True
+            asyncio.create_task(
+                self._verify_difficulty_async(full_frame, stable_diff)
+            )
 
         return raw_mode, raw_diff
 
     async def _verify_difficulty_async(self, full_frame: np.ndarray, diff: str):
-        """밝기 기반으로 감지된 난이도가 실제 맞는지 OCR로 검증 (Fuzzy matching + Fallback)"""
-        if self._diff_verified and self._verified_diff == diff:
-            return
+        """밝기 기반으로 감지된 난이도가 실제 맞는지 OCR로 검증."""
+        try:
+            if self._diff_verified and self._verified_diff == diff:
+                return
 
-        # ROI 추출
-        rx1, ry1, rx2, ry2 = get_difficulty_roi(diff)
-        h, w = full_frame.shape[:2]
-        x1, y1 = int(rx1 * w), int(ry1 * h)
-        x2, y2 = int(rx2 * w), int(ry2 * h)
-        roi_bgra = full_frame[y1:y2, x1:x2]
+            # ROI 추출
+            rx1, ry1, rx2, ry2 = get_difficulty_roi(diff)
+            h, w = full_frame.shape[:2]
+            x1, y1 = int(rx1 * w), int(ry1 * h)
+            x2, y2 = int(rx2 * w), int(ry2 * h)
+            roi_bgra = full_frame[y1:y2, x1:x2]
 
-        # 1차 시도
-        text = await self._ocr_windows(roi_bgra)
-        is_ok, match_info = self._check_difficulty_keywords(text, diff)
+            # 1차 시도
+            text = await self._ocr_windows(roi_bgra)
+            is_ok, match_info = self._check_difficulty_keywords(text, diff)
 
-        # 2차 시도 (1차 실패 시 반전 처리하여 재시도)
-        if not is_ok:
-            text_alt = await self._ocr_windows(roi_bgra, force_invert=True)
-            is_ok, match_info = self._check_difficulty_keywords(text_alt, diff)
+            # 2차 시도 (반전 처리)
+            if not is_ok:
+                text_alt = await self._ocr_windows(roi_bgra, force_invert=True)
+                is_ok, match_info = self._check_difficulty_keywords(text_alt, diff)
+                if is_ok:
+                    text = text_alt
+
             if is_ok:
-                text = text_alt
+                if not self._diff_verified:
+                    self.log(f"난이도 검증 완료: {diff} (OCR: '{text}', match={match_info})")
+                self._diff_verified = True
+                self._verified_diff = diff
 
-        if is_ok:
-            if not self._diff_verified:
-                self.log(f"난이도 검증 완료: {diff} (OCR: '{text}', match={match_info})")
-            self._diff_verified = True
-            self._verified_diff = diff
-            
-            # 오버레이에 검증 완료 알림
-            if self.on_mode_diff_changed:
-                self.on_mode_diff_changed(self._last_mode, diff, True)
-        else:
-            # 검증 실패 시 로그 (실제 OCR 결과를 보여주어 디버깅 용이하게 함)
-            if self._verified_diff != f"FAILED_{diff}_{text}":
-                self.log(f"난이도 검증 실패: {diff} (인식된 문자: '{text}') - 검증될 때까지 저장 안 함")
-                self._verified_diff = f"FAILED_{diff}_{text}"
+                if self.on_mode_diff_changed:
+                    self.on_mode_diff_changed(self._last_mode, diff, True)
+            else:
+                log_key = f"FAILED_{diff}_{text}"
+                if self._verified_diff != log_key:
+                    self.log(f"난이도 검증 실패: {diff} (인식된 문자: '{text}')")
+                    self._verified_diff = log_key
                 self._diff_verified = False
-                
-                # 검증 실패 상태 알림 (이미 False였겠지만 명시적으로 보냄)
+
                 if self.on_mode_diff_changed:
                     self.on_mode_diff_changed(self._last_mode, diff, False)
+        finally:
+            self._verify_task_running = False
 
     def _check_difficulty_keywords(self, text: str, expected_diff: str) -> tuple[bool, str]:
-        """OCR 텍스트와 기대 난이도 간의 키워드 매칭 (부분 일치 및 유사도 검사)"""
+        """OCR 텍스트와 기대 난이도 간의 키워드 매칭."""
         normalized = text.upper().strip().replace(" ", "")
         if not normalized:
             return False, ""
 
-        # 각 난이도별 허용 키워드
         keywords_map = {
             "NM": ["NORMAL", "NORM"],
             "HD": ["HARD"],
             "MX": ["MAX", "MAXIMUM", "MAXIMUN"],
-            "SC": ["SC", "5C", "8C", "BC", "CC", "OC", "S.C"] # SC 오인식 변종 대폭 추가
+            "SC": ["SC", "5C", "8C", "BC", "CC", "OC", "S.C"],
         }
-        
+
         target_keywords = keywords_map.get(expected_diff, [])
-        
-        # 1. 단순 포함 여부 확인
+
+        # 단순 포함 여부
         for k in target_keywords:
             if k in normalized:
                 return True, f"'{k}'(exact)"
 
-        # 2. 유사도 기반 퍼지 매칭 (difflib 사용)
-        import difflib
+        # 유사도 기반 퍼지 매칭
         for k in target_keywords:
             ratio = difflib.SequenceMatcher(None, k, normalized).ratio()
             if ratio >= 0.7:
                 return True, f"'{k}'(sim={ratio:.2f})"
-            
-            # 긴 단어(NORMAL, MAXIMUM)의 경우 텍스트 내 특정 단어와 유사도 체크
+
             if len(normalized) >= 3:
                 for word in normalized.split():
                     w_ratio = difflib.SequenceMatcher(None, k, word).ratio()
@@ -448,92 +553,6 @@ class ScreenCapture:
         if not counts:
             return None
         return max(counts, key=lambda k: counts[k])
-
-    # ------------------------------------------------------------------
-    # Rate OCR + RecordDB 저장
-    # ------------------------------------------------------------------
-
-    async def _try_record_rate(self, full_frame: np.ndarray, now: float, raw_mode: Optional[str], raw_diff: Optional[str]):
-        """
-        현재 확정된 song_id / mode / diff 조합의 Rate를 OCR로 읽어 RecordDB에 저장.
-        - 세 값 중 하나라도 없으면 skip
-        - 현재 프레임의 raw_mode/diff가 stable한 값과 다르면 skip (전환 중인 프레임 방지)
-        - 같은 조합은 RATE_OCR_INTERVAL 이내 재시도 안 함
-        """
-        song_key = self._last_song_key
-        mode     = self._last_mode
-        diff     = self._last_diff
-
-        if not song_key.startswith("jacket::") or not mode or not diff:
-            return
-
-        try:
-            song_id = int(song_key.split("::")[1])
-        except (IndexError, ValueError):
-            return
-
-        # 동기화 및 검증 체크
-        if raw_mode != mode or raw_diff != diff or not self._diff_verified:
-            # 잦은 로그 방지 (선택이 안정될 때까지 skip)
-            return
-
-        rate_key = f"{song_id}:{mode}:{diff}"
-        if rate_key == self._last_rate_key and (now - self._last_rate_ocr_ts) < RATE_OCR_INTERVAL:
-            return
-
-        self._last_rate_ocr_ts = now
-        self._last_rate_key    = rate_key
-
-        # Rate 영역 크롭 (해상도 대응)
-        h, w = full_frame.shape[:2]
-        sx, sy = w / 1920.0, h / 1080.0
-        x1 = int(_RATE_X1 * sx)
-        y1 = int(_RATE_Y1 * sy)
-        x2 = int(_RATE_X2 * sx)
-        y2 = int(_RATE_Y2 * sy)
-        roi_bgra = full_frame[y1:y2, x1:x2]
-
-        text = await self._ocr_windows(roi_bgra)
-        rate = self._parse_rate(text)
-
-        if rate is None:
-            if not text:
-                self.log(f"Rate OCR 빈 결과 ({song_id} {mode}/{diff}) - 이진화 재시도")
-                text = await self._ocr_windows(roi_bgra, force_invert=True)
-                rate = self._parse_rate(text)
-            if rate is None:
-                self.log(f"Rate OCR 파싱 실패: '{text}' ({song_id} {mode}/{diff})")
-                return
-
-        self.log(f"Rate OCR: {song_id} {mode}/{diff} = {rate:.2f}% (raw='{text}')")
-
-        if rate == 0.0:
-            self.log(f"Rate 0.00% - 미플레이로 간주, 저장 skip")
-            return
-
-        if self.record_db is not None and self.record_db.is_ready:
-            if self.record_db.upsert(song_id, mode, diff, rate):
-                if self.on_record_updated:
-                    self.on_record_updated()
-
-    @staticmethod
-    def _parse_rate(text: str) -> Optional[float]:
-        """OCR 결과에서 Rate(%) 수치 추출."""
-        text = text.strip()
-        # 정상 케이스: 숫자.숫자%  ex) 99.04%, 100.00%, 0.00%
-        m = re.search(r"(\d{1,3})\s*[.,]\s*(\d{2})\s*%?", text)
-        if m:
-            val = float(f"{m.group(1)}.{m.group(2)}")
-            if 0.0 <= val <= 100.0:
-                return val
-        # 소수점 없이 붙은 경우 ex) 9904 → 99.04
-        m = re.search(r"\b(\d{4,5})\b", text)
-        if m:
-            raw = m.group(1)
-            val = float(f"{raw[:2]}.{raw[2:]}") if len(raw) == 4 else float(f"{raw[:3]}.{raw[3:]}")
-            if 0.0 <= val <= 100.0:
-                return val
-        return None
 
     # ------------------------------------------------------------------
     # OCR fallback (현재 비활성)
@@ -578,24 +597,6 @@ class ScreenCapture:
             return ""
         return re.sub(r"\s+", " ", lines[0]).strip()
 
-    def _score_title(self, title: str, prefer_right: bool) -> int:
-        if not title:
-            return -999
-        has_alnum_or_cjk = bool(re.search(
-            r"[0-9A-Za-z\u3131-\u318E\uAC00-\uD7A3\u3040-\u30FF\u4E00-\u9FFF]", title
-        ))
-        score = len(title) * 2
-        if has_alnum_or_cjk:
-            score += 8
-        if prefer_right:
-            score += 6
-        return score
-
-    def _choose_title(self, left_title: str, right_title: str) -> str:
-        left_score  = self._score_title(left_title,  prefer_right=False)
-        right_score = self._score_title(right_title, prefer_right=True)
-        return right_title if right_score >= left_score else left_title
-
     # ------------------------------------------------------------------
     # 선곡화면 감지
     # ------------------------------------------------------------------
@@ -630,7 +631,7 @@ class ScreenCapture:
 
         self.log(
             f"선곡판정 버퍼: hit={hit_count}/{sample_count} "
-            f"(ratio={ratio:.2f}) -> {'선곡' if is_song_select else '기타'}"
+            f"(ratio={ratio:.2f}) -> {'선곡' if is_song_select else '기타화면'}"
             + (f" [이탈중]" if is_leaving else "")
         )
         return is_song_select, is_leaving
@@ -689,7 +690,6 @@ class ScreenCapture:
             gray = cv2.cvtColor(upscaled, cv2.COLOR_BGRA2GRAY)
 
             bg_mean = float(gray.mean())
-            # force_invert=True면 자동 판단과 반대 방향으로 이진화
             normal_is_dark = bg_mean < 128
             use_invert = normal_is_dark if force_invert else not normal_is_dark
             if not use_invert:
@@ -697,11 +697,10 @@ class ScreenCapture:
             else:
                 _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
 
-            # 여백(Padding) 추가: Windows OCR은 글자가 가장자리에 붙어 있으면 인식률이 급감함
             padding = 10
             thresh = cv2.copyMakeBorder(
                 thresh, padding, padding, padding, padding,
-                cv2.BORDER_CONSTANT, value=0 # 검은색 배경 추가
+                cv2.BORDER_CONSTANT, value=0
             )
 
             success, encoded = cv2.imencode(".bmp", thresh)
@@ -718,10 +717,9 @@ class ScreenCapture:
             decoder = await imaging.BitmapDecoder.create_async(stream)
             software_bitmap = await decoder.get_software_bitmap_async()
             result = await self.ocr_engine.recognize_async(software_bitmap)
-            
-            # 명시적 리소스 해제 권장
+
             stream.close()
-            
+
             return result.text.strip()
         except Exception as e:
             self.log(f"OCR 실행 오류: {e}")

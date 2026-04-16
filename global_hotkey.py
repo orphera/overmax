@@ -1,5 +1,6 @@
 # global_hotkey.py
 import ctypes
+import ctypes.wintypes
 import threading
 from typing import Callable, Optional
 import win32con

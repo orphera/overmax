@@ -132,6 +132,8 @@ class ScreenCapture:
         self._last_emitted_state: Optional[GameSessionState] = None
         self._recorded_states: set = set()
         self._last_rate_ocr_ts = 0.0
+        self._last_is_leaving = False
+        self._last_logo_detected_val: Optional[bool] = None
 
     def _create_ocr_engine(self):
         if not WINDOWS_OCR_AVAILABLE:
@@ -400,11 +402,13 @@ class ScreenCapture:
             if second_half_ratio < first_half_ratio:
                 is_leaving = True
 
-        self.log(
-            f"선곡판정 버퍼: hit={hit_count}/{sample_count} "
-            f"(ratio={ratio:.2f}) -> {'선곡' if is_song_select else '기타화면'}"
-            + (f" [이탈중]" if is_leaving else "")
-        )
+        if is_song_select != self._is_song_select or is_leaving != self._last_is_leaving:
+            self.log(
+                f"선곡판정 버퍼: hit={hit_count}/{sample_count} "
+                f"(ratio={ratio:.2f}) -> {'선곡' if is_song_select else '기타화면'}"
+                + (f" [이탈중]" if is_leaving else "")
+            )
+            self._last_is_leaving = is_leaving
         return is_song_select, is_leaving
 
     async def _detect_freestyle_logo(self, sct, rect: WindowRect) -> bool:
@@ -418,7 +422,9 @@ class ScreenCapture:
             is_detected = is_logo_keyword_match(keyword, normalized)
             self._last_logo_ocr_ok = is_detected
             self._last_logo_ocr_ts = now
-            self.log(f"로고 OCR: '{text}' (norm='{normalized}') -> {self._last_logo_ocr_ok}")
+            if is_detected != self._last_logo_detected_val:
+                self.log(f"로고 OCR: '{text}' (norm='{normalized}') -> {is_detected}")
+                self._last_logo_detected_val = is_detected
         return self._last_logo_ocr_ok
 
     # ------------------------------------------------------------------

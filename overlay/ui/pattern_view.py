@@ -21,7 +21,6 @@ class DiffTab(QFrame):
         self._exists = False
 
         self.setFixedSize(52, 46)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._build_ui()
 
     def _build_ui(self):

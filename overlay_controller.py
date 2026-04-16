@@ -52,6 +52,8 @@ class OverlayController:
     def _emit_initial_state(self):
         all_patterns = [{"mode": mode, "patterns": []} for mode in BUTTON_MODES]
         self.signals.song_changed.emit("곡을 선택하세요", all_patterns)
+        self.signals.mode_diff_changed.emit("", "", False)
+        self.signals.recommend_ready.emit([], "", True)
 
     def notify_screen(self, is_song_select: bool):
         self.log(f"화면 알림: {'선곡화면' if is_song_select else '기타화면'}")
@@ -96,6 +98,8 @@ class OverlayController:
         self._song_id = song_id
         if not song_id:
             self.log("곡 ID 없음: UI 초기화")
+            self._current_mode = None
+            self._current_diff = None
             self._emit_initial_state()
             return
 

@@ -196,7 +196,12 @@ class ScreenCapture:
     # ------------------------------------------------------------------
 
     async def _process_frame(self, sct, rect: WindowRect):
-        is_song_select, is_leaving = await self._detect_song_select(sct, rect)
+        full_frame = np.array(
+            sct.grab({"top": rect.top, "left": rect.left, "width": rect.width, "height": rect.height})
+        )
+        now = time.time()
+
+        is_song_select, is_leaving = await self._detect_song_select(full_frame)
         if is_song_select != self._is_song_select:
             self._is_song_select = is_song_select
             self.log(f"화면 변경: {'선곡화면' if is_song_select else '기타화면'}")
@@ -210,11 +215,6 @@ class ScreenCapture:
         if is_leaving:
             self.log("선곡 판정 하락 중 - 인식 skip")
             return
-
-        full_frame = np.array(
-            sct.grab({"top": rect.top, "left": rect.left, "width": rect.width, "height": rect.height})
-        )
-        now = time.time()
 
         self._update_song_id_from_jacket(full_frame, now)
         mode, diff, is_confident = detect_mode_and_difficulty(full_frame)
@@ -358,8 +358,8 @@ class ScreenCapture:
     # 선곡화면 감지
     # ------------------------------------------------------------------
 
-    async def _detect_song_select(self, sct, rect: WindowRect) -> tuple[bool, bool]:
-        logo_now = await self._detect_freestyle_logo(sct, rect)
+    async def _detect_song_select(self, full_frame: np.ndarray) -> tuple[bool, bool]:
+        logo_now = await self._detect_freestyle_logo(full_frame)
         self._freestyle_history.append(logo_now)
         sample_count = len(self._freestyle_history)
         hit_count    = sum(1 for v in self._freestyle_history if v)
@@ -395,9 +395,8 @@ class ScreenCapture:
             self._last_is_leaving = is_leaving
         return is_song_select, is_leaving
 
-    async def _detect_freestyle_logo(self, sct, rect: WindowRect) -> bool:
-        logo_region = self._region_from_ratio(rect, LOGO_X_START, LOGO_X_END, LOGO_Y_START, LOGO_Y_END)
-        logo_img = np.array(sct.grab(logo_region))
+    async def _detect_freestyle_logo(self, full_frame: np.ndarray) -> bool:
+        logo_img = crop_ratio_region(full_frame, LOGO_X_START, LOGO_X_END, LOGO_Y_START, LOGO_Y_END)
         now = time.time()
         if now - self._last_logo_ocr_ts >= LOGO_OCR_COOLDOWN_SEC:
             text = await self._ocr_windows(logo_img)

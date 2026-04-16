@@ -18,10 +18,10 @@ try:
 except ImportError:
     PYQT_AVAILABLE = False
 
-from varchive import BUTTON_MODES
-from recommend import RecommendEntry
-from ui.pattern_view import ButtonModePanel
-from ui.recommend_view import PatternRow
+from data.varchive import BUTTON_MODES
+from data.recommend import RecommendEntry
+from overlay.ui.pattern_view import ButtonModePanel
+from overlay.ui.recommend_view import PatternRow
 
 
 if PYQT_AVAILABLE:

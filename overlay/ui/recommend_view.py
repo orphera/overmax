@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout, QHBoxLayout
 from PyQt6.QtCore import Qt
 
-from recommend import RecommendEntry
+from data.recommend import RecommendEntry
 
 class PatternRow(QFrame):
     def __init__(self, entry: RecommendEntry, parent=None):

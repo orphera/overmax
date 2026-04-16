@@ -19,17 +19,17 @@ import runtime_patch
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from varchive import VArchiveDB
-from window_tracker import WindowTracker
-from screen_capture import ScreenCapture
+from data.varchive import VArchiveDB
+from capture.window_tracker import WindowTracker
+from capture.screen_capture import ScreenCapture
 from overlay import OverlayController
-from global_hotkey import GlobalHotkey
-from debug_window import DebugController
-from image_db import ImageDB
-from record_db import RecordDB
+from core.global_hotkey import GlobalHotkey
+from overlay.debug_window import DebugController
+from detection.image_db import ImageDB
+from data.record_db import RecordDB
 from settings import SETTINGS
-from steam_session import get_most_recent_steam_id
-from game_state import GameSessionState
+from data.steam_session import get_most_recent_steam_id
+from core.game_state import GameSessionState
 
 from constants import (
     WINDOW_TITLE,

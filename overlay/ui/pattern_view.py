@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout, QHBoxLayout
 from PyQt6.QtCore import Qt, QRect
 from PyQt6.QtGui import QColor, QPainter, QFont, QBrush, QPen
 
-from varchive import DIFFICULTIES, DIFF_COLORS
+from data.varchive import DIFFICULTIES, DIFF_COLORS
 
 class DiffCard(QFrame):
     def __init__(self, diff: str, parent=None):

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import cv2
 
-from image_db import ImageDB
+from detection.image_db import ImageDB
 
 
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}

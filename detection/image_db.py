@@ -384,6 +384,6 @@ class ImageDB:
 
 
 if __name__ == "__main__":
-    from image_db_cli import run_cli
+    from detection.image_db_cli import run_cli
 
     run_cli()

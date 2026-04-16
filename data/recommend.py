@@ -20,8 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from varchive import VArchiveDB, BUTTON_MODES, DIFFICULTIES, DIFF_COLORS
-from record_db import RecordDB
+from data.varchive import VArchiveDB, BUTTON_MODES, DIFFICULTIES, DIFF_COLORS
+from data.record_db import RecordDB
 from constants import SC_GROUP, NHM_GROUP
 
 

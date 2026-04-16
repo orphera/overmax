@@ -1,0 +1,1 @@
+"""Detection algorithms package."""

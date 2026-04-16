@@ -14,12 +14,12 @@ try:
 except ImportError:
     PYQT_AVAILABLE = False
 
-from varchive import VArchiveDB, BUTTON_MODES
-from recommend import Recommender
-from record_db import RecordDB
-from game_state import GameSessionState
-from ui.navigation import RoiOverlayWindow
-from overlay_window import OverlaySignals, OverlayWindow
+from data.varchive import VArchiveDB, BUTTON_MODES
+from data.recommend import Recommender
+from data.record_db import RecordDB
+from core.game_state import GameSessionState
+from overlay.ui.navigation import RoiOverlayWindow
+from overlay.window import OverlaySignals, OverlayWindow
 
 
 from constants import (

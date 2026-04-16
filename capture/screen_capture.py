@@ -56,11 +56,11 @@ try:
 except ImportError:
     WINDOWS_OCR_AVAILABLE = False
 
-from window_tracker import WindowTracker, WindowRect
-from image_db import ImageDB
-from mode_diff_detector import detect_mode_and_difficulty
-from game_state import GameSessionState
-from screen_capture_helpers import (
+from capture.window_tracker import WindowTracker, WindowRect
+from detection.image_db import ImageDB
+from detection.mode_diff import detect_mode_and_difficulty
+from core.game_state import GameSessionState
+from capture.helpers import (
     build_ratio_region,
     crop_ratio_region,
     has_thumbnail_changed,

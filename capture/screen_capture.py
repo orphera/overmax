@@ -41,10 +41,7 @@ from constants import (
     JACKET_CHANGE_THRESHOLD,
     JACKET_FORCE_RECHECK_SEC,
     MODE_DIFF_HISTORY,
-    RATE_X1,
-    RATE_Y1,
-    RATE_X2,
-    RATE_Y2,
+    RATE_ROI,
     RATE_OCR_INTERVAL,
 )
 
@@ -71,8 +68,6 @@ from capture.helpers import (
     parse_rate_text,
     preprocess_for_ocr,
 )
-
-# (Constants moved to constants.py)
 
 
 class ScreenCapture:
@@ -320,7 +315,7 @@ class ScreenCapture:
         Rate 영역 OCR 수행 후 RecordDB에 저장.
         반환: True = 성공 (recorded_states에 추가 가능), False = 실패 (재시도 예정)
         """
-        roi_bgra = make_rate_roi(full_frame, RATE_X1, RATE_Y1, RATE_X2, RATE_Y2)
+        roi_bgra = make_rate_roi(full_frame, *RATE_ROI)
         text = await self._ocr_windows(roi_bgra)
         rate = parse_rate_text(text)
 
@@ -343,16 +338,6 @@ class ScreenCapture:
                 self.on_record_updated()
 
         return True
-
-    # ------------------------------------------------------------------
-    # ROI 헬퍼
-    # ------------------------------------------------------------------
-
-    def _region_from_ratio(self, rect, x_start, x_end, y_start, y_end) -> dict:
-        return build_ratio_region(rect, x_start, x_end, y_start, y_end)
-
-    def _parse_rate(self, text: str) -> Optional[float]:
-        return parse_rate_text(text)
 
     # ------------------------------------------------------------------
     # 선곡화면 감지

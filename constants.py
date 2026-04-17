@@ -72,8 +72,7 @@ _MODE_DIFF_SETTINGS = SETTINGS.get("mode_diff_detector", {})
 MODE_DIFF_HISTORY = int(_MODE_DIFF_SETTINGS.get("history_size", 3))
 
 # Rate OCR (1920x1080 기준 픽셀 좌표)
-RATE_X1, RATE_Y1 = 176, 583
-RATE_X2, RATE_Y2 = 270, 605
+RATE_ROI = (176, 583, 270, 605)
 RATE_OCR_INTERVAL = 1.5
 
 # ------------------------------------------------------------------

@@ -4,15 +4,9 @@
     "poll_interval_sec": 0.5
   },
   "screen_capture": {
-    "logo_x_start": 0.087,
-    "logo_x_end": 0.158,
-    "logo_y_start": 0.021,
-    "logo_y_end": 0.045,
     "logo_ocr_keyword": "FREESTYLE",
     "logo_ocr_cooldown_sec": 1.0,
     "freestyle_history_size": 7,
-    "freestyle_majority_ratio": 0.60,
-    "freestyle_min_samples": 3,
     "freestyle_on_ratio": 0.60,
     "freestyle_on_min_samples": 3,
     "freestyle_off_ratio": 0.35,
@@ -21,11 +15,7 @@
     "idle_sleep_sec": 0.5
   },
   "mode_diff_detector": {
-    "interval_sec": 0.15,
-    "history_size": 3,
-    "color_tolerance": 20,
-    "same_pix_tolerance": 18,
-    "btn_mode_max_dist": 60
+    "history_size": 3
   },
   "debug_window": {
     "max_lines": 500,
@@ -43,11 +33,7 @@
     "match_interval_sec": 0.8,
     "jacket_change_threshold": 2.5,
     "jacket_force_recheck_sec": 2.0,
-    "log_similarity": true,
-    "jacket_x_start": 0.370,
-    "jacket_x_end": 0.401,
-    "jacket_y_start": 0.495,
-    "jacket_y_end": 0.549
+    "log_similarity": true
   },
   "varchive": {
     "songs_api_url": "https://v-archive.net/db/v2/songs.json",

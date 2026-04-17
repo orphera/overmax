@@ -8,9 +8,11 @@ import cv2
 import numpy as np
 
 
-def crop_ratio_region(frame: np.ndarray, x_start: float, x_end: float, y_start: float, y_end: float) -> np.ndarray:
+def crop_roi(frame: np.ndarray, roi: tuple[int, int, int, int]) -> np.ndarray:
+    """ROI (x1, y1, x2, y2) 영역을 프레임에서 잘라낸다."""
     h, w = frame.shape[:2]
-    return frame[int(h * y_start):int(h * y_end), int(w * x_start):int(w * x_end)]
+    x1, y1, x2, y2 = roi
+    return frame[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
 
 
 def make_thumbnail(image_bgra: np.ndarray) -> np.ndarray:
@@ -43,15 +45,6 @@ def parse_rate_text(text: str) -> Optional[float]:
     return None
 
 
-def build_ratio_region(rect, x_start, x_end, y_start, y_end) -> dict:
-    return {
-        "top": rect.top + int(rect.height * y_start),
-        "left": rect.left + int(rect.width * x_start),
-        "width": max(1, int(rect.width * (x_end - x_start))),
-        "height": max(1, int(rect.height * (y_end - y_start))),
-    }
-
-
 def normalize_alnum(text: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", text.upper())
 
@@ -70,16 +63,6 @@ def is_logo_keyword_match(keyword: str, normalized_ocr: str) -> bool:
 
     ratio = difflib.SequenceMatcher(None, keyword, normalized_ocr).ratio()
     return ratio >= 0.72
-
-
-def make_rate_roi(frame: np.ndarray, x1: int, y1: int, x2: int, y2: int) -> np.ndarray:
-    h, w = frame.shape[:2]
-    sx, sy = w / 1920.0, h / 1080.0
-    rx1 = int(x1 * sx)
-    ry1 = int(y1 * sy)
-    rx2 = int(x2 * sx)
-    ry2 = int(y2 * sy)
-    return frame[ry1:ry2, rx1:rx2]
 
 
 def preprocess_for_ocr(img_bgra: np.ndarray, force_invert: bool = False) -> Optional[np.ndarray]:

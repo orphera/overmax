@@ -21,10 +21,6 @@ import cv2
 from constants import (
     OCR_INTERVAL,
     IDLE_SLEEP_INTERVAL,
-    LOGO_X_START,
-    LOGO_X_END,
-    LOGO_Y_START,
-    LOGO_Y_END,
     LOGO_OCR_KEYWORD,
     LOGO_OCR_COOLDOWN_SEC,
     FREESTYLE_HISTORY_SIZE,
@@ -32,16 +28,11 @@ from constants import (
     FREESTYLE_ON_MIN_SAMPLES,
     FREESTYLE_OFF_RATIO,
     FREESTYLE_OFF_MIN_SAMPLES,
-    JACKET_X_START,
-    JACKET_X_END,
-    JACKET_Y_START,
-    JACKET_Y_END,
     JACKET_MATCH_INTERVAL,
     JACKET_SIMILARITY_LOG,
     JACKET_CHANGE_THRESHOLD,
     JACKET_FORCE_RECHECK_SEC,
     MODE_DIFF_HISTORY,
-    RATE_ROI,
     RATE_OCR_INTERVAL,
 )
 
@@ -53,16 +44,16 @@ try:
 except ImportError:
     WINDOWS_OCR_AVAILABLE = False
 
+
+from capture.roi_manager import ROIManager
 from capture.window_tracker import WindowTracker, WindowRect
 from detection.image_db import ImageDB
 from detection.mode_diff import detect_mode_and_difficulty
 from core.game_state import GameSessionState
 from capture.helpers import (
-    build_ratio_region,
-    crop_ratio_region,
+    crop_roi,
     has_thumbnail_changed,
     is_logo_keyword_match,
-    make_rate_roi,
     make_thumbnail,
     normalize_alnum,
     parse_rate_text,
@@ -80,6 +71,7 @@ class ScreenCapture:
         self.tracker = tracker
         self.image_db = image_db
         self.record_db = record_db
+        self.roiman = ROIManager()
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -191,6 +183,7 @@ class ScreenCapture:
     # ------------------------------------------------------------------
 
     async def _process_frame(self, sct, rect: WindowRect):
+        self.roiman.update_window_size(rect.width, rect.height)
         full_frame = np.array(
             sct.grab({"top": rect.top, "left": rect.left, "width": rect.width, "height": rect.height})
         )
@@ -212,7 +205,7 @@ class ScreenCapture:
             return
 
         self._update_song_id_from_jacket(full_frame, now)
-        mode, diff, is_confident = detect_mode_and_difficulty(full_frame)
+        mode, diff, is_confident = detect_mode_and_difficulty(full_frame, self.roiman)
         song_id = self._current_song_id
         current = (song_id, mode, diff)
         is_stable = self._update_stability(current, is_confident)
@@ -237,7 +230,8 @@ class ScreenCapture:
             return
 
         self._last_jacket_ts = now
-        jacket_img = crop_ratio_region(full_frame, JACKET_X_START, JACKET_X_END, JACKET_Y_START, JACKET_Y_END)
+        jacket_roi = self.roiman.get_roi("jacket")
+        jacket_img = crop_roi(full_frame, jacket_roi)
         thumb = make_thumbnail(jacket_img)
         image_changed = has_thumbnail_changed(thumb, self._last_jacket_thumb, JACKET_CHANGE_THRESHOLD)
         force_recheck = (now - self._last_jacket_match_ts) >= JACKET_FORCE_RECHECK_SEC
@@ -315,7 +309,7 @@ class ScreenCapture:
         Rate 영역 OCR 수행 후 RecordDB에 저장.
         반환: True = 성공 (recorded_states에 추가 가능), False = 실패 (재시도 예정)
         """
-        roi_bgra = make_rate_roi(full_frame, *RATE_ROI)
+        roi_bgra = crop_roi(full_frame, self.roiman.get_roi("rate"))
         text = await self._ocr_windows(roi_bgra)
         rate = parse_rate_text(text)
 
@@ -381,7 +375,8 @@ class ScreenCapture:
         return is_song_select, is_leaving
 
     async def _detect_freestyle_logo(self, full_frame: np.ndarray) -> bool:
-        logo_img = crop_ratio_region(full_frame, LOGO_X_START, LOGO_X_END, LOGO_Y_START, LOGO_Y_END)
+        logo_roi = self.roiman.get_roi("logo")
+        logo_img = crop_roi(full_frame, logo_roi)
         now = time.time()
         if now - self._last_logo_ocr_ts >= LOGO_OCR_COOLDOWN_SEC:
             text = await self._ocr_windows(logo_img)

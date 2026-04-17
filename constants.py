@@ -39,12 +39,6 @@ JACKET_SETTINGS = SETTINGS["jacket_matcher"]
 OCR_INTERVAL = float(SCREEN_CAPTURE_SETTINGS["ocr_interval_sec"])
 IDLE_SLEEP_INTERVAL = float(SCREEN_CAPTURE_SETTINGS["idle_sleep_sec"])
 
-# 로고(FREESTYLE) ROI (비율)
-LOGO_X_START = float(SCREEN_CAPTURE_SETTINGS["logo_x_start"])
-LOGO_X_END = float(SCREEN_CAPTURE_SETTINGS["logo_x_end"])
-LOGO_Y_START = float(SCREEN_CAPTURE_SETTINGS["logo_y_start"])
-LOGO_Y_END = float(SCREEN_CAPTURE_SETTINGS["logo_y_end"])
-
 LOGO_OCR_KEYWORD = str(SCREEN_CAPTURE_SETTINGS["logo_ocr_keyword"]).upper()
 LOGO_OCR_COOLDOWN_SEC = float(SCREEN_CAPTURE_SETTINGS["logo_ocr_cooldown_sec"])
 
@@ -54,12 +48,6 @@ FREESTYLE_ON_RATIO = float(SCREEN_CAPTURE_SETTINGS["freestyle_on_ratio"])
 FREESTYLE_ON_MIN_SAMPLES = int(SCREEN_CAPTURE_SETTINGS["freestyle_on_min_samples"])
 FREESTYLE_OFF_RATIO = float(SCREEN_CAPTURE_SETTINGS["freestyle_off_ratio"])
 FREESTYLE_OFF_MIN_SAMPLES = int(SCREEN_CAPTURE_SETTINGS["freestyle_off_min_samples"])
-
-# 재킷 ROI (비율)
-JACKET_X_START = float(JACKET_SETTINGS["jacket_x_start"])
-JACKET_X_END = float(JACKET_SETTINGS["jacket_x_end"])
-JACKET_Y_START = float(JACKET_SETTINGS["jacket_y_start"])
-JACKET_Y_END = float(JACKET_SETTINGS["jacket_y_end"])
 
 # 재킷 매칭
 JACKET_MATCH_INTERVAL = float(JACKET_SETTINGS["match_interval_sec"])
@@ -71,16 +59,12 @@ JACKET_FORCE_RECHECK_SEC = float(JACKET_SETTINGS["jacket_force_recheck_sec"])
 _MODE_DIFF_SETTINGS = SETTINGS.get("mode_diff_detector", {})
 MODE_DIFF_HISTORY = int(_MODE_DIFF_SETTINGS.get("history_size", 3))
 
-# Rate OCR (1920x1080 기준 픽셀 좌표)
-RATE_ROI = (176, 583, 270, 605)
+# Rate OCR
 RATE_OCR_INTERVAL = 1.5
 
 # ------------------------------------------------------------------
-# UI 내비게이션 및 상세 인식 영역 (1920x1080 기준 픽셀 좌표)
+# UI 인식 설정
 # ------------------------------------------------------------------
-
-# 버튼 모드 감지 영역
-BTN_MODE_ROI = (80, 130, 85, 135)
 
 # 버튼 모드 대표색 (BGR)
 BTN_COLORS: dict[str, list[tuple[int, int, int]]] = {
@@ -90,17 +74,6 @@ BTN_COLORS: dict[str, list[tuple[int, int, int]]] = {
     "8B": [(0x31, 0x14, 0x1D)],                         # #1D1431
 }
 BTN_MODE_MAX_DIST = 60   # 이 이상이면 인식 실패로 간주
-
-# 난이도 패널 ROI (NM 기준, 비율)
-DIFF_PANEL_ROI = (98, 488, 208, 516)
-
-# 난이도별 X 오프셋 (비율)
-DIFF_X_OFFSETS: dict[str, float] = {
-    "NM": 0,
-    "HD": 120,
-    "MX": 240,
-    "SC": 360,
-}
 
 # 난이도 감지 임계값
 DIFF_MIN_BRIGHTNESS   = 45.0   # 이하이면 UI 전환 중으로 간주

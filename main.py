@@ -31,6 +31,7 @@ from data.record_db import RecordDB
 from settings import SETTINGS
 from data.steam_session import get_most_recent_steam_id
 from core.game_state import GameSessionState
+from data.image_db_updater import check_and_update
 
 from constants import (
     WINDOW_TITLE,
@@ -88,10 +89,19 @@ def main():
             print("  songs.json을 cache/ 폴더에 넣거나 인터넷 연결을 확인하세요.")
             sys.exit(1)
 
-        # 2. ImageDB 초기화
+        # 2. ImageDB 업데이트 확인 + 초기화
         image_cfg = SETTINGS["jacket_matcher"]
+        db_path = Path(str(image_cfg["db_path"]))
+
+        check_and_update(
+            owner="orphera",
+            repo="overmax-image-db",
+            db_path=db_path,
+            log=print,
+        )
+
         image_db = ImageDB(
-            db_path=str(image_cfg["db_path"]),
+            db_path=str(db_path),
             similarity_threshold=float(image_cfg["similarity_threshold"]),
         )
         image_ok = image_db.initialize()

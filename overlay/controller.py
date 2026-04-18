@@ -52,8 +52,8 @@ class OverlayController:
     def _emit_initial_state(self):
         all_patterns = [{"mode": mode, "patterns": []} for mode in BUTTON_MODES]
         self.signals.song_changed.emit("곡을 선택하세요", all_patterns)
-        self.signals.mode_diff_changed.emit("", "", False)
-        self.signals.recommend_ready.emit([], "", True)
+        self.signals.mode_diff_changed.emit("", "")
+        self.signals.recommend_ready.emit([], True)
 
     def notify_screen(self, is_song_select: bool):
         self.log(f"화면 알림: {'선곡화면' if is_song_select else '기타화면'}")
@@ -74,12 +74,19 @@ class OverlayController:
     def notify_state(self, state: GameSessionState):
         """인식된 게임 상태를 수신하여 UI 시그널을 일괄 처리(Batch)한다."""
         # 1. 상태 변경 여부 확인 및 내부 상태 업데이트
+        last_verified_changed = getattr(self, "_last_verified", None) != state.is_stable
         song_changed = self._song_id != state.song_id
         mode_diff_changed = (
             self._current_mode != state.mode
             or self._current_diff != state.diff
-            or getattr(self, "_last_verified", None) != state.is_stable
         )
+
+        if last_verified_changed:
+            self.signals.status_changed.emit(state.is_stable)
+            self._last_verified = state.is_stable
+
+        if not state.is_stable:
+            return
 
         if not (song_changed or mode_diff_changed):
             return
@@ -87,7 +94,6 @@ class OverlayController:
         self._song_id = state.song_id
         self._current_mode = state.mode
         self._current_diff = state.diff
-        self._last_verified = state.is_stable
 
         # 2. 데이터 준비 (곡 정보, 패턴 정보, 추천 리스트)
         song_name = "곡을 선택하세요"
@@ -103,8 +109,7 @@ class OverlayController:
                     pts = self.db.format_pattern_info(song, mode)
                     all_patterns.append({"mode": mode, "patterns": pts})
                 
-                # 안정적인 상태일 때만 추천 리스트 계산
-                if state.is_stable and self._current_mode and self._current_diff:
+                if self._current_mode and self._current_diff:
                     recommendations = self.recommender.recommend(
                         song_id=self._song_id,
                         button_mode=self._current_mode,
@@ -115,7 +120,7 @@ class OverlayController:
                 self.log(f"ID={self._song_id}를 DB에서 찾을 수 없음")
 
         # 3. 시그널 일괄 송출 (순서대로 큐에 쌓임 -> UI에서 한 번에 처리될 확률 높음)
-        if song_changed or self._song_id is not None:
+        if song_changed:
             if self._song_id is None:
                 self._emit_initial_state()
             else:
@@ -124,21 +129,19 @@ class OverlayController:
         if mode_diff_changed:
             self.signals.mode_diff_changed.emit(
                 self._current_mode or "", 
-                self._current_diff or "", 
-                state.is_stable
+                self._current_diff or ""
             )
 
-        # 추천 리스트 시그널 (안정 상태가 되었거나, 곡이 바뀌어 초기화가 필요한 경우)
-        if state.is_stable or song_changed:
-            pivot = f"{self._current_mode} {self._current_diff}" if self._current_mode else ""
-            self.signals.recommend_ready.emit(recommendations, pivot, is_rec_loading)
+        # 추천 리스트 시그널 (곡이 바뀌어 초기화가 필요한 경우)
+        if song_changed or mode_diff_changed:
+            self.signals.recommend_ready.emit(recommendations, is_rec_loading)
 
     def notify_record_updated(self):
         self._refresh_recommendations()
 
     def _refresh_recommendations(self):
         if self._song_id is None or not self._current_mode or not self._current_diff:
-            self.signals.recommend_ready.emit([], "", True)
+            self.signals.recommend_ready.emit([], True)
             return
 
         entries = self.recommender.recommend(
@@ -146,8 +149,7 @@ class OverlayController:
             button_mode=self._current_mode,
             difficulty=self._current_diff,
         )
-        pivot = f"{self._current_mode} {self._current_diff}"
-        self.signals.recommend_ready.emit(entries, pivot, False)
+        self.signals.recommend_ready.emit(entries, False)
 
     def set_roi_overlay_enabled(self, enabled: bool):
         if self._roi_window is None:

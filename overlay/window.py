@@ -31,9 +31,10 @@ if PYQT_AVAILABLE:
         screen_changed    = pyqtSignal(bool)
         position_changed  = pyqtSignal(int, int, int, int)
         roi_enabled_changed = pyqtSignal(bool)
-        mode_diff_changed = pyqtSignal(str, str, bool)
-        recommend_ready   = pyqtSignal(list, str, bool)
+        mode_diff_changed = pyqtSignal(str, str)
+        recommend_ready   = pyqtSignal(list, bool)
         visibility_toggle_requested = pyqtSignal()
+        status_changed    = pyqtSignal(bool)
 
 
     class OverlayWindow(QWidget):
@@ -167,6 +168,7 @@ if PYQT_AVAILABLE:
             self.signals.mode_diff_changed.connect(self._on_mode_diff_changed)
             self.signals.recommend_ready.connect(self._on_recommend_ready)
             self.signals.visibility_toggle_requested.connect(self.toggle_visibility)
+            self.signals.status_changed.connect(self._on_status_changed)
 
         # ------------------------------------------------------------------
         # 슬롯
@@ -193,20 +195,16 @@ if PYQT_AVAILABLE:
                 ox = left - self.width() - 10
             self.move(ox, max(oy, top))
 
-        def _on_mode_diff_changed(self, mode: str, diff: str, verified: bool):
-            color = "#00D4FF" if verified else "#FF4B4B"
-            self._status_lamp.setStyleSheet(
-                f"background-color: {color}; border-radius: 3px;"
-            )
-            if verified:
-                self._current_mode = mode or None
-                self._current_diff = diff or None
-                self._apply_tab_update()
+        def _on_mode_diff_changed(self, mode: str, diff: str):
+
+
+            self._current_mode = mode or None
+            self._current_diff = diff or None
+            self._apply_tab_update()
 
         def _on_recommend_ready(
             self,
             entries: list[RecommendEntry],
-            pivot_str: str,
             no_selection: bool,
         ):
             # 기존 행 제거
@@ -228,6 +226,16 @@ if PYQT_AVAILABLE:
                     self._rec_layout.addWidget(PatternRow(entry))
 
             self._rec_layout.addStretch()
+
+        def _on_status_changed(self, is_stable: bool):
+            if is_stable:
+                self._status_lamp.setStyleSheet(
+                    "background-color: #00D4FF; border-radius: 3px;"
+                )
+            else:
+                self._status_lamp.setStyleSheet(
+                    "background-color: #FF4B4B; border-radius: 3px;"
+                )
 
         # ------------------------------------------------------------------
         # 내부 업데이트

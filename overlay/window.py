@@ -22,6 +22,7 @@ from data.varchive import BUTTON_MODES
 from data.recommend import RecommendEntry
 from overlay.ui.pattern_view import VerticalTabPanel
 from overlay.ui.recommend_view import PatternRow
+from constants import BTN_COLORS
 
 
 if PYQT_AVAILABLE:
@@ -45,6 +46,7 @@ if PYQT_AVAILABLE:
             self._current_diff: Optional[str] = None
             self._patterns_cache: dict[str, list] = {}
             self._tab_panel: Optional[VerticalTabPanel] = None
+            self._mode_label: Optional[QLabel] = None
             self._song_label: Optional[QLabel] = None
             self._dragging = False
             self._drag_pos = QPoint()
@@ -111,6 +113,14 @@ if PYQT_AVAILABLE:
             )
             layout.addWidget(self._status_lamp)
 
+            self._mode_label = QLabel("—")
+            self._mode_label.setFixedSize(28, 22)
+            self._mode_label.setStyleSheet(
+                "color: #F0F4FF; background-color: #3D4D6A; font-size: 12px; font-weight: 900; border-radius: 3px;"
+            )
+            self._mode_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(self._mode_label)
+
             self._song_label = QLabel("곡을 선택하세요")
             self._song_label.setStyleSheet(
                 "color: #F0F4FF; font-size: 14px; font-weight: 700;"
@@ -175,7 +185,7 @@ if PYQT_AVAILABLE:
         # ------------------------------------------------------------------
 
         def _on_song_changed(self, title: str, all_patterns: list):
-            self._song_label.setText(f"{self._current_mode} :: {title}" if self._current_mode else title)
+            self._song_label.setText(title)
             self._patterns_cache = {item["mode"]: item["patterns"] for item in all_patterns}
             self._apply_tab_update()
 
@@ -196,7 +206,12 @@ if PYQT_AVAILABLE:
             self.move(ox, max(oy, top))
 
         def _on_mode_diff_changed(self, mode: str, diff: str):
-
+            self._mode_label.setText(mode if mode else "—")
+            mode_color = BTN_COLORS.get(mode, [(0x6A, 0x4D, 0x3D)])[0]
+            mode_color = f"rgb({mode_color[2]}, {mode_color[1]}, {mode_color[0]})"
+            self._mode_label.setStyleSheet(
+                f"color: #F0F4FF; background-color: {mode_color}; font-size: 12px; font-weight: 900; border-radius: 3px;"
+            )
 
             self._current_mode = mode or None
             self._current_diff = diff or None

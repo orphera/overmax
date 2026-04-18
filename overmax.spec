@@ -40,6 +40,15 @@ a = Analysis(
         "easyocr",    # 제거 [cite: 30]
         "matplotlib",
         "pandas",
+        # Qt 미사용 모듈들
+        "PyQt6.QtNetwork",
+        "PyQt6.QtSql",
+        "PyQt6.QtXml",
+        "PyQt6.QtBluetooth",
+        "PyQt6.QtMultimedia",
+        "PyQt6.QtWebEngine",
+        "PyQt6.QtTest",
+        "PyQt6.Qt3D",
     ],
     noarchive=False,
 )

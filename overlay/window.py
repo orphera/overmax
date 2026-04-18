@@ -33,6 +33,7 @@ if PYQT_AVAILABLE:
         roi_enabled_changed = pyqtSignal(bool)
         mode_diff_changed = pyqtSignal(str, str, bool)
         recommend_ready   = pyqtSignal(list, str, bool)
+        visibility_toggle_requested = pyqtSignal()
 
 
     class OverlayWindow(QWidget):
@@ -165,6 +166,7 @@ if PYQT_AVAILABLE:
             self.signals.position_changed.connect(self._on_game_window_moved)
             self.signals.mode_diff_changed.connect(self._on_mode_diff_changed)
             self.signals.recommend_ready.connect(self._on_recommend_ready)
+            self.signals.visibility_toggle_requested.connect(self.toggle_visibility)
 
         # ------------------------------------------------------------------
         # 슬롯
@@ -265,6 +267,7 @@ if PYQT_AVAILABLE:
         def mousePressEvent(self, event):
             if event.button() == Qt.MouseButton.LeftButton:
                 self._dragging = True
+                self._manual_position = True  # 드래그 시작 즉시 자동 위치 보정 중단
                 self._drag_pos = (
                     event.globalPosition().toPoint() - self.frameGeometry().topLeft()
                 )

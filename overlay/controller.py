@@ -196,8 +196,7 @@ class OverlayController:
         self.log(f"오버레이 위치 저장: ({x},{y})")
 
     def toggle_visibility(self):
-        if self._window is not None:
-            self._window.toggle_visibility()
+        self.signals.visibility_toggle_requested.emit()
 
     def run(self, debug_ctrl=None, recommend_ctrl=None):
         if not PYQT_AVAILABLE:

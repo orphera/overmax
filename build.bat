@@ -112,7 +112,7 @@ if exist "%PROJECT_DIR%cache\image_index.db" (
     copy /y "%PROJECT_DIR%cache\image_index.db" "%DIST_DIR%\cache\image_index.db" >nul
     echo        image_index.db included
 ) else (
-    echo        image_index.db not found
+    echo        image_index.db not found - will download on first run
 )
 
 copy /y "%PROJECT_DIR%README.md" "%DIST_DIR%\README.md" >nul

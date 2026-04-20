@@ -119,11 +119,10 @@ class ImageDB:
         with self._cache_lock:
             if not self._cache:
                 return None
-            cache = list(self._cache)  # snapshot — lock 구간 최소화
+            cache = list(self._cache)
 
         q_ph, q_dh, q_ah = _compute_hashes(gray)
         q_hog = _compute_hog(gray)
-        q_orb = _compute_orb(gray)
 
         # 1단계: hash 거리 → top_k 후보
         candidates = sorted(
@@ -135,27 +134,17 @@ class ImageDB:
             ),
         )[:max(1, top_k)]
 
-        # 2단계: HOG 거리 → 상위 3
-        refined = sorted(
-            candidates,
-            key=lambda e: float(np.linalg.norm(q_hog - e.hog)),
-        )[:3]
-
-        # 3단계: ORB 매칭 → best
+        # 2단계: HOG 코사인 유사도 → best
         best: Optional[tuple[str, float]] = None
-        for entry in refined:
-            h_score    = float(np.linalg.norm(q_hog - entry.hog))
+        for entry in candidates:
             hash_score = (
                 0.5 * _hash_distance(q_ph, entry.phash)
                 + 0.3 * _hash_distance(q_dh, entry.dhash)
                 + 0.2 * _hash_distance(q_ah, entry.ahash)
             )
-            orb_matches = _orb_match_score(q_orb, entry.orb)
-
-            hog_sim    = max(0.0, 1.0 - min(h_score / 30.0, 1.0))
-            orb_sim    = min(orb_matches / 20.0, 1.0)
-            hash_sim   = max(0.0, 1.0 - min(hash_score / 64.0, 1.0))
-            similarity = 0.45 * hash_sim + 0.35 * hog_sim + 0.20 * orb_sim
+            hash_sim = max(0.0, 1.0 - min(hash_score / 64.0, 1.0))
+            hog_sim  = _cosine_sim(q_hog, entry.hog)
+            similarity = 0.45 * hash_sim + 0.55 * hog_sim
 
             if best is None or similarity > best[1]:
                 best = (entry.image_id, float(similarity))
@@ -184,8 +173,7 @@ class ImageDB:
 
         ph, dh, ah = _compute_hashes(gray)
         hog = _compute_hog(gray)
-        orb = _compute_orb(gray)
-        orb_blob = orb.tobytes() if orb is not None else None
+        orb_blob = None
 
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -320,7 +308,7 @@ def _row_to_entry(row) -> _CachedEntry:
     image_id, ph, dh, ah, hog_blob, orb_blob = row
     hog = np.frombuffer(hog_blob, dtype=np.float32).copy()
     orb: Optional[np.ndarray] = None
-    if orb_blob:
+    if False:  # if orb_blob: ORB 추가 시 활성화
         flat = np.frombuffer(orb_blob, dtype=np.uint8)
         if flat.size > 0 and flat.size % 32 == 0:
             orb = flat.reshape(-1, 32).copy()
@@ -396,6 +384,13 @@ def _orb_match_score(des1: Optional[np.ndarray], des2: Optional[np.ndarray]) -> 
     bf = cv2.BFMatcher(cv2.NORM_HAMMING)
     matches = bf.knnMatch(des1, des2, k=2)
     return sum(1 for m in matches if len(m) == 2 and m[0].distance < 0.75 * m[1].distance)
+
+
+def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
+    denom = np.linalg.norm(a) * np.linalg.norm(b)
+    if denom == 0.0:
+        return 0.0
+    return float(np.dot(a, b) / denom)
 
 
 if __name__ == "__main__":

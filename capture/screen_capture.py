@@ -48,7 +48,7 @@ except ImportError:
 from capture.roi_manager import ROIManager
 from capture.window_tracker import WindowTracker, WindowRect
 from detection.image_db import ImageDB
-from detection.mode_diff import detect_mode_and_difficulty
+from detection.mode_diff import ModeDiffDetector
 from core.game_state import GameSessionState
 from capture.helpers import (
     crop_roi,
@@ -72,6 +72,7 @@ class ScreenCapture:
         self.image_db = image_db
         self.record_db = record_db
         self.roiman = ROIManager()
+        self.mode_diff_detector = ModeDiffDetector(history_size=MODE_DIFF_HISTORY)
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -206,7 +207,7 @@ class ScreenCapture:
             return
 
         self._update_song_id_from_jacket(full_frame, now)
-        mode, diff, is_confident = detect_mode_and_difficulty(full_frame, self.roiman)
+        mode, diff, is_confident = self.mode_diff_detector.detect(full_frame, self.roiman)
         song_id = self._current_song_id
         current = (song_id, mode, diff)
         is_stable = self._update_stability(current, is_confident)
@@ -226,6 +227,7 @@ class ScreenCapture:
         self._last_emitted_state = None
         self._recorded_states.clear()
         self._rate_ocr_attempts.clear()
+        self.mode_diff_detector.reset()
 
     def _update_song_id_from_jacket(self, full_frame: np.ndarray, now: float):
         if not self._should_match_jacket(now):

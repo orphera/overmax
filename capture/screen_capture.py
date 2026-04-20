@@ -36,14 +36,7 @@ from constants import (
     RATE_OCR_INTERVAL,
 )
 
-try:
-    import winrt.windows.media.ocr as ocr
-    import winrt.windows.graphics.imaging as imaging
-    import winrt.windows.storage.streams as streams
-    WINDOWS_OCR_AVAILABLE = True
-except ImportError:
-    WINDOWS_OCR_AVAILABLE = False
-
+from capture.ocr_wrapper import WindowsOcrEngine, WINDOWS_OCR_AVAILABLE
 
 from capture.roi_manager import ROIManager
 from capture.window_tracker import WindowTracker, WindowRect
@@ -81,7 +74,7 @@ class ScreenCapture:
 
         self._init_callbacks()
         self._init_runtime_state()
-        self.ocr_engine = self._create_ocr_engine()
+        self.ocr_engine = WindowsOcrEngine(self.log)
 
     def _init_callbacks(self):
         self.on_state_changed: Optional[Callable[[GameSessionState], None]] = None
@@ -108,24 +101,6 @@ class ScreenCapture:
         self._last_is_leaving = False
         self._last_logo_detected_val: Optional[bool] = None
 
-    def _create_ocr_engine(self):
-        if not WINDOWS_OCR_AVAILABLE:
-            return None
-        try:
-            supported_langs = ocr.OcrEngine.available_recognizer_languages
-            target_lang = next((lang for lang in supported_langs if "ko" in lang.language_tag.lower()), None)
-            if target_lang is None and supported_langs:
-                target_lang = supported_langs[0]
-
-            if target_lang:
-                self.log(f"OCR 엔진 언어: {target_lang.language_tag}")
-                return ocr.OcrEngine.try_create_from_language(target_lang)
-
-            self.log("OCR 엔진: user profile 언어 사용")
-            return ocr.OcrEngine.try_create_from_user_profile_languages()
-        except Exception as exc:
-            self.log(f"OCR 엔진 초기화 실패: {exc}")
-            return None
 
     # ------------------------------------------------------------------
     # 로그
@@ -324,12 +299,12 @@ class ScreenCapture:
         반환: True = 성공 (recorded_states에 추가 가능), False = 실패 (재시도 예정)
         """
         roi_bgra = crop_roi(full_frame, self.roiman.get_roi("rate"))
-        text = await self._ocr_windows(roi_bgra)
+        text = await self.ocr_engine.recognize(roi_bgra)
         rate = parse_rate_text(text)
 
         if rate is None and not text:
             self.log(f"Rate OCR 빈 결과 ({song_id} {mode}/{diff}) - 이진화 재시도")
-            text = await self._ocr_windows(roi_bgra, force_invert=True)
+            text = await self.ocr_engine.recognize(roi_bgra, force_invert=True)
             rate = parse_rate_text(text)
         if rate is None:
             self.log(f"Rate OCR 파싱 실패: '{text}' ({song_id} {mode}/{diff})")
@@ -393,7 +368,7 @@ class ScreenCapture:
         logo_img = crop_roi(full_frame, logo_roi)
         now = time.time()
         if now - self._last_logo_ocr_ts >= LOGO_OCR_COOLDOWN_SEC:
-            text = await self._ocr_windows(logo_img)
+            text = await self.ocr_engine.recognize(logo_img)
             normalized = normalize_alnum(text)
             keyword = normalize_alnum(LOGO_OCR_KEYWORD)
             is_detected = is_logo_keyword_match(keyword, normalized)
@@ -404,36 +379,4 @@ class ScreenCapture:
                 self._last_logo_detected_val = is_detected
         return self._last_logo_ocr_ok
 
-    # ------------------------------------------------------------------
-    # Windows OCR
-    # ------------------------------------------------------------------
 
-    async def _ocr_windows(self, img_bgra: np.ndarray, force_invert: bool = False) -> str:
-        if not WINDOWS_OCR_AVAILABLE or self.ocr_engine is None:
-            return ""
-        try:
-            thresh = preprocess_for_ocr(img_bgra, force_invert=force_invert)
-            if thresh is None:
-                return ""
-
-            success, encoded = cv2.imencode(".bmp", thresh)
-            if not success:
-                return ""
-
-            stream = streams.InMemoryRandomAccessStream()
-            data_writer = streams.DataWriter(stream)
-            data_writer.write_bytes(encoded.tobytes())
-            await data_writer.store_async()
-            data_writer.detach_stream()
-            stream.seek(0)
-
-            decoder = await imaging.BitmapDecoder.create_async(stream)
-            software_bitmap = await decoder.get_software_bitmap_async()
-            result = await self.ocr_engine.recognize_async(software_bitmap)
-
-            stream.close()
-
-            return result.text.strip()
-        except Exception as e:
-            self.log(f"OCR 실행 오류: {e}")
-            return ""

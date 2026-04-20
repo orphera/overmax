@@ -72,54 +72,67 @@ class OverlayController:
         self.signals.position_changed.emit(0, 0, 0, 0)
 
     def notify_state(self, state: GameSessionState):
-        """인식된 게임 상태를 수신하여 UI 시그널을 일괄 처리(Batch)한다."""
-        # 1. 상태 변경 여부 확인 및 내부 상태 업데이트
-        last_verified_changed = getattr(self, "_last_verified", None) != state.is_stable
+        """인식된 게임 상태를 수신하여 UI 시그널 일괄 처리(Batch)."""
+        self._check_and_emit_status(state.is_stable)
+
+        if not state.is_stable:
+            return
+
+        song_changed, mode_diff_changed = self._check_state_diff(state)
+        if not (song_changed or mode_diff_changed):
+            return
+
+        self._update_internal_state(state)
+        song_name, all_patterns, recommendations = self._fetch_ui_data()
+        
+        self._emit_update_signals(song_changed, mode_diff_changed, song_name, all_patterns, recommendations)
+
+    def _check_and_emit_status(self, is_stable: bool):
+        if getattr(self, "_last_verified", None) != is_stable:
+            self.signals.status_changed.emit(is_stable)
+            self._last_verified = is_stable
+
+    def _check_state_diff(self, state: GameSessionState) -> tuple[bool, bool]:
         song_changed = self._song_id != state.song_id
         mode_diff_changed = (
             self._current_mode != state.mode
             or self._current_diff != state.diff
         )
+        return song_changed, mode_diff_changed
 
-        if last_verified_changed:
-            self.signals.status_changed.emit(state.is_stable)
-            self._last_verified = state.is_stable
-
-        if not state.is_stable:
-            return
-
-        if not (song_changed or mode_diff_changed):
-            return
-
+    def _update_internal_state(self, state: GameSessionState):
         self._song_id = state.song_id
         self._current_mode = state.mode
         self._current_diff = state.diff
 
-        # 2. 데이터 준비 (곡 정보, 패턴 정보, 추천 리스트)
+    def _fetch_ui_data(self) -> tuple[str, list, list]:
         song_name = "곡을 선택하세요"
         all_patterns = []
         recommendations = []
-        is_rec_loading = not state.is_stable
 
-        if self._song_id is not None:
-            song = self.db.search_by_id(self._song_id)
-            if song:
-                song_name = song["name"]
-                for mode in BUTTON_MODES:
-                    pts = self.db.format_pattern_info(song, mode)
-                    all_patterns.append({"mode": mode, "patterns": pts})
-                
-                if self._current_mode and self._current_diff:
-                    recommendations = self.recommender.recommend(
-                        song_id=self._song_id,
-                        button_mode=self._current_mode,
-                        difficulty=self._current_diff
-                    )
-                    is_rec_loading = False
-            else:
-                self.log(f"ID={self._song_id}를 DB에서 찾을 수 없음")
+        if self._song_id is None:
+            return song_name, all_patterns, recommendations
 
-        # 3. 시그널 일괄 송출 (순서대로 큐에 쌓임 -> UI에서 한 번에 처리될 확률 높음)
+        song = self.db.search_by_id(self._song_id)
+        if not song:
+            self.log(f"ID={self._song_id}를 DB에서 찾을 수 없음")
+            return song_name, all_patterns, recommendations
+
+        song_name = song["name"]
+        for mode in BUTTON_MODES:
+            pts = self.db.format_pattern_info(song, mode)
+            all_patterns.append({"mode": mode, "patterns": pts})
+        
+        if self._current_mode and self._current_diff:
+            recommendations = self.recommender.recommend(
+                song_id=self._song_id,
+                button_mode=self._current_mode,
+                difficulty=self._current_diff
+            )
+            
+        return song_name, all_patterns, recommendations
+
+    def _emit_update_signals(self, song_changed: bool, mode_diff_changed: bool, song_name: str, all_patterns: list, recommendations: list):
         if song_changed:
             if self._song_id is None:
                 self._emit_initial_state()
@@ -132,9 +145,8 @@ class OverlayController:
                 self._current_diff or ""
             )
 
-        # 추천 리스트 시그널 (곡이 바뀌어 초기화가 필요한 경우)
         if song_changed or mode_diff_changed:
-            self.signals.recommend_ready.emit(recommendations, is_rec_loading)
+            self.signals.recommend_ready.emit(recommendations, False)
 
     def notify_record_updated(self):
         self._refresh_recommendations()

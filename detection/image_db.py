@@ -13,15 +13,17 @@ import numpy as np
 @dataclass
 class _CachedEntry:
     image_id: str
-    phash: str
+    phash: str        # DB 원본 (register에서 저장용)
     dhash: str
     ahash: str
-    hog: np.ndarray           # float32, deserialized
-    orb: Optional[np.ndarray] # uint8 (N×32) | None
+    phash_int: int    # 검색 시 XOR 연산용 — 로드 시점에 변환
+    dhash_int: int
+    ahash_int: int
+    hog: np.ndarray   # float32
 
 
 class ImageDB:
-    """Perceptual-hash + HOG + ORB 기반 경량 이미지 매칭 DB.
+    """Perceptual-hash + HOG 기반 경량 이미지 매칭 DB.
 
     initialize() 시점에 전체 rows를 메모리로 로드한다.
     search()는 DB I/O 없이 캐시만 사용한다.
@@ -66,7 +68,7 @@ class ImageDB:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 rows = conn.execute(
-                    "SELECT image_id, phash, dhash, ahash, hog, orb FROM images"
+                    "SELECT image_id, phash, dhash, ahash, hog FROM images"
                 ).fetchall()
         except Exception as e:
             print(f"[ImageDB] 캐시 로드 실패: {e}")
@@ -122,28 +124,29 @@ class ImageDB:
             cache = list(self._cache)
 
         q_ph, q_dh, q_ah = _compute_hashes(gray)
+        q_ph_int = int(q_ph, 16)
+        q_dh_int = int(q_dh, 16)
+        q_ah_int = int(q_ah, 16)
         q_hog = _compute_hog(gray)
 
-        # 1단계: hash 거리 → top_k 후보
-        candidates = sorted(
-            cache,
-            key=lambda e: (
-                0.5 * _hash_distance(q_ph, e.phash)
-                + 0.3 * _hash_distance(q_dh, e.dhash)
-                + 0.2 * _hash_distance(q_ah, e.ahash)
-            ),
+        # 1단계: hash 점수로 top_k 후보 선별 — 점수를 튜플로 들고 감
+        def hash_score(e: _CachedEntry) -> float:
+            return (
+                0.5 * _hash_dist(q_ph_int, e.phash_int)
+                + 0.3 * _hash_dist(q_dh_int, e.dhash_int)
+                + 0.2 * _hash_dist(q_ah_int, e.ahash_int)
+            )
+
+        scored = sorted(
+            ((e, hash_score(e)) for e in cache),
+            key=lambda x: x[1],
         )[:max(1, top_k)]
 
-        # 2단계: HOG 코사인 유사도 → best
+        # 2단계: hash 점수 재사용 + HOG 코사인으로 최종 점수 산출
         best: Optional[tuple[str, float]] = None
-        for entry in candidates:
-            hash_score = (
-                0.5 * _hash_distance(q_ph, entry.phash)
-                + 0.3 * _hash_distance(q_dh, entry.dhash)
-                + 0.2 * _hash_distance(q_ah, entry.ahash)
-            )
-            hash_sim = max(0.0, 1.0 - min(hash_score / 64.0, 1.0))
-            hog_sim  = _cosine_sim(q_hog, entry.hog)
+        for entry, h_score in scored:
+            hash_sim   = max(0.0, 1.0 - min(h_score / 64.0, 1.0))
+            hog_sim    = _cosine_sim(q_hog, entry.hog)
             similarity = 0.45 * hash_sim + 0.55 * hog_sim
 
             if best is None or similarity > best[1]:
@@ -173,31 +176,28 @@ class ImageDB:
 
         ph, dh, ah = _compute_hashes(gray)
         hog = _compute_hog(gray)
-        orb_blob = None
 
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute(
                     """
                     INSERT INTO images (image_id, phash, dhash, ahash, hog, orb)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, NULL)
                     ON CONFLICT(image_id) DO UPDATE SET
                         phash = excluded.phash,
                         dhash = excluded.dhash,
                         ahash = excluded.ahash,
                         hog   = excluded.hog,
-                        orb   = excluded.orb
+                        orb   = NULL
                     """,
-                    (sid, ph, dh, ah, hog.tobytes(), orb_blob),
+                    (sid, ph, dh, ah, hog.tobytes()),
                 )
                 conn.commit()
         except Exception as e:
             print(f"[ImageDB] 등록 실패: {e}")
             return False
 
-        entry = _CachedEntry(
-            image_id=sid, phash=ph, dhash=dh, ahash=ah, hog=hog, orb=orb
-        )
+        entry = _make_entry(sid, ph, dh, ah, hog)
         with self._cache_lock:
             idx = next((i for i, e in enumerate(self._cache) if e.image_id == sid), None)
             if idx is not None:
@@ -260,13 +260,10 @@ class ImageDB:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 rows = conn.execute(
-                    "SELECT id, image_id, orb FROM images ORDER BY id ASC LIMIT ? OFFSET ?",
+                    "SELECT id, image_id FROM images ORDER BY id ASC LIMIT ? OFFSET ?",
                     (max(1, int(limit)), max(0, int(offset))),
                 ).fetchall()
-            return [
-                {"id": int(r[0]), "image_id": str(r[1]), "has_orb": r[2] is not None}
-                for r in rows
-            ]
+            return [{"id": int(r[0]), "image_id": str(r[1])} for r in rows]
         except Exception as e:
             print(f"[ImageDB] 목록 조회 실패: {e}")
             return []
@@ -280,7 +277,7 @@ class ImageDB:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 row = conn.execute(
-                    "SELECT id, image_id, phash, dhash, ahash, hog, orb FROM images WHERE image_id = ?",
+                    "SELECT id, image_id, phash, dhash, ahash, hog FROM images WHERE image_id = ?",
                     (sid,),
                 ).fetchone()
             if not row:
@@ -292,8 +289,6 @@ class ImageDB:
                 "dhash": str(row[3]),
                 "ahash": str(row[4]),
                 "hog_size": len(row[5]) if row[5] is not None else 0,
-                "has_orb": row[6] is not None,
-                "orb_size": len(row[6]) if row[6] is not None else 0,
             }
         except Exception as e:
             print(f"[ImageDB] 단건 조회 실패: {e}")
@@ -301,20 +296,28 @@ class ImageDB:
 
 
 # ------------------------------------------------------------------
-# 모듈 레벨 순수 함수 (클래스 외부 — 상태 없음)
+# 모듈 레벨 순수 함수
 # ------------------------------------------------------------------
 
-def _row_to_entry(row) -> _CachedEntry:
-    image_id, ph, dh, ah, hog_blob, orb_blob = row
-    hog = np.frombuffer(hog_blob, dtype=np.float32).copy()
-    orb: Optional[np.ndarray] = None
-    if False:  # if orb_blob: ORB 추가 시 활성화
-        flat = np.frombuffer(orb_blob, dtype=np.uint8)
-        if flat.size > 0 and flat.size % 32 == 0:
-            orb = flat.reshape(-1, 32).copy()
+def _make_entry(
+    image_id: str,
+    ph: str, dh: str, ah: str,
+    hog: np.ndarray,
+) -> _CachedEntry:
     return _CachedEntry(
-        image_id=str(image_id), phash=ph, dhash=dh, ahash=ah, hog=hog, orb=orb
+        image_id=image_id,
+        phash=ph, dhash=dh, ahash=ah,
+        phash_int=int(ph, 16),
+        dhash_int=int(dh, 16),
+        ahash_int=int(ah, 16),
+        hog=hog,
     )
+
+
+def _row_to_entry(row) -> _CachedEntry:
+    image_id, ph, dh, ah, hog_blob = row
+    hog = np.frombuffer(hog_blob, dtype=np.float32).copy()
+    return _make_entry(str(image_id), ph, dh, ah, hog)
 
 
 def _to_gray(img: np.ndarray) -> Optional[np.ndarray]:
@@ -368,22 +371,9 @@ def _compute_hog(gray: np.ndarray) -> np.ndarray:
     return features.reshape(-1).astype(np.float32)
 
 
-def _compute_orb(gray: np.ndarray) -> Optional[np.ndarray]:
-    orb = cv2.ORB_create(nfeatures=50)
-    _, des = orb.detectAndCompute(gray, None)
-    return des.astype(np.uint8) if des is not None else None
-
-
-def _hash_distance(h1: str, h2: str) -> int:
-    return bin(int(h1, 16) ^ int(h2, 16)).count("1")
-
-
-def _orb_match_score(des1: Optional[np.ndarray], des2: Optional[np.ndarray]) -> int:
-    if des1 is None or des2 is None:
-        return 0
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING)
-    matches = bf.knnMatch(des1, des2, k=2)
-    return sum(1 for m in matches if len(m) == 2 and m[0].distance < 0.75 * m[1].distance)
+def _hash_dist(h1: int, h2: int) -> int:
+    """int로 변환된 hash 간 Hamming distance."""
+    return bin(h1 ^ h2).count("1")
 
 
 def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:

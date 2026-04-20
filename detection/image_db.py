@@ -39,6 +39,14 @@ class ImageDB:
         self._cache: list[_CachedEntry] = []
         self._cache_lock = threading.Lock()
 
+        # 벡터 연산용 캐시
+        self._image_ids: np.ndarray = np.array([])
+        self._phash_arr: np.ndarray = np.array([], dtype=np.uint64)
+        self._dhash_arr: np.ndarray = np.array([], dtype=np.uint64)
+        self._ahash_arr: np.ndarray = np.array([], dtype=np.uint64)
+        self._hog_arr: np.ndarray = np.empty((0, 1764), dtype=np.float32)
+        self._hog_norms: np.ndarray = np.array([], dtype=np.float32)
+
     # ------------------------------------------------------------------
     # 초기화 / 로드
     # ------------------------------------------------------------------
@@ -78,7 +86,29 @@ class ImageDB:
         with self._cache_lock:
             self._cache = entries
             self.song_count = len(entries)
+            self._rebuild_vectors()
         return self.song_count
+
+    def _rebuild_vectors(self):
+        """현재 _cache 데이터를 기반으로 Numpy 벡터 캐시를 재구성한다."""
+        if not self._cache:
+            self._image_ids = np.array([])
+            self._phash_arr = np.array([], dtype=np.uint64)
+            self._dhash_arr = np.array([], dtype=np.uint64)
+            self._ahash_arr = np.array([], dtype=np.uint64)
+            self._hog_arr = np.empty((0, 1764), dtype=np.float32)
+            self._hog_norms = np.array([], dtype=np.float32)
+            return
+
+        self._image_ids = np.array([e.image_id for e in self._cache])
+        self._phash_arr = np.array([e.phash_int for e in self._cache], dtype=np.uint64)
+        self._dhash_arr = np.array([e.dhash_int for e in self._cache], dtype=np.uint64)
+        self._ahash_arr = np.array([e.ahash_int for e in self._cache], dtype=np.uint64)
+        self._hog_arr = np.vstack([e.hog for e in self._cache])
+        
+        norms = np.linalg.norm(self._hog_arr, axis=1)
+        norms[norms == 0] = 1.0
+        self._hog_norms = norms.astype(np.float32)
 
     def _ensure_schema(self, conn: sqlite3.Connection):
         conn.execute(
@@ -118,42 +148,67 @@ class ImageDB:
         if gray is None:
             return None
 
-        with self._cache_lock:
-            if not self._cache:
-                return None
-            cache = list(self._cache)
-
         q_ph, q_dh, q_ah = _compute_hashes(gray)
-        q_ph_int = int(q_ph, 16)
-        q_dh_int = int(q_dh, 16)
-        q_ah_int = int(q_ah, 16)
+        q_ph_uint = np.uint64(int(q_ph, 16))
+        q_dh_uint = np.uint64(int(q_dh, 16))
+        q_ah_uint = np.uint64(int(q_ah, 16))
         q_hog = _compute_hog(gray)
 
-        # 1단계: hash 점수로 top_k 후보 선별 — 점수를 튜플로 들고 감
-        def hash_score(e: _CachedEntry) -> float:
-            return (
-                0.5 * _hash_dist(q_ph_int, e.phash_int)
-                + 0.3 * _hash_dist(q_dh_int, e.dhash_int)
-                + 0.2 * _hash_dist(q_ah_int, e.ahash_int)
-            )
+        with self._cache_lock:
+            n = len(self._image_ids)
+            if n == 0:
+                return None
+            phash_arr = self._phash_arr
+            dhash_arr = self._dhash_arr
+            ahash_arr = self._ahash_arr
+            hog_arr = self._hog_arr
+            hog_norms = self._hog_norms
+            image_ids = self._image_ids
 
-        scored = sorted(
-            ((e, hash_score(e)) for e in cache),
-            key=lambda x: x[1],
-        )[:max(1, top_k)]
+        # 1단계: 벡터화된 Popcount 기반 Hash Distance 계산
+        def popcount64(x):
+            x = x - ((x >> 1) & np.uint64(0x5555555555555555))
+            x = (x & np.uint64(0x3333333333333333)) + ((x >> 2) & np.uint64(0x3333333333333333))
+            x = (x + (x >> 4)) & np.uint64(0x0f0f0f0f0f0f0f0f)
+            return (x * np.uint64(0x0101010101010101)) >> 56
 
-        # 2단계: hash 점수 재사용 + HOG 코사인으로 최종 점수 산출
-        best: Optional[tuple[str, float]] = None
-        for entry, h_score in scored:
-            hash_sim   = max(0.0, 1.0 - min(h_score / 64.0, 1.0))
-            hog_sim    = _cosine_sim(q_hog, entry.hog)
-            similarity = 0.45 * hash_sim + 0.55 * hog_sim
+        dist_ph = popcount64(phash_arr ^ q_ph_uint)
+        dist_dh = popcount64(dhash_arr ^ q_dh_uint)
+        dist_ah = popcount64(ahash_arr ^ q_ah_uint)
+        
+        # Distances: lower is better
+        h_scores = 0.5 * dist_ph + 0.3 * dist_dh + 0.2 * dist_ah
+        
+        # 2단계: hash 점수로 top_k 후보 선별
+        k = min(n, top_k)
+        if k == 0:
+            return None
+            
+        # np.argpartition이 가장 빠르지만 통상 N이 2000이하이고 python C 레벨의 argsort가 <1ms이므로 단순 정렬 사용.
+        idx = np.argsort(h_scores)[:k]
+        
+        top_k_hscores = h_scores[idx]
+        top_k_hogs = hog_arr[idx]
+        top_k_norms = hog_norms[idx]
+        top_k_ids = image_ids[idx]
 
-            if best is None or similarity > best[1]:
-                best = (entry.image_id, float(similarity))
-
-        if best and best[1] >= self.similarity_threshold:
-            return best
+        # 3단계: HOG 코사인 유사도 연산 (벡터화)
+        q_norm = np.linalg.norm(q_hog)
+        if q_norm == 0:
+            q_norm = 1.0
+            
+        # q_hog (1764,) 와 top_k_hogs (k, 1764) 의 내적 -> (k,)
+        dots = np.dot(top_k_hogs, q_hog)
+        hog_sims = dots / (top_k_norms * q_norm)
+        
+        hash_sims = np.clip(1.0 - top_k_hscores / 64.0, 0.0, 1.0)
+        similarities = 0.45 * hash_sims + 0.55 * hog_sims
+        
+        best_idx = int(np.argmax(similarities))
+        best_sim = float(similarities[best_idx])
+        
+        if best_sim >= self.similarity_threshold:
+            return str(top_k_ids[best_idx]), best_sim
         return None
 
     # ------------------------------------------------------------------
@@ -205,6 +260,7 @@ class ImageDB:
             else:
                 self._cache.append(entry)
             self.song_count = len(self._cache)
+            self._rebuild_vectors()
 
         print(f"[ImageDB] 등록/갱신 완료: '{sid}'")
         return True
@@ -234,6 +290,8 @@ class ImageDB:
             self._cache = [e for e in self._cache if e.image_id != sid]
             self.song_count = len(self._cache)
             deleted = len(self._cache) < before
+            if deleted:
+                self._rebuild_vectors()
 
         return deleted
 

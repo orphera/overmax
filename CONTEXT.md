@@ -69,6 +69,7 @@ Letterbox/Pillarbox 자동 보정 포함.
 - 추천 시스템 (floor 기반, ±0 범위) 구현 완료
 - Rate OCR → RecordDB 자동 수집 구현 완료
 - `image_db_updater.py`: GitHub Releases 기반 `image_index.db` 자동 업데이트 구현 완료
+- `app_updater.py`: GitHub Releases 기반 앱 자동패치 구현 완료
 - 단일 인스턴스 보장 (Windows named mutex)
 - 오버레이 위치 저장/복원 (`cache/overlay_position.json`)
 - Steam ID 기반 사용자 식별 (로그인 세션 자동 감지)
@@ -133,7 +134,6 @@ Letterbox/Pillarbox 자동 보정 포함.
 
 # Next Focus
 
-1. **자동패치** — Github Release를 통한 자동패치 
 1. **설정창 만들기**
 1. **오버레이 불투명도 조절** — 설정창을 통해서
 1. **V-Archive 기록 연동**

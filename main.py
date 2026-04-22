@@ -8,10 +8,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from data.app_updater import run_update_worker
 from core.app import OvermaxApp
 from core.utils import show_error_message
 
+
+def _run_special_mode(argv: list[str]) -> bool:
+    if "--update-worker" not in argv:
+        return False
+    code = run_update_worker(argv)
+    sys.exit(code)
+
+
 def main():
+    _run_special_mode(sys.argv[1:])
     try:
         app = OvermaxApp()
         app.run()

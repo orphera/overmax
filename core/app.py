@@ -22,7 +22,16 @@ from settings import SETTINGS
 from data.steam_session import get_most_recent_steam_id
 from core.game_state import GameSessionState
 from data.image_db_updater import check_and_update
-from core.utils import show_error_message, check_environment
+from data.app_updater import (
+    check_and_apply_update,
+    cleanup_update_artifacts,
+    consume_update_result,
+    AppUpdateError,
+    is_newer_version,
+)
+from core.version import APP_VERSION
+import runtime_patch
+from core.utils import show_error_message, show_info_message, check_environment
 
 from constants import (
     WINDOW_TITLE,
@@ -59,9 +68,13 @@ class OvermaxApp:
         print("=" * 50)
         print("  Overmax - DJMAX Respect V 난이도 오버레이")
         print("  V-Archive 데이터 기반")
+        print(f"  버전: v{APP_VERSION}")
         print("=" * 50)
 
         try:
+            self._notify_update_result()
+            if not self._try_app_update():
+                return
             self._init_databases()
             self._init_components()
             self._bind_events()
@@ -69,6 +82,78 @@ class OvermaxApp:
             self._run_event_loop()
         finally:
             self._cleanup()
+
+    def _try_app_update(self) -> bool:
+        if not getattr(sys, "frozen", False):
+            print("[AppUpdater] 개발 실행 모드(python)에서는 자동 패치를 건너뜁니다.")
+            return True
+
+        cfg = SETTINGS.get("app_update", {})
+        if not bool(cfg.get("enabled", True)):
+            return True
+
+        owner = str(cfg.get("owner", "orphera"))
+        repo = str(cfg.get("repo", "overmax"))
+        asset_name = str(cfg.get("asset_name", "overmax.zip"))
+        latest_release_url = os.getenv("OVERMAX_UPDATE_LATEST_URL")
+        if not latest_release_url:
+            latest_release_url = cfg.get("latest_release_url")
+        latest_release_url = str(latest_release_url) if latest_release_url else None
+        app_dir = runtime_patch.get_data_dir()
+        try:
+            return check_and_apply_update(
+                owner=owner,
+                repo=repo,
+                asset_name=asset_name,
+                current_version=APP_VERSION,
+                app_dir=app_dir,
+                latest_release_url=latest_release_url,
+                fail_on_update_error=True,
+                log=print,
+            )
+        except AppUpdateError as e:
+            msg = (
+                "자동 패치 중 오류가 발생하여 앱을 종료합니다.\n\n"
+                f"{e}\n\n"
+                "인터넷 연결/릴리즈 파일을 확인한 뒤 다시 실행해 주세요."
+            )
+            print(f"[Main] {msg}")
+            show_error_message(msg)
+            sys.exit(1)
+
+    def _notify_update_result(self):
+        cleanup_update_artifacts(runtime_patch.get_data_dir())
+        result = consume_update_result(runtime_patch.get_data_dir())
+        if not result:
+            return
+
+        status = result.get("status", "")
+        from_ver = result.get("from", "unknown")
+        to_ver = result.get("to", "unknown")
+        if status == "success":
+            if is_newer_version(to_ver, APP_VERSION):
+                msg = (
+                    "자동 패치를 적용했지만 현재 실행 버전이 갱신되지 않았습니다.\n\n"
+                    f"현재: v{APP_VERSION}\n"
+                    f"목표: {to_ver}\n\n"
+                    "동일 태그에 대한 자동 재시도는 건너뜁니다. 릴리즈 패키지를 확인해 주세요."
+                )
+                print(f"[Main] {msg}")
+                show_error_message(msg, title="Overmax Update Error")
+                return
+            msg = f"자동 패치가 완료되었습니다.\n\n{from_ver} -> {to_ver}"
+            print(f"[Main] {msg}")
+            show_info_message(msg, title="Overmax Update")
+            return
+
+        reason = result.get("reason", "unknown")
+        msg = (
+            "자동 패치가 완료되지 않았습니다.\n\n"
+            f"사유: {reason}\n"
+            f"시도 버전: {from_ver} -> {to_ver}"
+        )
+        print(f"[Main] {msg}")
+        show_error_message(msg, title="Overmax Update Error")
 
     def _init_databases(self):
         self.varchive_db = VArchiveDB()

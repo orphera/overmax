@@ -50,6 +50,13 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "jacket_force_recheck_sec": 2.0,
         "log_similarity": True,
     },
+    "app_update": {
+        "enabled": True,
+        "owner": "orphera",
+        "repo": "overmax",
+        "asset_name": "overmax.zip",
+        "latest_release_url": "",
+    },
     "varchive": {
         "songs_api_url": "https://v-archive.net/db/v2/songs.json",
         "cache_path": "cache/songs.json",

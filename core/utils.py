@@ -22,6 +22,17 @@ def show_error_message(message: str, title: str = "Overmax Error"):
         print(f"[{title}] {message}")
 
 
+def show_info_message(message: str, title: str = "Overmax"):
+    """
+    Displays a Windows message box with an information icon.
+    """
+    if os.name == "nt":
+        # MB_OK | MB_ICONINFORMATION = 0x0 | 0x40
+        ctypes.windll.user32.MessageBoxW(0, message, title, 0x40)
+    else:
+        print(f"[{title}] {message}")
+
+
 def check_environment():
     """
     Checks if the current environment is supported.

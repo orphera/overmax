@@ -20,7 +20,7 @@ echo.
 :: --------------------------------------------------
 :: 1. Check Python
 :: --------------------------------------------------
-echo [1/6] Checking Python...
+echo [1/7] Checking Python...
 python --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Python not found.
@@ -34,7 +34,7 @@ echo        Python %PY_VER% OK
 :: --------------------------------------------------
 :: 2. Check / install dependencies
 :: --------------------------------------------------
-echo [2/6] Checking dependencies...
+echo [2/7] Checking dependencies...
 python -c "import PyInstaller" >nul 2>&1
 if errorlevel 1 (
     echo        Installing PyInstaller
@@ -53,12 +53,12 @@ echo        Dependencies OK
 :: --------------------------------------------------
 :: 3. EasyOCR model check (Removed - Using Windows OCR)
 :: --------------------------------------------------
-echo [3/6] Skipping model check (Using Windows Native OCR)...
+echo [3/7] Skipping model check (Using Windows Native OCR)...
 
 :: --------------------------------------------------
 :: 4. Clean previous build
 :: --------------------------------------------------
-echo [4/6] Cleaning previous build...
+echo [4/7] Cleaning previous build...
 if exist "%PROJECT_DIR%dist" (
     rmdir /s /q "%PROJECT_DIR%dist"
 )
@@ -70,7 +70,7 @@ echo        Done
 :: --------------------------------------------------
 :: 5. Run PyInstaller
 :: --------------------------------------------------
-echo [5/6] Running PyInstaller...
+echo [5/7] Running PyInstaller...
 
 if "%DEBUG_MODE%"=="1" (
     echo        [DEBUG MODE] Console window will be visible
@@ -90,7 +90,7 @@ if errorlevel 1 (
 :: --------------------------------------------------
 :: 6. Post-process
 :: --------------------------------------------------
-echo [6/6] Post-processing...
+echo [6/7] Post-processing...
 
 if not exist "%DIST_DIR%\cache" mkdir "%DIST_DIR%\cache"
 
@@ -118,12 +118,38 @@ if exist "%PROJECT_DIR%cache\image_index.db" (
 copy /y "%PROJECT_DIR%README.md" "%DIST_DIR%\README.md" >nul
 
 :: --------------------------------------------------
+:: 7. Build Release Artifacts (overmax.zip + manifest)
+:: --------------------------------------------------
+echo [7/7] Building release artifacts...
+set "ZIP_PATH=%PROJECT_DIR%dist\overmax.zip"
+set "MANIFEST_PATH=%PROJECT_DIR%dist\release_manifest.json"
+
+if exist "%ZIP_PATH%" del /f /q "%ZIP_PATH%"
+if exist "%MANIFEST_PATH%" del /f /q "%MANIFEST_PATH%"
+
+powershell -NoProfile -Command "Compress-Archive -Path '%DIST_DIR%\*' -DestinationPath '%ZIP_PATH%' -Force"
+if errorlevel 1 goto :package_error
+echo        overmax.zip created
+
+for /f "usebackq delims=" %%h in (`powershell -NoProfile -Command "(Get-FileHash -Path '%ZIP_PATH%' -Algorithm SHA256).Hash.ToLower()"`) do set "ZIP_SHA256=%%h"
+if "%ZIP_SHA256%"=="" goto :package_error
+
+for /f "usebackq delims=" %%v in (`python -c "from core.version import APP_VERSION; print(APP_VERSION)"`) do set "APP_VERSION=%%v"
+if "%APP_VERSION%"=="" goto :package_error
+
+powershell -NoProfile -Command "$manifest = @{ version = 'v%APP_VERSION%'; generated_at = (Get-Date).ToUniversalTime().ToString('o'); assets = @(@{ name = 'overmax.zip'; sha256 = '%ZIP_SHA256%' }) }; $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path '%MANIFEST_PATH%' -Encoding UTF8"
+if errorlevel 1 goto :package_error
+echo        release_manifest.json created
+
+:: --------------------------------------------------
 :: Done
 :: --------------------------------------------------
 echo.
 echo ============================================================
 echo  Build complete!
 echo  Output: dist\overmax\overmax.exe
+echo  Release zip: dist\overmax.zip
+echo  Manifest: dist\release_manifest.json
 echo.
 echo  Distribute the entire dist\overmax\ folder.
 echo ============================================================
@@ -134,5 +160,10 @@ exit /b 0
 
 :pip_error
 echo [ERROR] pip install failed. Check your internet connection.
+pause
+exit /b 1
+
+:package_error
+echo [ERROR] Failed to create release artifacts.
 pause
 exit /b 1

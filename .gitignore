@@ -92,6 +92,7 @@ $RECYCLE.BIN/
 *.tmp
 *.bak
 *.swp
+settings.user.json
 
 # ---------------------------
 # 테스트 파일

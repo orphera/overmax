@@ -14,6 +14,7 @@ try:
         QFrame,
         QScrollArea,
         QApplication,
+        QPushButton,
     )
     from PyQt6.QtCore import Qt, pyqtSignal, QObject, QPoint
     from PyQt6.QtGui import QPainter, QBrush, QColor
@@ -27,6 +28,7 @@ from data.recommend import RecommendEntry
 from overlay.ui.pattern_view import VerticalTabPanel
 from overlay.ui.recommend_view import PatternRow
 from constants import BTN_COLORS, WINDOW_TITLE
+from settings import SETTINGS
 
 
 if PYQT_AVAILABLE:
@@ -41,6 +43,7 @@ if PYQT_AVAILABLE:
         visibility_toggle_requested = pyqtSignal()
         status_changed    = pyqtSignal(bool)
         confidence_changed = pyqtSignal(float)
+        settings_requested = pyqtSignal()
 
 
     class OverlayWindow(QWidget):
@@ -57,10 +60,12 @@ if PYQT_AVAILABLE:
             self._drag_pos = QPoint()
             self._manual_position = False
             self._user_move_cb = None
+            self._last_confidence = 1.0  # 기본값
 
             self._setup_window()
             self._setup_ui()
             self._connect_signals()
+            self._apply_opacity()
 
         def _setup_window(self):
             self.setWindowFlags(
@@ -87,7 +92,7 @@ if PYQT_AVAILABLE:
             panel = QFrame()
             panel.setStyleSheet("""
                 QFrame {
-                    background: rgba(18, 24, 38, 240);
+                    background: rgb(18, 24, 38);
                     border-radius: 14px;
                 }
             """)
@@ -110,7 +115,7 @@ if PYQT_AVAILABLE:
             header = QFrame()
             header.setStyleSheet("""
                 QFrame {
-                    background: rgba(30, 40, 62, 220);
+                    background: rgb(30, 40, 62);
                     border-radius: 10px;
                 }
             """)
@@ -140,9 +145,23 @@ if PYQT_AVAILABLE:
             self._song_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
             layout.addWidget(self._song_label, 1)
 
-            drag_hint = QLabel("⠿")
-            drag_hint.setStyleSheet("color: #3D4D6A; font-size: 13px;")
-            layout.addWidget(drag_hint)
+            self._settings_btn = QPushButton("⚙")
+            self._settings_btn.setFixedSize(24, 24)
+            self._settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._settings_btn.setStyleSheet("""
+                QPushButton {
+                    color: #505870;
+                    background: transparent;
+                    border: none;
+                    font-size: 16px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    color: #F0F4FF;
+                }
+            """)
+            self._settings_btn.clicked.connect(self.signals.settings_requested.emit)
+            layout.addWidget(self._settings_btn)
             return header
 
         # ------------------------------------------------------------------
@@ -211,12 +230,28 @@ if PYQT_AVAILABLE:
         def _on_game_window_moved(self, left, top, width, height):
             if self._manual_position:
                 return
-            ox = left + width + 10
-            oy = top + height - self.height() - 40
+            
             screen = QApplication.primaryScreen().geometry()
+            margin = 16
+            
+            # 1. 오른쪽 외부 시도 (하단 정렬)
+            ox = left + width + margin
+            oy = top + height - self.height() - margin
+            
+            # 오른쪽이 화면 밖이면 왼쪽 외부 시도
             if ox + self.width() > screen.width():
-                ox = left - self.width() - 10
-            self.move(ox, max(oy, top))
+                ox = left - self.width() - margin
+            
+            # 왼쪽도 화면 밖이면 (창이 최대화되었거나 화면을 꽉 채운 경우) 내부 우측 하단에 배치
+            if ox < 0 or ox + self.width() > screen.width() or ox < screen.x():
+                ox = left + width - self.width() - margin
+                oy = top + height - self.height() - margin
+            
+            # 최종 좌표 화면 범위 내로 보정 (최소한의 가시성 확보)
+            ox = max(screen.x(), min(ox, screen.x() + screen.width() - self.width()))
+            oy = max(screen.y(), min(oy, screen.y() + screen.height() - self.height()))
+            
+            self.move(ox, oy)
 
         def _on_mode_diff_changed(self, mode: str, diff: str):
             self._mode_label.setText(mode if mode else "—")
@@ -266,12 +301,25 @@ if PYQT_AVAILABLE:
                 )
 
         def _on_confidence_changed(self, confidence: float):
-            """신뢰도(0.0~1.0)를 오버레이 불투명도로 매핑.
-            최소 0.3, 최대 1.0 범위로 클램프해 완전히 사라지지 않도록 한다.
-            """
-            MIN_OPACITY = 0.3
-            opacity = MIN_OPACITY + (1.0 - MIN_OPACITY) * max(0.0, min(1.0, confidence))
-            self.setWindowOpacity(opacity)
+            """신뢰도(0.0~1.0)를 오버레이 불투명도로 매핑."""
+            self._last_confidence = confidence
+            self._apply_opacity()
+
+        def update_base_opacity(self, base_opacity: float):
+            """설정에서 기본 투명도가 변경되었을 때 즉시 반영."""
+            self._apply_opacity()
+
+        def _apply_opacity(self):
+            """현재 신뢰도와 기본 투명도를 조합하여 최종 투명도 적용."""
+            base_opacity = SETTINGS.get("overlay", {}).get("base_opacity", 1.0)
+            
+            # 신뢰도에 따른 감쇄 효과 (최소 0.3배 ~ 1.0배)
+            # 신뢰도가 낮아도 완전히 사라지지는 않게 함
+            MIN_SCALE = 0.3
+            scale = MIN_SCALE + (1.0 - MIN_SCALE) * max(0.0, min(1.0, self._last_confidence))
+            
+            final_opacity = base_opacity * scale
+            self.setWindowOpacity(final_opacity)
 
         # ------------------------------------------------------------------
         # 내부 업데이트
@@ -333,7 +381,7 @@ if PYQT_AVAILABLE:
         def paintEvent(self, event):
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setBrush(QBrush(QColor(0, 0, 0, 50)))
+            painter.setBrush(QBrush(QColor(0, 0, 0)))
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawRoundedRect(self.rect().adjusted(3, 4, -1, -1), 14, 14)
             

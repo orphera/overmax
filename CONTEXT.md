@@ -1,7 +1,16 @@
-# Current Goal
+# Context: Overmax Development
 
-- DJMAX RESPECT V 선곡 화면에서  
-  V-Archive 기반 난이도 및 추천 정보를 실시간 오버레이로 제공
+이 문서는 Overmax 프로젝트의 현재 상태, 설계 결정 사항, 그리고 향후 계획을 기록한다.
+
+---
+
+# System Overview
+
+Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선택된 곡의 난이도별 정보를 오버레이로 보여주는 도구이다.
+
+- **인식 방식**: 화면 캡처 및 이미지 매칭 (OpenCV) + OCR (Windows OCR)
+- **UI**: PyQt6 (투명 윈도우, 하드웨어 가속 활용)
+- **데이터**: V-Archive DB (JSON) 및 로컬 기록 DB (SQLite)
 
 ---
 
@@ -62,18 +71,18 @@ Letterbox/Pillarbox 자동 보정 포함.
 
 ---
 
-# Current State
+# Progress Tracking
 
-- 전체 파이프라인 정상 동작
-- verified 기반 상태 전이 안정적
-- 추천 시스템 (floor 기반, ±0 범위) 구현 완료
-- Rate OCR → RecordDB 자동 수집 구현 완료
+- 기본적인 곡 인식 및 오버레이 표시 구현 완료
+- V-Archive 데이터 동기화 및 추천 시스템 구현 완료
+- `ROIManager`를 통한 해상도 독립적 좌표 관리 구현 완료
 - `image_db_updater.py`: GitHub Releases 기반 `image_index.db` 자동 업데이트 구현 완료
 - `app_updater.py`: GitHub Releases 기반 앱 자동패치 구현 완료
 - 단일 인스턴스 보장 (Windows named mutex)
-- 오버레이 위치 저장/복원 (`cache/overlay_position.json`)
+- 오버레이 위치 저장/복원 (`settings.user.json` 내 `overlay.position`)
 - Steam ID 기반 사용자 식별 (로그인 세션 자동 감지)
 - ROIManager 해상도 변환 완료 (Letterbox/Pillarbox 보정)
+- 설정창 추가 완료 (투명도 조절 및 설정 파일 분리 적용)
 
 ---
 
@@ -91,7 +100,7 @@ Letterbox/Pillarbox 자동 보정 포함.
 
 ## 2. 성능 리스크
 
-- OCR 호출 비용: 로고 + Rate 각 독립 호출
+- OCR 호출 비용: 로고 + Rate 각 독립 호출 (Windows OCR 연산 부하 모니터링 필요)
 
 ## 3. 사용자 식별
 
@@ -121,6 +130,7 @@ Letterbox/Pillarbox 자동 보정 포함.
 - `if rate is None` 과 `if rate == 0.0` 은 의미가 다름 — 명시적 None 체크 필수
 - `song_id` 가 0인 경우도 존재함. `song_id is None` 으로 검사 해야 함
 - image_db 에 추가/삭제는 overlay 프로그램을 통해 하지 않음
+- 모든 설정 변경은 `settings.user.json`에 저장하며, `settings.json` 보다 우선순위가 높음
 
 ---
 
@@ -134,8 +144,6 @@ Letterbox/Pillarbox 자동 보정 포함.
 
 # Next Focus
 
-1. **설정창 만들기**
-1. **오버레이 불투명도 조절** — 설정창을 통해서
 1. **V-Archive 기록 연동**
     - 맥스콤보여부 저장하도록 DB 업데이트
     - 스팀 ID(View용으로 스팀 닉네임) - V-Archive ID 쌍을 저장하기

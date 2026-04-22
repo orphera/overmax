@@ -7,7 +7,7 @@
     "logo_ocr_keyword": "FREESTYLE",
     "logo_ocr_cooldown_sec": 1.0,
     "freestyle_history_size": 7,
-    "freestyle_on_ratio": 0.60,
+    "freestyle_on_ratio": 0.6,
     "freestyle_on_min_samples": 3,
     "freestyle_off_ratio": 0.35,
     "freestyle_off_min_samples": 7,
@@ -25,7 +25,8 @@
     "toggle_hotkey": "F3",
     "tray_tooltip": "Overmax - DJMAX Respect V 난이도 오버레이",
     "hint_label": "F3: 표시/숨김  |  드래그로 위치 이동",
-    "position_file": "cache/overlay_position.json"
+    "position_file": "cache/overlay_position.json",
+    "base_opacity": 0.8
   },
   "jacket_matcher": {
     "db_path": "cache/image_index.db",

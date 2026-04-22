@@ -1,6 +1,7 @@
 """
 애플리케이션 설정 로더.
-settings.json 이 있으면 병합하고, 없으면 기본값을 사용한다.
+DEFAULT -> settings.json -> settings.user.json 순서로 병합하여 최종 설정을 생성한다.
+save_settings() 호출 시 기본값(DEFAULT + settings.json)과 차이가 있는 항목만 settings.user.json에 저장한다.
 """
 
 from __future__ import annotations
@@ -41,6 +42,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "tray_tooltip": "Overmax - DJMAX Respect V 난이도 오버레이",
         "hint_label": "F3: 표시/숨김  |  드래그로 위치 이동",
         "position_file": "cache/overlay_position.json",
+        "base_opacity": 0.8,
+        "position": {"x": 0, "y": 0},
     },
     "jacket_matcher": {
         "db_path": "cache/image_index.db",
@@ -84,28 +87,64 @@ def _merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     return base
 
 
-def _settings_candidates() -> list[Path]:
-    data_path = runtime_patch.get_data_dir() / "settings.json"
-    local_path = Path(__file__).parent / "settings.json"
-    if data_path == local_path:
-        return [data_path]
-    return [data_path, local_path]
+def _diff_dict(base: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
+    """base와 current를 비교하여 차이가 있는 항목만 반환한다 (재귀)."""
+    diff = {}
+    for key, val in current.items():
+        if key not in base:
+            diff[key] = copy.deepcopy(val)
+        elif isinstance(base[key], dict) and isinstance(val, dict):
+            sub_diff = _diff_dict(base[key], val)
+            if sub_diff:
+                diff[key] = sub_diff
+        elif base[key] != val:
+            diff[key] = copy.deepcopy(val)
+    return diff
 
 
-def _load_settings_file() -> tuple[dict[str, Any], Path | None]:
-    for path in _settings_candidates():
-        if not path.exists():
-            continue
-        try:
-            with open(path, encoding="utf-8") as f:
-                loaded = json.load(f)
-            if isinstance(loaded, dict):
-                return loaded, path
-            print(f"[Settings] 잘못된 형식(객체 필요): {path}")
-        except Exception as e:
-            print(f"[Settings] 로드 실패 ({path}): {e}")
-    return {}, None
+def _get_settings_paths() -> tuple[Path, Path]:
+    data_dir = runtime_patch.get_data_dir()
+    settings_path = data_dir / "settings.json"
+    user_settings_path = data_dir / "settings.user.json"
+    return settings_path, user_settings_path
 
 
-_raw_settings, SETTINGS_PATH = _load_settings_file()
-SETTINGS: dict[str, Any] = _merge_dict(copy.deepcopy(DEFAULT_SETTINGS), _raw_settings)
+def _load_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            loaded = json.load(f)
+        return loaded if isinstance(loaded, dict) else {}
+    except Exception as e:
+        print(f"[Settings] 로드 실패 ({path}): {e}")
+        return {}
+
+
+def _init_settings() -> tuple[dict[str, Any], dict[str, Any], Path]:
+    settings_path, user_settings_path = _get_settings_paths()
+    
+    # 1. Base = DEFAULT + settings.json
+    base_settings = copy.deepcopy(DEFAULT_SETTINGS)
+    _merge_dict(base_settings, _load_json(settings_path))
+    
+    # 2. Final = Base + settings.user.json
+    final_settings = copy.deepcopy(base_settings)
+    _merge_dict(final_settings, _load_json(user_settings_path))
+    
+    return final_settings, base_settings, user_settings_path
+
+
+SETTINGS, BASE_SETTINGS, USER_SETTINGS_PATH = _init_settings()
+
+
+def save_settings():
+    """BASE_SETTINGS와 비교하여 변경된 부분만 settings.user.json에 저장한다."""
+    try:
+        user_diff = _diff_dict(BASE_SETTINGS, SETTINGS)
+        
+        USER_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(USER_SETTINGS_PATH, "w", encoding="utf-8") as f:
+            json.dump(user_diff, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[Settings] 저장 실패: {e}")

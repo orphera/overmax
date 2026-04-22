@@ -16,7 +16,7 @@ class PatternRow(QFrame):
     def _build_ui(self):
         self.setFixedHeight(30)
         self.setStyleSheet(
-            "background: rgba(36, 46, 70, 200); border-radius: 6px;"
+            "background: rgb(36, 46, 70); border-radius: 6px;"
         )
 
         layout = QHBoxLayout(self)

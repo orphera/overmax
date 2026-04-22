@@ -9,9 +9,9 @@ from data.varchive import DIFFICULTIES, DIFF_COLORS
 class DiffTab(QFrame):
     """세로 탭 하나 — 난이도 레이블 + floor 힌트."""
 
-    _ACTIVE_BG   = "rgba(63, 80, 117, 230)"
-    _INACTIVE_BG = "rgba(28, 36, 54, 180)"
-    _DIM_BG      = "rgba(20, 26, 40, 120)"
+    _ACTIVE_BG   = "rgb(63, 80, 117)"
+    _INACTIVE_BG = "rgb(28, 36, 54)"
+    _DIM_BG      = "rgb(20, 26, 40)"
 
     def __init__(self, diff: str, parent=None):
         super().__init__(parent)

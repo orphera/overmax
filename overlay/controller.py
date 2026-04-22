@@ -20,12 +20,12 @@ from data.record_db import RecordDB
 from core.game_state import GameSessionState
 from overlay.ui.navigation import RoiOverlayWindow
 from overlay.window import OverlaySignals, OverlayWindow
+from overlay.settings_window import SettingsWindow
 
 
 from constants import (
     TOGGLE_HOTKEY,
     TRAY_TOOLTIP,
-    OVERLAY_POSITION_FILE,
 )
 
 
@@ -38,6 +38,7 @@ class OverlayController:
         self._app: Optional[QApplication] = None
         self._window: Optional[OverlayWindow] = None
         self._roi_window: Optional[RoiOverlayWindow] = None
+        self._settings_window: Optional[SettingsWindow] = None
         self._tray_icon: Optional[QSystemTrayIcon] = None
         self._debug_log_cb = None
         self._debug_toggle_cb = None
@@ -47,7 +48,6 @@ class OverlayController:
         self._current_diff: Optional[str] = None
 
         self._last_window_rect: Optional[tuple[int, int, int, int]] = None
-        self._position_path = runtime_patch.get_data_dir() / OVERLAY_POSITION_FILE
 
     def _emit_initial_state(self):
         all_patterns = [{"mode": mode, "patterns": []} for mode in BUTTON_MODES]
@@ -189,28 +189,13 @@ class OverlayController:
         if self._debug_log_cb:
             self._debug_log_cb(full)
 
-    def _load_overlay_position(self) -> Optional[tuple[int, int]]:
-        try:
-            if not self._position_path.exists():
-                return None
-            with open(self._position_path, encoding="utf-8") as file:
-                data = json.load(file)
-            return int(data.get("x")), int(data.get("y"))
-        except Exception as exc:
-            self.log(f"오버레이 위치 로드 실패: {exc}")
-            return None
-
-    def _save_overlay_position(self, x: int, y: int):
-        try:
-            self._position_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._position_path, "w", encoding="utf-8") as file:
-                json.dump({"x": int(x), "y": int(y)}, file, ensure_ascii=False, indent=2)
-        except Exception as exc:
-            self.log(f"오버레이 위치 저장 실패: {exc}")
-
     def _on_overlay_user_moved(self, x: int, y: int):
-        self._save_overlay_position(x, y)
-        self.log(f"오버레이 위치 저장: ({x},{y})")
+        if "overlay" not in SETTINGS:
+            SETTINGS["overlay"] = {}
+        SETTINGS["overlay"]["position"] = {"x": int(x), "y": int(y)}
+        from settings import save_settings
+        save_settings()
+        self.log(f"오버레이 위치 저장 (user.json): ({x},{y})")
 
     def toggle_visibility(self):
         self.signals.visibility_toggle_requested.emit()
@@ -230,6 +215,11 @@ class OverlayController:
         self._window.hide()
         self._window.set_user_move_callback(self._on_overlay_user_moved)
 
+        self._settings_window = SettingsWindow()
+        self._settings_window.hide()
+        self._settings_window.opacity_changed.connect(self._window.update_base_opacity)
+        self.signals.settings_requested.connect(self._settings_window.show_window)
+
         self._roi_window = RoiOverlayWindow()
         self._roi_window.hide()
         self.signals.position_changed.connect(self._roi_window.set_game_rect)
@@ -244,11 +234,12 @@ class OverlayController:
         if self._window is None or self._app is None:
             return
 
-        saved_pos = self._load_overlay_position()
-        if saved_pos is None:
+        overlay_cfg = SETTINGS.get("overlay", {})
+        pos = overlay_cfg.get("position")
+        if pos is None:
             return
 
-        sx, sy = saved_pos
+        sx, sy = int(pos["x"]), int(pos["y"])
         screen = self._app.primaryScreen().geometry()
         sx = max(0, min(sx, max(0, screen.width() - self._window.width())))
         sy = max(0, min(sy, max(0, screen.height() - self._window.height())))
@@ -281,6 +272,10 @@ class OverlayController:
             debug_action = QAction("디버그 창 표시/숨김", self._app)
             debug_action.triggered.connect(self._debug_toggle_cb)
             tray_menu.addAction(debug_action)
+
+        settings_action = QAction("설정", self._app)
+        settings_action.triggered.connect(self._settings_window.show_window)
+        tray_menu.addAction(settings_action)
 
         tray_menu.addSeparator()
         quit_action = QAction("종료", self._app)

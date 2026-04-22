@@ -85,7 +85,6 @@ DIFF_CONFIDENT_MARGIN = 15.0   # 1위 패널이 2위보다 이 이상 밝아야 
 OVERLAY_SETTINGS = SETTINGS["overlay"]
 TOGGLE_HOTKEY = str(OVERLAY_SETTINGS["toggle_hotkey"])
 TRAY_TOOLTIP = str(OVERLAY_SETTINGS["tray_tooltip"])
-OVERLAY_POSITION_FILE = str(OVERLAY_SETTINGS["position_file"])
 RECORD_DB_PATH = "cache/record.db"
 
 # ------------------------------------------------------------------

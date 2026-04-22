@@ -39,6 +39,7 @@ if PYQT_AVAILABLE:
         recommend_ready   = pyqtSignal(list, bool)
         visibility_toggle_requested = pyqtSignal()
         status_changed    = pyqtSignal(bool)
+        confidence_changed = pyqtSignal(float)
 
 
     class OverlayWindow(QWidget):
@@ -189,6 +190,7 @@ if PYQT_AVAILABLE:
             self.signals.recommend_ready.connect(self._on_recommend_ready)
             self.signals.visibility_toggle_requested.connect(self.toggle_visibility)
             self.signals.status_changed.connect(self._on_status_changed)
+            self.signals.confidence_changed.connect(self._on_confidence_changed)
 
         # ------------------------------------------------------------------
         # 슬롯
@@ -261,6 +263,14 @@ if PYQT_AVAILABLE:
                 self._status_lamp.setStyleSheet(
                     "background-color: #FF4B4B; border-radius: 3px;"
                 )
+
+        def _on_confidence_changed(self, confidence: float):
+            """신뢰도(0.0~1.0)를 오버레이 불투명도로 매핑.
+            최소 0.3, 최대 1.0 범위로 클램프해 완전히 사라지지 않도록 한다.
+            """
+            MIN_OPACITY = 0.3
+            opacity = MIN_OPACITY + (1.0 - MIN_OPACITY) * max(0.0, min(1.0, confidence))
+            self.setWindowOpacity(opacity)
 
         # ------------------------------------------------------------------
         # 내부 업데이트

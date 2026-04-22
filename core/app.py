@@ -122,6 +122,7 @@ class OvermaxApp:
 
         self.capture.on_state_changed = self._on_state_changed
         self.capture.on_screen_changed = self._on_screen_changed
+        self.capture.on_confidence_changed = self.overlay_ctrl.notify_confidence
         self.capture.on_debug_log = self.debug_ctrl.log
         self.overlay_ctrl._debug_log_cb = self.debug_ctrl.log
 

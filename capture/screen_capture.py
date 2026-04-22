@@ -79,6 +79,7 @@ class ScreenCapture:
     def _init_callbacks(self):
         self.on_state_changed: Optional[Callable[[GameSessionState], None]] = None
         self.on_screen_changed: Optional[Callable[[bool], None]] = None
+        self.on_confidence_changed: Optional[Callable[[float], None]] = None
         self.on_debug_log: Optional[Callable[[str], None]] = None
         self.on_record_updated: Optional[Callable[[], None]] = None
 
@@ -166,12 +167,15 @@ class ScreenCapture:
         )
         now = time.time()
 
-        is_song_select, is_leaving = await self._detect_song_select(full_frame)
+        is_song_select, is_leaving, confidence = await self._detect_song_select(full_frame)
         if is_song_select != self._is_song_select:
             self._is_song_select = is_song_select
             self.log(f"화면 변경: {'선곡화면' if is_song_select else '기타화면'}")
             if self.on_screen_changed:
                 self.on_screen_changed(is_song_select)
+
+        if self.on_confidence_changed:
+            self.on_confidence_changed(confidence)
 
         if not is_song_select:
             self._reset_on_screen_exit()
@@ -326,7 +330,10 @@ class ScreenCapture:
     # 선곡화면 감지
     # ------------------------------------------------------------------
 
-    async def _detect_song_select(self, full_frame: np.ndarray) -> tuple[bool, bool]:
+    async def _detect_song_select(self, full_frame: np.ndarray) -> tuple[bool, bool, float]:
+        """선곡화면 여부와 이탈 여부, 신뢰도(0.0~1.0)를 반환.
+        신뢰도는 히스테리시스 버퍼의 hit 비율로 정의된다.
+        """
         logo_now = await self._detect_freestyle_logo(full_frame)
         self._freestyle_history.append(logo_now)
         sample_count = len(self._freestyle_history)
@@ -361,7 +368,10 @@ class ScreenCapture:
                 + (f" [이탈중]" if is_leaving else "")
             )
             self._last_is_leaving = is_leaving
-        return is_song_select, is_leaving
+
+        # 이탈 중이면 신뢰도를 감소 방향으로 보정 (부드러운 fade-out 효과)
+        confidence = ratio * (0.5 if is_leaving else 1.0)
+        return is_song_select, is_leaving, confidence
 
     async def _detect_freestyle_logo(self, full_frame: np.ndarray) -> bool:
         logo_roi = self.roiman.get_roi("logo")

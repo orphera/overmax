@@ -59,6 +59,9 @@ class OverlayController:
         self.log(f"화면 알림: {'선곡화면' if is_song_select else '기타화면'}")
         self.signals.screen_changed.emit(is_song_select)
 
+    def notify_confidence(self, confidence: float):
+        self.signals.confidence_changed.emit(confidence)
+
     def notify_window_pos(self, left, top, width, height):
         self.log(f"창 위치: ({left},{top}) {width}x{height}")
         self._last_window_rect = (left, top, width, height)

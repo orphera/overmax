@@ -10,55 +10,69 @@ set "DIST_DIR=%PROJECT_DIR%dist\overmax"
 set "DEBUG_MODE=0"
 
 if "%1"=="--debug" set "DEBUG_MODE=1"
+set "VENV_DIR=%PROJECT_DIR%.venv_build"
+set "PYTHON_EXE=%VENV_DIR%\Scripts\python.exe"
+set "UPX_DIR=%PROJECT_DIR%tools\upx"
 
 echo.
 echo  ===================================
-echo   Overmax - Build Script v0.1
+echo   Overmax - Build Script
 echo  ===================================
 echo.
 
 :: --------------------------------------------------
-:: 1. Check Python
+:: 1. Setup Build Environment
 :: --------------------------------------------------
-echo [1/7] Checking Python...
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] Python not found.
-    echo         Install Python 3.10+ from https://www.python.org
+echo [1/6] Setting up build environment...
+
+:: Check if build venv exists
+if not exist "%VENV_DIR%" (
+    echo        Creating build venv: %VENV_DIR%
+    python -m venv "%VENV_DIR%"
+    if errorlevel 1 (
+        echo [ERROR] Failed to create venv.
+        pause
+        exit /b 1
+    )
+)
+
+:: Verify python in venv
+if not exist "%PYTHON_EXE%" (
+    echo [ERROR] Python not found in venv: %PYTHON_EXE%
     pause
     exit /b 1
 )
-for /f "tokens=2" %%v in ('python --version') do set "PY_VER=%%v"
-echo        Python %PY_VER% OK
+
+for /f "tokens=2" %%v in ('"%PYTHON_EXE%" --version') do set "PY_VER=%%v"
+echo        Python %PY_VER% (Build Venv) OK
 
 :: --------------------------------------------------
-:: 2. Check / install dependencies
+:: 2. Install dependencies
 :: --------------------------------------------------
-echo [2/7] Checking dependencies...
-python -c "import PyInstaller" >nul 2>&1
+echo [2/6] Installing dependencies in build venv...
+
+:: Update pip
+"%PYTHON_EXE%" -m pip install --upgrade pip --quiet
+
+:: Install/Update requirements
+echo        Checking requirements (this may take a while)
+"%PYTHON_EXE%" -m pip install -r "%PROJECT_DIR%requirements.txt" --quiet
+if errorlevel 1 goto :pip_error
+
+:: Ensure PyInstaller is installed
+"%PYTHON_EXE%" -c "import PyInstaller" >nul 2>&1
 if errorlevel 1 (
     echo        Installing PyInstaller
-    python -m pip install pyinstaller --quiet
+    "%PYTHON_EXE%" -m pip install pyinstaller --quiet
     if errorlevel 1 goto :pip_error
 )
 
-python -c "import PyQt6" >nul 2>&1
-if errorlevel 1 (
-    echo        Installing requirements.txt (this may take a while)
-    python -m pip install -r "%PROJECT_DIR%requirements.txt" --quiet
-    if errorlevel 1 goto :pip_error
-)
 echo        Dependencies OK
 
 :: --------------------------------------------------
-:: 3. EasyOCR model check (Removed - Using Windows OCR)
+:: 3. Clean previous build
 :: --------------------------------------------------
-echo [3/7] Skipping model check (Using Windows Native OCR)...
-
-:: --------------------------------------------------
-:: 4. Clean previous build
-:: --------------------------------------------------
-echo [4/7] Cleaning previous build...
+echo [3/6] Cleaning previous build...
 if exist "%PROJECT_DIR%dist" (
     rmdir /s /q "%PROJECT_DIR%dist"
 )
@@ -68,17 +82,52 @@ if exist "%PROJECT_DIR%build" (
 echo        Done
 
 :: --------------------------------------------------
-:: 5. Run PyInstaller
+:: 4. Run PyInstaller
 :: --------------------------------------------------
-echo [5/7] Running PyInstaller...
+echo [4/6] Running PyInstaller...
+
+:: Detect/Setup UPX
+set "UPX_CMD="
+if exist "%UPX_DIR%\upx.exe" (
+    echo        UPX detected at %UPX_DIR%
+    set "UPX_CMD=--upx-dir="%UPX_DIR%""
+) else (
+    :: Try to see if UPX is in PATH
+    upx --version >nul 2>&1
+    if not errorlevel 1 (
+        echo        UPX detected in PATH
+    ) else (
+        echo        UPX not found. Attempting automatic setup...
+        if not exist "%UPX_DIR%" mkdir "%UPX_DIR%"
+        
+        :: Download UPX 4.2.4 (stable) via PowerShell
+        powershell -NoProfile -Command ^
+            "$url = 'https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-win64.zip';" ^
+            "$zip = '%PROJECT_DIR%upx_tmp.zip';" ^
+            "echo '       Downloading UPX...';" ^
+            "try { Invoke-WebRequest -Uri $url -OutFile $zip -ErrorAction Stop } catch { echo '       [WARN] Failed to download UPX.'; exit 1 };" ^
+            "echo '       Extracting...';" ^
+            "Expand-Archive -Path $zip -DestinationPath '%UPX_DIR%' -Force;" ^
+            "Get-ChildItem -Path '%UPX_DIR%\*\upx.exe' | Move-Item -Destination '%UPX_DIR%' -Force;" ^
+            "Remove-Item -Path '%UPX_DIR%\upx-4.2.4-win64' -Recurse -ErrorAction SilentlyContinue;" ^
+            "Remove-Item -Path $zip -ErrorAction SilentlyContinue;"
+            
+        if exist "%UPX_DIR%\upx.exe" (
+            echo        UPX setup complete.
+            set "UPX_CMD=--upx-dir="%UPX_DIR%""
+        ) else (
+            echo        [WARN] UPX setup failed. Proceeding without UPX.
+        )
+    )
+)
 
 if "%DEBUG_MODE%"=="1" (
     echo        [DEBUG MODE] Console window will be visible
-    python -c "content=open('overmax.spec').read();open('overmax_debug.spec','w').write(content.replace('console=False','console=True'))"
-    python -m PyInstaller overmax_debug.spec --noconfirm
+    "%PYTHON_EXE%" -c "content=open('overmax.spec').read();open('overmax_debug.spec','w').write(content.replace('console=False','console=True'))"
+    "%PYTHON_EXE%" -m PyInstaller overmax_debug.spec --noconfirm %UPX_CMD%
     del overmax_debug.spec
 ) else (
-    python -m PyInstaller overmax.spec --noconfirm
+    "%PYTHON_EXE%" -m PyInstaller overmax.spec --noconfirm %UPX_CMD%
 )
 
 if errorlevel 1 (
@@ -88,9 +137,9 @@ if errorlevel 1 (
 )
 
 :: --------------------------------------------------
-:: 6. Post-process
+:: 5. Post-process
 :: --------------------------------------------------
-echo [6/7] Post-processing...
+echo [5/6] Post-processing...
 
 if not exist "%DIST_DIR%\cache" mkdir "%DIST_DIR%\cache"
 
@@ -101,26 +150,12 @@ if exist "%PROJECT_DIR%settings.json" (
     echo        settings.json not found - defaults will be used
 )
 
-if exist "%PROJECT_DIR%cache\songs.json" (
-    copy /y "%PROJECT_DIR%cache\songs.json" "%DIST_DIR%\cache\songs.json" >nul
-    echo        songs.json included
-) else (
-    echo        songs.json not found - will download on first run
-)
-
-if exist "%PROJECT_DIR%cache\image_index.db" (
-    copy /y "%PROJECT_DIR%cache\image_index.db" "%DIST_DIR%\cache\image_index.db" >nul
-    echo        image_index.db included
-) else (
-    echo        image_index.db not found - will download on first run
-)
-
 copy /y "%PROJECT_DIR%README.md" "%DIST_DIR%\README.md" >nul
 
 :: --------------------------------------------------
-:: 7. Build Release Artifacts (overmax.zip + manifest)
+:: 6. Build Release Artifacts (overmax.zip + manifest)
 :: --------------------------------------------------
-echo [7/7] Building release artifacts...
+echo [6/6] Building release artifacts...
 set "ZIP_PATH=%PROJECT_DIR%dist\overmax.zip"
 set "MANIFEST_PATH=%PROJECT_DIR%dist\release_manifest.json"
 
@@ -134,7 +169,7 @@ echo        overmax.zip created
 for /f "usebackq delims=" %%h in (`powershell -NoProfile -Command "(Get-FileHash -Path '%ZIP_PATH%' -Algorithm SHA256).Hash.ToLower()"`) do set "ZIP_SHA256=%%h"
 if "%ZIP_SHA256%"=="" goto :package_error
 
-for /f "usebackq delims=" %%v in (`python -c "from core.version import APP_VERSION; print(APP_VERSION)"`) do set "APP_VERSION=%%v"
+for /f "usebackq delims=" %%v in (`%PYTHON_EXE% -c "from core.version import APP_VERSION; print(APP_VERSION)"`) do set "APP_VERSION=%%v"
 if "%APP_VERSION%"=="" goto :package_error
 
 powershell -NoProfile -Command "$manifest = @{ version = 'v%APP_VERSION%'; generated_at = (Get-Date).ToUniversalTime().ToString('o'); assets = @(@{ name = 'overmax.zip'; sha256 = '%ZIP_SHA256%' }) }; $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path '%MANIFEST_PATH%' -Encoding UTF8"

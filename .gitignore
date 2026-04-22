@@ -26,6 +26,7 @@ pip-wheel-metadata/
 
 # 가상환경
 .venv/
+.venv_build/
 venv/
 env/
 ENV/
@@ -63,6 +64,11 @@ cache/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# ---------------------------
+# 도구
+# ---------------------------
+tools/
 
 # ---------------------------
 # OS

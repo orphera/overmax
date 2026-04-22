@@ -22,7 +22,7 @@ from typing import Optional
 
 from data.varchive import VArchiveDB, DIFFICULTIES
 from data.record_db import RecordDB
-from constants import SC_GROUP, NHM_GROUP
+from constants import SC_GROUP, NHM_GROUP, DIFF_COLORS
 
 
 def _parse_floor_value(floor_name: Optional[str]) -> Optional[float]:

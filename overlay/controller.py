@@ -215,7 +215,7 @@ class OverlayController:
     def toggle_visibility(self):
         self.signals.visibility_toggle_requested.emit()
 
-    def run(self, debug_ctrl=None, recommend_ctrl=None):
+    def run(self, debug_ctrl=None):
         if not PYQT_AVAILABLE:
             print("[Overlay] PyQt6 없음, 콘솔 모드로 실행")
             import time

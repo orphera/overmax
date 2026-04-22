@@ -64,9 +64,9 @@ def _show_table(db: ImageDB) -> None:
         print("[CLI] 표시할 항목이 없습니다.")
         return
 
-    print("[id] song_id (has_orb)")
+    print("[id] song_id")
     for e in entries:
-        print(f"- {e['id']} {e['image_id']} (orb={e['has_orb']})")
+        print(f"- {e['id']} {e['image_id']}")
 
 
 def _show_entry(db: ImageDB) -> None:
@@ -87,7 +87,6 @@ def _show_entry(db: ImageDB) -> None:
     print(f"dhash={entry['dhash']}")
     print(f"ahash={entry['ahash']}")
     print(f"hog_size={entry['hog_size']} bytes")
-    print(f"has_orb={entry['has_orb']}, orb_size={entry['orb_size']} bytes")
 
 
 def _add_single_image(db: ImageDB) -> None:

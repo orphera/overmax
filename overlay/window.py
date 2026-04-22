@@ -21,7 +21,6 @@ try:
 except ImportError:
     PYQT_AVAILABLE = False
 
-import ctypes
 import win32gui
 from data.varchive import BUTTON_MODES
 from data.recommend import RecommendEntry

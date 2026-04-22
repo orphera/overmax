@@ -13,9 +13,6 @@ import numpy as np
 @dataclass
 class _CachedEntry:
     image_id: str
-    phash: str        # DB 원본 (register에서 저장용)
-    dhash: str
-    ahash: str
     phash_int: int    # 검색 시 XOR 연산용 — 로드 시점에 변환
     dhash_int: int
     ahash_int: int
@@ -364,7 +361,6 @@ def _make_entry(
 ) -> _CachedEntry:
     return _CachedEntry(
         image_id=image_id,
-        phash=ph, dhash=dh, ahash=ah,
         phash_int=int(ph, 16),
         dhash_int=int(dh, 16),
         ahash_int=int(ah, 16),
@@ -427,18 +423,6 @@ def _compute_hog(gray: np.ndarray) -> np.ndarray:
     if features is None:
         return np.zeros((1764,), dtype=np.float32)
     return features.reshape(-1).astype(np.float32)
-
-
-def _hash_dist(h1: int, h2: int) -> int:
-    """int로 변환된 hash 간 Hamming distance."""
-    return bin(h1 ^ h2).count("1")
-
-
-def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
-    denom = np.linalg.norm(a) * np.linalg.norm(b)
-    if denom == 0.0:
-        return 0.0
-    return float(np.dot(a, b) / denom)
 
 
 if __name__ == "__main__":

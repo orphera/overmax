@@ -26,12 +26,18 @@ from data.app_updater import (
     check_and_apply_update,
     cleanup_update_artifacts,
     consume_update_result,
+    peek_update_result,
     AppUpdateError,
     is_newer_version,
 )
 from core.version import APP_VERSION
 import runtime_patch
-from core.utils import show_error_message, show_info_message, check_environment
+from core.utils import (
+    ask_ok_cancel,
+    check_environment,
+    show_error_message,
+    show_info_message_timeout,
+)
 
 from constants import (
     WINDOW_TITLE,
@@ -72,7 +78,8 @@ class OvermaxApp:
         print("=" * 50)
 
         try:
-            self._notify_update_result()
+            if not self._notify_update_result():
+                return
             if not self._try_app_update():
                 return
             self._init_databases()
@@ -110,6 +117,7 @@ class OvermaxApp:
                 latest_release_url=latest_release_url,
                 fail_on_update_error=True,
                 log=print,
+                ask_before_update=self._ask_update_confirmation,
             )
         except AppUpdateError as e:
             msg = (
@@ -121,11 +129,19 @@ class OvermaxApp:
             show_error_message(msg)
             sys.exit(1)
 
-    def _notify_update_result(self):
-        cleanup_update_artifacts(runtime_patch.get_data_dir())
-        result = consume_update_result(runtime_patch.get_data_dir())
+    def _notify_update_result(self) -> bool:
+        app_dir = runtime_patch.get_data_dir()
+        pending = peek_update_result(app_dir)
+        if pending and pending.get("status") == "started":
+            msg = "다른 업데이트 작업이 진행 중입니다.\n\n업데이트 완료 후 Overmax가 자동으로 시작됩니다."
+            print(f"[Main] {msg}")
+            show_info_message_timeout(msg, title="Overmax Update", timeout_ms=2200)
+            return False
+
+        result = consume_update_result(app_dir)
+        cleanup_update_artifacts(app_dir)
         if not result:
-            return
+            return True
 
         status = result.get("status", "")
         from_ver = result.get("from", "unknown")
@@ -140,11 +156,9 @@ class OvermaxApp:
                 )
                 print(f"[Main] {msg}")
                 show_error_message(msg, title="Overmax Update Error")
-                return
-            msg = f"자동 패치가 완료되었습니다.\n\n{from_ver} -> {to_ver}"
-            print(f"[Main] {msg}")
-            show_info_message(msg, title="Overmax Update")
-            return
+                return True
+            print(f"[Main] 자동 패치 완료: {from_ver} -> {to_ver}")
+            return True
 
         reason = result.get("reason", "unknown")
         msg = (
@@ -154,6 +168,16 @@ class OvermaxApp:
         )
         print(f"[Main] {msg}")
         show_error_message(msg, title="Overmax Update Error")
+        return True
+
+    def _ask_update_confirmation(self, current_version: str, latest_tag: str) -> bool:
+        msg = (
+            "새 앱 업데이트가 있습니다.\n\n"
+            f"현재 버전: v{current_version}\n"
+            f"최신 버전: {latest_tag}\n\n"
+            "지금 업데이트를 진행할까요?"
+        )
+        return ask_ok_cancel(msg, title="Overmax Update")
 
     def _init_databases(self):
         self.varchive_db = VArchiveDB()

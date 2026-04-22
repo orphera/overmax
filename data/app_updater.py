@@ -38,6 +38,72 @@ class AppUpdateError(RuntimeError):
     """앱 자동패치 중 치명적인 오류."""
 
 
+class _UpdateStatusReporter:
+    def __init__(self):
+        self._app = None
+        self._window = None
+        self._label = None
+        self._available = False
+
+    def start(self, message: str):
+        if not self._ensure_window():
+            return
+        self.update(message)
+        self._window.show()
+        self._window.raise_()
+        self._window.activateWindow()
+        self.pump(120)
+
+    def update(self, message: str):
+        if not self._available:
+            return
+        self._label.setText(message)
+        self._window.adjustSize()
+        self.pump(80)
+
+    def close(self):
+        if not self._available:
+            return
+        try:
+            self._window.close()
+            self.pump(80)
+        except Exception:
+            pass
+
+    def pump(self, millis: int = 30):
+        if not self._available:
+            return
+        deadline = time.time() + max(0, millis) / 1000.0
+        while time.time() < deadline:
+            self._app.processEvents()
+            time.sleep(0.01)
+
+    def _ensure_window(self) -> bool:
+        if self._available:
+            return True
+        if os.name != "nt":
+            return False
+        try:
+            from PyQt6.QtCore import Qt
+            from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
+        except Exception:
+            return False
+
+        self._app = QApplication.instance() or QApplication([])
+        self._window = QWidget()
+        self._window.setWindowTitle("Overmax Update")
+        self._window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        self._window.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+        layout = QVBoxLayout(self._window)
+        layout.setContentsMargins(18, 14, 18, 14)
+        self._label = QLabel("")
+        self._label.setWordWrap(True)
+        layout.addWidget(self._label)
+        self._window.setMinimumWidth(360)
+        self._available = True
+        return True
+
+
 def check_and_apply_update(
     owner: str,
     repo: str,
@@ -47,6 +113,7 @@ def check_and_apply_update(
     latest_release_url: Optional[str] = None,
     fail_on_update_error: bool = False,
     log: Optional[Callable[[str], None]] = None,
+    ask_before_update: Optional[Callable[[str, str], bool]] = None,
 ) -> bool:
     """최신 릴리즈 확인 후 업데이트를 시작한다."""
     _log = log or print
@@ -72,6 +139,10 @@ def check_and_apply_update(
         return True
 
     _log(f"[AppUpdater] 새 버전 감지: {current_version} -> {latest_tag}")
+    if ask_before_update and not ask_before_update(current_version, latest_tag):
+        _log("[AppUpdater] 사용자가 이번 실행의 자동 패치를 취소했습니다.")
+        return True
+
     zip_path, stage_dir = _prepare_update_paths(app_dir, asset_name)
     if not _download_and_verify(asset_url, manifest_url, asset_name, zip_path, _log):
         return _handle_update_failure(fail_on_update_error, "자동 패치 파일 다운로드/검증에 실패했습니다.", _log)
@@ -91,13 +162,25 @@ def check_and_apply_update(
 
 
 def consume_update_result(app_dir: Path) -> Optional[dict[str, str]]:
-    result_path = _result_path(app_dir)
-    if not result_path.exists():
+    result = _read_update_result(_result_path(app_dir))
+    if not result:
+        return None
+    if result.get("status") != "started":
+        _result_path(app_dir).unlink(missing_ok=True)
+    return result
+
+
+def peek_update_result(app_dir: Path) -> Optional[dict[str, str]]:
+    return _read_update_result(_result_path(app_dir))
+
+
+def _read_update_result(path: Path) -> Optional[dict[str, str]]:
+    if not path.exists():
         return None
     try:
-        raw = result_path.read_text(encoding="utf-8")
+        raw = path.read_text(encoding="utf-8")
     except Exception:
-        result_path.unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
         return None
 
     result: dict[str, str] = {}
@@ -108,7 +191,6 @@ def consume_update_result(app_dir: Path) -> Optional[dict[str, str]]:
         key, value = line.split("=", 1)
         result[key.strip()] = value.strip()
 
-    result_path.unlink(missing_ok=True)
     return result or None
 
 
@@ -127,25 +209,41 @@ def run_update_worker(argv: list[str], log: Optional[Callable[[str], None]] = No
     app_dir = Path(args.app_dir).resolve()
     payload_dir = Path(args.payload_dir).resolve()
     result_path = _result_path(app_dir)
-
-    _write_result(result_path, status="started", from_ver=args.from_version, to_ver=args.to_version)
-    if not _wait_for_process_exit(args.parent_pid, _UPDATE_WAIT_TIMEOUT):
-        _write_result(result_path, status="failed", from_ver=args.from_version, to_ver=args.to_version, reason="wait_timeout")
-        return 1
-
+    status = _UpdateStatusReporter()
+    status.start("업데이트를 시작합니다.")
     try:
-        _apply_payload(app_dir, payload_dir)
-    except Exception as e:
-        _log(f"[AppUpdaterWorker] 복사 실패: {e}")
-        _write_result(result_path, status="failed", from_ver=args.from_version, to_ver=args.to_version, reason="copy_failed")
-        return 1
+        _write_result(result_path, status="started", from_ver=args.from_version, to_ver=args.to_version)
+        status.update("Overmax 종료를 기다리는 중입니다...")
+        if not _wait_for_process_exit(args.parent_pid, _UPDATE_WAIT_TIMEOUT, on_tick=status.pump):
+            _write_result(result_path, status="failed", from_ver=args.from_version, to_ver=args.to_version, reason="wait_timeout")
+            status.update("업데이트 실패: 앱 종료 대기 시간이 초과되었습니다.")
+            status.pump(1200)
+            return 1
 
-    _write_result(result_path, status="success", from_ver=args.from_version, to_ver=args.to_version)
-    _write_applied_tag(app_dir, args.to_version)
-    if not _restart_app(app_dir):
-        _write_result(result_path, status="failed", from_ver=args.from_version, to_ver=args.to_version, reason="restart_failed")
-        return 1
-    return 0
+        status.update("업데이트 파일을 적용하는 중입니다...")
+        try:
+            _apply_payload(app_dir, payload_dir)
+        except Exception as e:
+            _log(f"[AppUpdaterWorker] 복사 실패: {e}")
+            _write_result(result_path, status="failed", from_ver=args.from_version, to_ver=args.to_version, reason="copy_failed")
+            status.update("업데이트 실패: 파일 복사 중 오류가 발생했습니다.")
+            status.pump(1200)
+            return 1
+
+        _write_result(result_path, status="success", from_ver=args.from_version, to_ver=args.to_version)
+        _write_applied_tag(app_dir, args.to_version)
+        status.update(
+            f"업데이트 완료\n\n{args.from_version} -> {args.to_version}\n\n잠시 후 Overmax를 다시 실행합니다..."
+        )
+        status.pump(900)
+        if not _restart_app(app_dir):
+            _write_result(result_path, status="failed", from_ver=args.from_version, to_ver=args.to_version, reason="restart_failed")
+            status.update("업데이트 완료 후 재실행에 실패했습니다.")
+            status.pump(1200)
+            return 1
+        return 0
+    finally:
+        status.close()
 
 
 def _parse_worker_args(argv: list[str]) -> argparse.Namespace:
@@ -195,9 +293,18 @@ def _restart_app(app_dir: Path) -> bool:
         return False
 
 
-def _wait_for_process_exit(pid: int, timeout_sec: float) -> bool:
+def _wait_for_process_exit(
+    pid: int,
+    timeout_sec: float,
+    on_tick: Optional[Callable[[int], None]] = None,
+) -> bool:
     deadline = time.time() + timeout_sec
     while time.time() < deadline:
+        if on_tick:
+            try:
+                on_tick(50)
+            except Exception:
+                pass
         if not _is_process_running(pid):
             return True
         time.sleep(1.0)

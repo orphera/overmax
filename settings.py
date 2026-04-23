@@ -14,6 +14,9 @@ from typing import Any
 import runtime_patch
 
 
+ALLOWED_SCALES = [0.75, 1.0, 1.25, 1.5]
+
+
 DEFAULT_SETTINGS: dict[str, Any] = {
     "window_tracker": {
         "window_title": "DJMAX RESPECT V",
@@ -133,7 +136,52 @@ def _init_settings() -> tuple[dict[str, Any], dict[str, Any], Path]:
     final_settings = copy.deepcopy(base_settings)
     _merge_dict(final_settings, _load_json(user_settings_path))
 
+    # 3. Normalization
+    _normalize_dict(final_settings)
+
     return final_settings, base_settings, user_settings_path
+
+
+def _normalize_dict(settings: dict[str, Any]):
+    """설정값이 유효한 범위를 벗어나지 않도록 조정한다."""
+    # Overlay Scale - 가장 가까운 프리셋으로 스냅
+    overlay = settings.get("overlay", {})
+    if "scale" in overlay:
+        try:
+            val = float(overlay["scale"])
+            overlay["scale"] = min(ALLOWED_SCALES, key=lambda x: abs(x - val))
+        except (ValueError, TypeError):
+            overlay["scale"] = 1.0
+
+    # Overlay Opacity - 0.1 ~ 1.0 범위로 클램프
+    if "base_opacity" in overlay:
+        try:
+            val = float(overlay["base_opacity"])
+            overlay["base_opacity"] = max(0.1, min(1.0, val))
+        except (ValueError, TypeError):
+            overlay["base_opacity"] = 0.8
+
+    # 성능 관련 간격 설정 - 최소 0.05초 보장
+    for section, key in [
+        ("window_tracker", "poll_interval_sec"),
+        ("screen_capture", "ocr_interval_sec"),
+        ("jacket_matcher", "match_interval_sec"),
+    ]:
+        if section in settings and key in settings[section]:
+            try:
+                val = float(settings[section][key])
+                settings[section][key] = max(0.05, val)
+            except (ValueError, TypeError):
+                pass
+
+    # 유사도 임계값 - 0.0 ~ 1.0 범위
+    jacket = settings.get("jacket_matcher", {})
+    if "similarity_threshold" in jacket:
+        try:
+            val = float(jacket["similarity_threshold"])
+            jacket["similarity_threshold"] = max(0.0, min(1.0, val))
+        except (ValueError, TypeError):
+            jacket["similarity_threshold"] = 0.6
 
 
 SETTINGS, BASE_SETTINGS, USER_SETTINGS_PATH = _init_settings()
@@ -142,6 +190,7 @@ SETTINGS, BASE_SETTINGS, USER_SETTINGS_PATH = _init_settings()
 def save_settings():
     """BASE_SETTINGS와 비교하여 변경된 부분만 settings.user.json에 저장한다."""
     try:
+        _normalize_dict(SETTINGS)
         user_diff = _diff_dict(BASE_SETTINGS, SETTINGS)
 
         USER_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)

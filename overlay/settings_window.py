@@ -19,15 +19,10 @@ from PyQt6.QtWidgets import (
 from settings import SETTINGS, save_settings
 from data.steam_session import get_all_steam_sessions, mask_steam_id, get_most_recent_steam_id
 from core.version import APP_VERSION
+from constants import SCALE_PRESETS
 
 
-# 프리셋 정의 — 레이블과 scale 값만. 수치는 UI에 노출하지 않는다.
-_SCALE_PRESETS: list[tuple[str, float]] = [
-    ("Small",  0.75),
-    ("Normal", 1.0),
-    ("Large",  1.25),
-    ("XL",     1.5),
-]
+
 
 
 class SettingsWindow(QWidget):
@@ -404,7 +399,7 @@ class SettingsWindow(QWidget):
         self._scale_btn_group = QButtonGroup(self)
         self._scale_btn_group.setExclusive(True)
 
-        for label, scale_val in _SCALE_PRESETS:
+        for label, scale_val in SCALE_PRESETS:
             btn = QPushButton(label)
             btn.setCheckable(True)
             btn.setChecked(abs(scale_val - current_scale) < 0.01)

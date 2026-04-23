@@ -87,6 +87,15 @@ TOGGLE_HOTKEY = str(OVERLAY_SETTINGS["toggle_hotkey"])
 TRAY_TOOLTIP = str(OVERLAY_SETTINGS["tray_tooltip"])
 RECORD_DB_PATH = "cache/record.db"
 
+# 오버레이 크기 프리셋
+SCALE_PRESETS: list[tuple[str, float]] = [
+    ("Small", 0.75),
+    ("Normal", 1.0),
+    ("Large", 1.25),
+    ("XL", 1.5),
+]
+ALLOWED_SCALES = [p[1] for p in SCALE_PRESETS]
+
 # ------------------------------------------------------------------
 # 추천 시스템
 # ------------------------------------------------------------------

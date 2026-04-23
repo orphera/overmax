@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 from settings import SETTINGS, save_settings
-from data.steam_session import get_all_steam_sessions, mask_steam_id
+from data.steam_session import get_all_steam_sessions, mask_steam_id, get_most_recent_steam_id
 
 
 # 프리셋 정의 — 레이블과 scale 값만. 수치는 UI에 노출하지 않는다.
@@ -180,9 +180,18 @@ class SettingsWindow(QWidget):
         layout.setSpacing(15)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
+        desc_row = QHBoxLayout()
         desc = QLabel("Steam 계정별 V-Archive ID를 입력하세요.")
         desc.setStyleSheet("color: #8891A7; font-size: 12px; margin-bottom: 5px;")
-        layout.addWidget(desc)
+        desc_row.addWidget(desc)
+        desc_row.addStretch()
+        
+        auto_cb = QCheckBox("시작 시 자동 갱신")
+        auto_cb.setChecked(SETTINGS.get("varchive", {}).get("auto_refresh", False))
+        auto_cb.setStyleSheet("color: #00D4FF; font-size: 11px;")
+        auto_cb.toggled.connect(self._on_auto_refresh_toggled)
+        desc_row.addWidget(auto_cb)
+        layout.addLayout(desc_row)
 
         sessions = get_all_steam_sessions()
         if not sessions:
@@ -196,22 +205,28 @@ class SettingsWindow(QWidget):
             SETTINGS["varchive"]["user_map"] = {}
 
         user_map = SETTINGS["varchive"]["user_map"]
+        current_sid = get_most_recent_steam_id()
 
         for s in sessions:
+            is_current = (s.steam_id == current_sid)
             row = QFrame()
-            row.setStyleSheet("""
-                QFrame {
+            border_color = "rgb(0, 212, 255)" if is_current else "rgb(40, 50, 80)"
+            row.setStyleSheet(f"""
+                QFrame {{
                     background: rgb(30, 40, 62);
                     border-radius: 8px;
-                    border: 1px solid rgb(40, 50, 80);
-                }
+                    border: 1px solid {border_color};
+                }}
             """)
             row_layout = QVBoxLayout(row)
             
             # 상단: 계정 정보
             info_row = QHBoxLayout()
-            name_label = QLabel(f"{s.persona_name} ({mask_steam_id(s.steam_id)})")
-            name_label.setStyleSheet("font-weight: bold; border: none;")
+            label_text = f"{s.persona_name} ({s.account_name})"
+            if is_current:
+                label_text += " [Current]"
+            name_label = QLabel(label_text)
+            name_label.setStyleSheet(f"font-weight: bold; border: none; color: {'#00D4FF' if is_current else '#F0F4FF'};")
             info_row.addWidget(name_label)
             info_row.addStretch()
             row_layout.addLayout(info_row)
@@ -263,6 +278,12 @@ class SettingsWindow(QWidget):
 
     def _on_v_id_changed(self, steam_id: str, v_id: str):
         SETTINGS["varchive"]["user_map"][steam_id] = v_id.strip()
+        save_settings()
+
+    def _on_auto_refresh_toggled(self, checked: bool):
+        if "varchive" not in SETTINGS:
+            SETTINGS["varchive"] = {}
+        SETTINGS["varchive"]["auto_refresh"] = checked
         save_settings()
 
     def _fetch_btn_style(self, is_all=False) -> str:

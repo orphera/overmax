@@ -262,7 +262,25 @@ class OverlayController:
         self._restore_window_position()
         self._setup_debug(debug_ctrl)
         self._setup_tray_icon()
+        
+        # 시작 시 자동 갱신
+        self._handle_auto_refresh()
+        
         self._app.exec()
+
+    def _handle_auto_refresh(self):
+        if not SETTINGS.get("varchive", {}).get("auto_refresh", False):
+            return
+        
+        from data.steam_session import get_most_recent_steam_id
+        sid = get_most_recent_steam_id()
+        if not sid:
+            return
+            
+        v_id = SETTINGS.get("varchive", {}).get("user_map", {}).get(sid)
+        if v_id:
+            self.log(f"자동 갱신 시작 (SteamID: {sid}, V-ID: {v_id})")
+            self._on_fetch_varchive(sid, v_id, 0) # 0 for all buttons
 
     def _restore_window_position(self):
         if self._window is None or self._app is None:

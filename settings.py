@@ -61,6 +61,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "latest_release_url": "",
     },
     "varchive": {
+        "auto_refresh": False,
         "songs_api_url": "https://v-archive.net/db/v2/songs.json",
         "cache_path": "cache/songs.json",
         "cache_ttl_sec": 86400,

@@ -6,6 +6,10 @@ from PyQt6.QtGui import QColor, QPainter, QFont, QBrush, QPen
 from data.varchive import DIFFICULTIES, DIFF_COLORS
 
 
+def _s(base: int, scale: float) -> int:
+    return max(1, round(base * scale))
+
+
 class DiffTab(QFrame):
     """세로 탭 하나 — 난이도 레이블 + floor 힌트."""
 
@@ -13,33 +17,35 @@ class DiffTab(QFrame):
     _INACTIVE_BG = "rgb(28, 36, 54)"
     _DIM_BG      = "rgb(20, 26, 40)"
 
-    def __init__(self, diff: str, parent=None):
+    def __init__(self, diff: str, scale: float = 1.0, parent=None):
         super().__init__(parent)
         self.diff = diff
         self._floor_name: Optional[str] = None
         self._active = False
         self._exists = False
+        self._scale = scale
 
-        self.setFixedSize(52, 46)
+        self.setFixedSize(_s(52, scale), _s(46, scale))
         self._build_ui()
 
     def _build_ui(self):
+        sc = self._scale
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 6, 0, 6)
-        layout.setSpacing(2)
+        layout.setContentsMargins(0, _s(6, sc), 0, _s(6, sc))
+        layout.setSpacing(_s(2, sc))
 
         color = DIFF_COLORS.get(self.diff, "#FFFFFF")
         self._diff_label = QLabel(self.diff)
         self._diff_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._diff_label.setStyleSheet(
-            f"color: {color}; font-size: 11px; font-weight: 700; background: transparent;"
+            f"color: {color}; font-size: {_s(11, sc)}px; font-weight: 700; background: transparent;"
         )
         layout.addWidget(self._diff_label)
 
         self._floor_label = QLabel("—")
         self._floor_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._floor_label.setStyleSheet(
-            "color: #8891A7; font-size: 10px; font-weight: 600; background: transparent;"
+            f"color: #8891A7; font-size: {_s(10, sc)}px; font-weight: 600; background: transparent;"
         )
         layout.addWidget(self._floor_label)
 
@@ -48,10 +54,11 @@ class DiffTab(QFrame):
         self._floor_name = floor_name
         display = floor_name if floor_name else (f"Lv{level}" if level else "—")
         self._floor_label.setText(display)
+        sc = self._scale
         self._floor_label.setStyleSheet(
-            "color: #B4CBFF; font-size: 10px; font-weight: 600; background: transparent;"
+            f"color: #B4CBFF; font-size: {_s(10, sc)}px; font-weight: 600; background: transparent;"
             if self._active else
-            "color: #8891A7; font-size: 10px; font-weight: 600; background: transparent;"
+            f"color: #8891A7; font-size: {_s(10, sc)}px; font-weight: 600; background: transparent;"
         )
         self._update_style()
 
@@ -63,9 +70,10 @@ class DiffTab(QFrame):
 
     def set_active(self, active: bool):
         self._active = active
+        sc = self._scale
         color = "#B4CBFF" if active else ("#8891A7" if self._exists else "#505870")
         self._floor_label.setStyleSheet(
-            f"color: {color}; font-size: 10px; font-weight: 600; background: transparent;"
+            f"color: {color}; font-size: {_s(10, sc)}px; font-weight: 600; background: transparent;"
         )
         self._update_style()
 
@@ -76,11 +84,7 @@ class DiffTab(QFrame):
             bg = self._ACTIVE_BG
         else:
             bg = self._INACTIVE_BG
-
-        radius_side = "border-radius: 6px;" if self._active else "border-radius: 6px;"
-        self.setStyleSheet(
-            f"DiffTab {{ background: {bg}; {radius_side} }}"
-        )
+        self.setStyleSheet(f"DiffTab {{ background: {bg}; border-radius: {_s(6, self._scale)}px; }}")
 
 
 class VerticalTabPanel(QWidget):
@@ -88,24 +92,26 @@ class VerticalTabPanel(QWidget):
 
     tab_clicked = pyqtSignal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
+        self._scale = scale
         self._tabs: dict[str, DiffTab] = {}
         self._build_ui()
 
     def _build_ui(self):
+        sc = self._scale
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 6, 0, 6)
-        layout.setSpacing(4)
+        layout.setContentsMargins(0, _s(6, sc), 0, _s(6, sc))
+        layout.setSpacing(_s(4, sc))
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         for diff in DIFFICULTIES:
-            tab = DiffTab(diff)
+            tab = DiffTab(diff, scale=sc)
             self._tabs[diff] = tab
             layout.addWidget(tab)
 
         layout.addStretch()
-        self.setFixedWidth(52)
+        self.setFixedWidth(_s(52, sc))
         self.setStyleSheet("background: transparent;")
 
     def update_patterns(self, patterns: list[dict]):

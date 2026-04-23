@@ -22,7 +22,6 @@ from overlay.ui.navigation import RoiOverlayWindow
 from overlay.window import OverlaySignals, OverlayWindow
 from overlay.settings_window import SettingsWindow
 
-
 from constants import (
     TOGGLE_HOTKEY,
     TRAY_TOOLTIP,
@@ -87,7 +86,7 @@ class OverlayController:
 
         self._update_internal_state(state)
         song_name, all_patterns, recommendations = self._fetch_ui_data()
-        
+
         self._emit_update_signals(song_changed, mode_diff_changed, song_name, all_patterns, recommendations)
 
     def _check_and_emit_status(self, is_stable: bool):
@@ -125,14 +124,14 @@ class OverlayController:
         for mode in BUTTON_MODES:
             pts = self.db.format_pattern_info(song, mode)
             all_patterns.append({"mode": mode, "patterns": pts})
-        
+
         if self._current_mode and self._current_diff:
             recommendations = self.recommender.recommend(
                 song_id=self._song_id,
                 button_mode=self._current_mode,
-                difficulty=self._current_diff
+                difficulty=self._current_diff,
             )
-            
+
         return song_name, all_patterns, recommendations
 
     def _emit_update_signals(self, song_changed: bool, mode_diff_changed: bool, song_name: str, all_patterns: list, recommendations: list):
@@ -144,8 +143,8 @@ class OverlayController:
 
         if mode_diff_changed:
             self.signals.mode_diff_changed.emit(
-                self._current_mode or "", 
-                self._current_diff or ""
+                self._current_mode or "",
+                self._current_diff or "",
             )
 
         if song_changed or mode_diff_changed:
@@ -218,6 +217,7 @@ class OverlayController:
         self._settings_window = SettingsWindow()
         self._settings_window.hide()
         self._settings_window.opacity_changed.connect(self._window.update_base_opacity)
+        self._settings_window.scale_changed.connect(self.signals.scale_changed)
         self.signals.settings_requested.connect(self._settings_window.show_window)
 
         self._roi_window = RoiOverlayWindow()

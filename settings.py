@@ -42,6 +42,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "tray_tooltip": "Overmax - DJMAX Respect V 난이도 오버레이",
         "hint_label": "F3: 표시/숨김  |  드래그로 위치 이동",
         "base_opacity": 0.8,
+        "scale": 1.0,
         "position": {"x": 0, "y": 0},
     },
     "jacket_matcher": {
@@ -122,15 +123,15 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 def _init_settings() -> tuple[dict[str, Any], dict[str, Any], Path]:
     settings_path, user_settings_path = _get_settings_paths()
-    
+
     # 1. Base = DEFAULT + settings.json
     base_settings = copy.deepcopy(DEFAULT_SETTINGS)
     _merge_dict(base_settings, _load_json(settings_path))
-    
+
     # 2. Final = Base + settings.user.json
     final_settings = copy.deepcopy(base_settings)
     _merge_dict(final_settings, _load_json(user_settings_path))
-    
+
     return final_settings, base_settings, user_settings_path
 
 
@@ -141,7 +142,7 @@ def save_settings():
     """BASE_SETTINGS와 비교하여 변경된 부분만 settings.user.json에 저장한다."""
     try:
         user_diff = _diff_dict(BASE_SETTINGS, SETTINGS)
-        
+
         USER_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
         with open(USER_SETTINGS_PATH, "w", encoding="utf-8") as f:
             json.dump(user_diff, f, ensure_ascii=False, indent=2)

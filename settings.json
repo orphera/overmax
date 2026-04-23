@@ -25,7 +25,8 @@
     "toggle_hotkey": "F3",
     "tray_tooltip": "Overmax - DJMAX Respect V 난이도 오버레이",
     "hint_label": "F3: 표시/숨김  |  드래그로 위치 이동",
-    "base_opacity": 0.8
+    "base_opacity": 0.8,
+    "scale": 1.0
   },
   "jacket_matcher": {
     "db_path": "cache/image_index.db",

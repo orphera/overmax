@@ -18,6 +18,8 @@ from core.global_hotkey import GlobalHotkey
 from overlay.debug_window import DebugController
 from detection.image_db import ImageDB
 from data.record_db import RecordDB
+from data.varchive_client import VArchiveRecordClient
+from data.record_manager import RecordManager
 from settings import SETTINGS
 from data.steam_session import get_most_recent_steam_id
 from core.game_state import GameSessionState
@@ -63,6 +65,8 @@ class OvermaxApp:
         self.varchive_db: Optional[VArchiveDB] = None
         self.image_db: Optional[ImageDB] = None
         self.record_db: Optional[RecordDB] = None
+        self.varchive_client: Optional[VArchiveRecordClient] = None
+        self.record_manager: Optional[RecordManager] = None
         self.debug_ctrl: Optional[DebugController] = None
         self.overlay_ctrl: Optional[OverlayController] = None
         self.tracker: Optional[WindowTracker] = None
@@ -207,18 +211,29 @@ class OvermaxApp:
             self.image_db = None
 
         self.record_db = RecordDB(db_path=RECORD_DB_PATH, steam_id=get_most_recent_steam_id())
-        if self.record_db.initialize():
-            stats = self.record_db.stats()
-            print(f"[Main] RecordDB 준비 완료: {stats.get('total', 0)}개 레코드 (steam_id={stats.get('steam_id', 'unknown')})")
+        self.varchive_client = VArchiveRecordClient()
+        self.record_manager = RecordManager(self.record_db, self.varchive_client)
+
+        if self.record_manager.initialize():
+            stats = self.record_manager.stats()
+            print(f"[Main] RecordDB & Manager 준비 완료: {stats.get('total', 0)}개 레코드 (steam_id={stats.get('steam_id', 'unknown')})")
         else:
             print("[Main] RecordDB 초기화 실패 - 기록 수집 비활성")
-            self.record_db = None
+            self.record_manager = None
 
     def _init_components(self):
         self.debug_ctrl = DebugController()
-        self.overlay_ctrl = OverlayController(self.varchive_db, self.record_db)
+        self.overlay_ctrl = OverlayController(
+            self.varchive_db, 
+            self.record_manager,
+            varchive_client=self.varchive_client
+        )
         self.tracker = WindowTracker()
-        self.capture = ScreenCapture(self.tracker, image_db=self.image_db, record_db=self.record_db)
+        self.capture = ScreenCapture(
+            self.tracker, 
+            image_db=self.image_db, 
+            record_db=self.record_manager
+        )
         self.hotkey = GlobalHotkey()
 
     def _bind_events(self):
@@ -232,7 +247,7 @@ class OvermaxApp:
         self.capture.on_debug_log = self.debug_ctrl.log
         self.overlay_ctrl._debug_log_cb = self.debug_ctrl.log
 
-        if self.record_db:
+        if self.record_manager:
             self.capture.on_record_updated = self.overlay_ctrl.notify_record_updated
 
         self.hotkey.register(TOGGLE_HOTKEY, self.overlay_ctrl.toggle_visibility)
@@ -266,9 +281,9 @@ class OvermaxApp:
     # --- Callbacks ---
 
     def _refresh_steam_session(self, reason: str):
-        if not self.record_db:
+        if not self.record_manager:
             return
-        changed, before_sid, after_sid = self.record_db.set_steam_id(get_most_recent_steam_id())
+        changed, before_sid, after_sid = self.record_manager.set_steam_id(get_most_recent_steam_id())
         if changed:
             self.debug_ctrl.log(f"[Main] Steam 세션 갱신 ({reason}): {before_sid} -> {after_sid}")
             self.overlay_ctrl.notify_record_updated()

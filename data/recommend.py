@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from data.varchive import VArchiveDB, DIFFICULTIES
-from data.record_db import RecordDB
+from data.record_manager import RecordManager
 from constants import SC_GROUP, NHM_GROUP, DIFF_COLORS
 
 
@@ -67,7 +67,7 @@ class RecommendEntry:
 
 
 class Recommender:
-    def __init__(self, varchive_db: VArchiveDB, record_db: RecordDB):
+    def __init__(self, varchive_db: VArchiveDB, record_db: RecordManager):
         self.vdb = varchive_db
         self.rdb = record_db
 

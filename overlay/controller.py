@@ -2,6 +2,7 @@
 
 import json
 import sys
+import threading
 from typing import Optional
 
 from settings import SETTINGS
@@ -16,7 +17,7 @@ except ImportError:
 
 from data.varchive import VArchiveDB, BUTTON_MODES
 from data.recommend import Recommender
-from data.record_db import RecordDB
+from data.varchive_client import VArchiveRecordClient
 from core.game_state import GameSessionState
 from overlay.ui.navigation import RoiOverlayWindow
 from overlay.window import OverlaySignals, OverlayWindow
@@ -29,9 +30,10 @@ from constants import (
 
 
 class OverlayController:
-    def __init__(self, db: VArchiveDB, record_db: RecordDB):
+    def __init__(self, db: VArchiveDB, record_db, varchive_client: Optional[VArchiveRecordClient] = None):
         self.db = db
         self.record_db = record_db
+        self.varchive_client = varchive_client
         self.recommender = Recommender(db, record_db)
         self.signals = OverlaySignals()
         self._app: Optional[QApplication] = None
@@ -199,6 +201,37 @@ class OverlayController:
     def toggle_visibility(self):
         self.signals.visibility_toggle_requested.emit()
 
+    def _on_fetch_varchive(self, steam_id: str, v_id: str, button: int):
+        if not self.varchive_client:
+            self.log("VArchiveClient가 초기화되지 않았습니다.")
+            return
+
+        if not v_id:
+            self.log("V-Archive ID가 입력되지 않았습니다.")
+            return
+
+        def work():
+            buttons = [4, 5, 6, 8] if button == 0 else [button]
+            success_count = 0
+            for b in buttons:
+                self.log(f"V-Archive 기록 요청 중: {v_id} ({b}B)")
+                data = self.varchive_client.fetch_records(v_id, b)
+                if data:
+                    self.varchive_client.save_to_cache(steam_id, v_id, b, data)
+                    success_count += 1
+                else:
+                    self.log(f"V-Archive {b}B 기록 요청 실패")
+            
+            if success_count > 0:
+                self.log(f"V-Archive 기록 {success_count}개 모드 갱신 완료")
+                # RecordManager에게 캐시 다시 읽으라고 알림
+                if hasattr(self.record_db, "refresh"):
+                    self.record_db.refresh()
+                
+                self.notify_record_updated()
+
+        threading.Thread(target=work, daemon=True).start()
+
     def run(self, debug_ctrl=None):
         if not PYQT_AVAILABLE:
             print("[Overlay] PyQt6 없음, 콘솔 모드로 실행")
@@ -218,6 +251,7 @@ class OverlayController:
         self._settings_window.hide()
         self._settings_window.opacity_changed.connect(self._window.update_base_opacity)
         self._settings_window.scale_changed.connect(self.signals.scale_changed)
+        self._settings_window.fetch_varchive_requested.connect(self._on_fetch_varchive)
         self.signals.settings_requested.connect(self._settings_window.show_window)
 
         self._roi_window = RoiOverlayWindow()

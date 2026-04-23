@@ -1,5 +1,7 @@
 """PyQt6 settings window with Overlay-like style."""
 
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint
+from PyQt6.QtGui import QColor, QPainter, QBrush
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -11,11 +13,11 @@ from PyQt6.QtWidgets import (
     QFrame,
     QButtonGroup,
     QCheckBox,
+    QLineEdit,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint
-from PyQt6.QtGui import QColor, QPainter, QBrush
 
 from settings import SETTINGS, save_settings
+from data.steam_session import get_all_steam_sessions, mask_steam_id
 
 
 # 프리셋 정의 — 레이블과 scale 값만. 수치는 UI에 노출하지 않는다.
@@ -32,6 +34,7 @@ class SettingsWindow(QWidget):
 
     opacity_changed = pyqtSignal(float)
     scale_changed   = pyqtSignal(float)
+    fetch_varchive_requested = pyqtSignal(str, str, int)  # steam_id, v_id, button (0 for all)
 
     def __init__(self):
         super().__init__()
@@ -106,6 +109,7 @@ class SettingsWindow(QWidget):
         """)
 
         self.tabs.addTab(self._build_ui_tab(), "UI")
+        self.tabs.addTab(self._build_varchive_tab(), "V-Archive")
         self.tabs.addTab(self._build_system_tab(), "System")
         content_layout.addWidget(self.tabs)
         layout.addLayout(content_layout)
@@ -167,6 +171,116 @@ class SettingsWindow(QWidget):
         layout.addWidget(self._build_scale_row())
 
         return tab
+
+    def _build_varchive_tab(self) -> QWidget:
+        tab = QWidget()
+        tab.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(15, 20, 15, 20)
+        layout.setSpacing(15)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        desc = QLabel("Steam 계정별 V-Archive ID를 입력하세요.")
+        desc.setStyleSheet("color: #8891A7; font-size: 12px; margin-bottom: 5px;")
+        layout.addWidget(desc)
+
+        sessions = get_all_steam_sessions()
+        if not sessions:
+            layout.addWidget(QLabel("발견된 Steam 계정이 없습니다."))
+            return tab
+
+        # varchive settings 초기화
+        if "varchive" not in SETTINGS:
+            SETTINGS["varchive"] = {}
+        if "user_map" not in SETTINGS["varchive"]:
+            SETTINGS["varchive"]["user_map"] = {}
+
+        user_map = SETTINGS["varchive"]["user_map"]
+
+        for s in sessions:
+            row = QFrame()
+            row.setStyleSheet("""
+                QFrame {
+                    background: rgb(30, 40, 62);
+                    border-radius: 8px;
+                    border: 1px solid rgb(40, 50, 80);
+                }
+            """)
+            row_layout = QVBoxLayout(row)
+            
+            # 상단: 계정 정보
+            info_row = QHBoxLayout()
+            name_label = QLabel(f"{s.persona_name} ({mask_steam_id(s.steam_id)})")
+            name_label.setStyleSheet("font-weight: bold; border: none;")
+            info_row.addWidget(name_label)
+            info_row.addStretch()
+            row_layout.addLayout(info_row)
+
+            # 하단: 입력 및 버튼
+            input_row = QHBoxLayout()
+            
+            edit = QLineEdit()
+            edit.setPlaceholderText("V-Archive ID")
+            edit.setText(user_map.get(s.steam_id, ""))
+            edit.setStyleSheet("""
+                QLineEdit {
+                    background: rgb(24, 32, 50);
+                    border: 1px solid rgb(60, 75, 110);
+                    border-radius: 4px;
+                    color: #F0F4FF;
+                    padding: 4px 8px;
+                }
+            """)
+            edit.textChanged.connect(lambda text, sid=s.steam_id: self._on_v_id_changed(sid, text))
+            input_row.addWidget(edit, 3)
+
+            # 버튼들
+            btn_layout = QHBoxLayout()
+            btn_layout.setSpacing(4)
+            for b in [4, 5, 6, 8]:
+                btn = QPushButton(f"{b}B")
+                btn.setFixedSize(30, 24)
+                btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                btn.setStyleSheet(self._fetch_btn_style())
+                btn.clicked.connect(lambda _, sid=s.steam_id, vid_edit=edit, btn_val=b: 
+                                  self.fetch_varchive_requested.emit(sid, vid_edit.text().strip(), btn_val))
+                btn_layout.addWidget(btn)
+            
+            all_btn = QPushButton("All")
+            all_btn.setFixedSize(35, 24)
+            all_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            all_btn.setStyleSheet(self._fetch_btn_style(is_all=True))
+            all_btn.clicked.connect(lambda _, sid=s.steam_id, vid_edit=edit:
+                                   self.fetch_varchive_requested.emit(sid, vid_edit.text().strip(), 0))
+            btn_layout.addWidget(all_btn)
+            
+            input_row.addLayout(btn_layout, 2)
+            row_layout.addLayout(input_row)
+            
+            layout.addWidget(row)
+
+        return tab
+
+    def _on_v_id_changed(self, steam_id: str, v_id: str):
+        SETTINGS["varchive"]["user_map"][steam_id] = v_id.strip()
+        save_settings()
+
+    def _fetch_btn_style(self, is_all=False) -> str:
+        color = "#00D4FF" if not is_all else "#00FF88"
+        return f"""
+            QPushButton {{
+                background: rgb(40, 54, 84);
+                color: {color};
+                border: 1px solid rgb(60, 75, 110);
+                border-radius: 4px;
+                font-size: 10px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: {color};
+                color: rgb(18, 24, 38);
+            }}
+        """
 
     def _build_system_tab(self) -> QWidget:
         tab = QWidget()

@@ -154,6 +154,8 @@ Letterbox/Pillarbox 자동 보정 포함.
 
 # Next Focus
 
+1. **Max Combo, Perfect 수집** — Max Combo, Perfect 영역에 대한 이미지매칭 구현, DB 스키마 변경 필요, UI에도 보여주게 수정
+1. **V-Archive 갱신 후보 추출** — 후보 추출 하고 업데이트 하는 기능 구현
 1. **Rate OCR 좌표 비율 추가 지원** — 현재 16:9 비율만 지원
 1. **DLC 필터링** — 추천 목록에서 미보유 DLC 제외
 1. **버튼 모드/난이도 인식 보강** — 단순 픽셀 거리/밝기 외에 보조 알고리즘 검토

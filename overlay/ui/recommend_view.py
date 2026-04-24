@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QFrame, QLabel, QHBoxLayout
+from PyQt6.QtWidgets import QFrame, QLabel, QHBoxLayout, QWidget
 from PyQt6.QtCore import Qt
 
 from data.recommend import RecommendEntry
@@ -29,16 +29,7 @@ class PatternRow(QFrame):
         layout.setContentsMargins(_s(8, sc), 0, _s(8, sc), 0)
         layout.setSpacing(_s(8, sc))
 
-        # 난이도 뱃지
-        badge = QLabel(self.entry.difficulty)
-        badge.setFixedWidth(_s(28, sc))
-        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        color = DIFF_COLORS.get(self.entry.difficulty, "#FFFFFF")
-        badge.setStyleSheet(
-            f"background: {color}; color: #FFFFFF; font-size: {_s(10, sc)}px; "
-            f"font-weight: 700; border-radius: {_s(4, sc)}px; padding: 1px 0;"
-        )
-        layout.addWidget(badge)
+        layout.addWidget(self._create_diff_badge())
 
         # 곡명
         song_label = QLabel(self.entry.song_name)
@@ -54,25 +45,78 @@ class PatternRow(QFrame):
             pass
         layout.addWidget(song_label, 1)
 
-        # Rate
-        if self.entry.is_played:
-            text = f"{self.entry.rate:.2f}%"
-            if self.entry.is_perfect_play:
-                text += " (P)"
-            elif self.entry.is_max_combo_play:
-                text += " (M)"
-            rate_label = QLabel(text)
-            rate_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            rate_label.setStyleSheet(
-                f"color: {self._rate_color(self.entry.rate)}; "
-                f"font-size: {_s(11, sc)}px; font-weight: 700;"
-            )
-            layout.addWidget(rate_label)
-        else:
+        layout.addWidget(self._build_rate_widget())
+
+    def _create_diff_badge(self) -> QLabel:
+        sc = self._scale
+        badge = QLabel(self.entry.difficulty)
+        badge.setFixedWidth(_s(28, sc))
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        color = DIFF_COLORS.get(self.entry.difficulty, "#FFFFFF")
+        badge.setStyleSheet(
+            f"background: {color}; color: #FFFFFF; font-size: {_s(10, sc)}px; "
+            f"font-weight: 700; border-radius: {_s(4, sc)}px; padding: 1px 0;"
+        )
+        return badge
+
+    def _build_rate_widget(self) -> QWidget:
+        sc = self._scale
+        if not self.entry.is_played:
             dash = QLabel("——")
             dash.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             dash.setStyleSheet(f"color: #505870; font-size: {_s(11, sc)}px;")
-            layout.addWidget(dash)
+            return dash
+
+        wrapper = QWidget()
+        rate_layout = QHBoxLayout(wrapper)
+        rate_layout.setContentsMargins(0, 0, 0, 0)
+        rate_layout.setSpacing(_s(6, sc))
+
+        rate_label = QLabel(f"{self.entry.rate:.2f}%")
+        rate_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        rate_label.setStyleSheet(
+            f"color: {self._rate_color(self.entry.rate)}; "
+            f"font-size: {_s(11, sc)}px; font-weight: 700;"
+        )
+
+        status_badge = self._create_status_badge()
+        if status_badge:
+            rate_layout.addWidget(status_badge)
+
+        rate_layout.addWidget(rate_label)
+
+        return wrapper
+
+    def _create_status_badge(self) -> QLabel | None:
+        sc = self._scale
+        badge_text, badge_style = self._status_badge_info()
+        if not badge_text:
+            return None
+
+        diameter = _s(16, sc)
+        badge = QLabel(badge_text)
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge.setFixedSize(diameter, diameter)
+        badge.setStyleSheet(
+            "padding: 0;"
+            f"border-radius: {diameter // 2}px;"
+            "border: 1px solid rgba(255,255,255,0.22); "
+            f"font-size: {_s(9, sc)}px; font-weight: 800; color: #FFFFFF; {badge_style}"
+        )
+        return badge
+
+    def _status_badge_info(self) -> tuple[str, str]:
+        if self.entry.is_perfect_play:
+            return (
+                "P",
+                "background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #7E3CFF, stop:1 #FF2D8D);",
+            )
+        if self.entry.is_max_combo_play:
+            return (
+                "M",
+                "background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #30C8FF, stop:1 #7AF56A);",
+            )
+        return "", ""
 
     @staticmethod
     def _rate_color(rate: float) -> str:

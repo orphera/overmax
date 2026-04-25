@@ -49,8 +49,13 @@ class PatternRow(QFrame):
 
     def _create_diff_badge(self) -> QLabel:
         sc = self._scale
-        badge = QLabel(self.entry.difficulty)
-        badge.setFixedWidth(_s(28, sc))
+        badge = QLabel()
+        if self.entry.floor_name is None:
+            badge.setText(self.entry.difficulty)
+            badge.setFixedWidth(_s(28, sc))
+        else:
+            badge.setText(f"{self.entry.difficulty} {self.entry.level}")
+            badge.setFixedWidth(_s(36, sc))
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         color = DIFF_COLORS.get(self.entry.difficulty, "#FFFFFF")
         badge.setStyleSheet(

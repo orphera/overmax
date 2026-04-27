@@ -175,7 +175,6 @@ class ScreenCapture:
             return
 
         if is_leaving:
-            self.log("선곡 판정 하락 중 - 인식 skip")
             return
 
         self._update_song_id_from_jacket(full_frame, now)
@@ -236,8 +235,6 @@ class ScreenCapture:
         self._last_emitted_state = state
         if state.is_stable:
             self.log(f"상태 확정: {state}")
-        else:
-            self.log(f"상태 감지: {state}")
         if self.on_state_changed:
             self.on_state_changed(state)
 
@@ -249,7 +246,7 @@ class ScreenCapture:
 
         success = False
         if self.record_db is not None and self.record_db.is_ready and state.rate > 0.0:
-            self.log(f"기록 저장: {state.song_id}, {state.mode}, {state.diff}, {state.rate}, {state.is_max_combo}")
+            self.log(f"기록 저장: {state.song_id}, {state.mode}, {state.diff}, {state.rate}%, MaxCombo: {state.is_max_combo}")
             success = self.record_db.upsert(
                 state.song_id, 
                 state.mode, 

@@ -13,15 +13,12 @@ screen_capture.py - 화면 캡처 및 OCR 모듈
 import time
 import threading
 import asyncio
-from collections import deque
 import numpy as np
 from typing import Optional, Callable
 import mss
-import cv2
 from constants import (
     OCR_INTERVAL,
     IDLE_SLEEP_INTERVAL,
-    LOGO_OCR_KEYWORD,
     LOGO_OCR_COOLDOWN_SEC,
     FREESTYLE_HISTORY_SIZE,
     FREESTYLE_ON_RATIO,
@@ -33,7 +30,6 @@ from constants import (
     JACKET_CHANGE_THRESHOLD,
     JACKET_FORCE_RECHECK_SEC,
     MODE_DIFF_HISTORY,
-    RATE_OCR_INTERVAL,
 )
 from capture.roi_manager import ROIManager
 from capture.window_tracker import WindowTracker, WindowRect
@@ -46,6 +42,7 @@ from capture.helpers import (
     has_thumbnail_changed,
     make_thumbnail,
 )
+from capture.hysteresis import HysteresisBuffer
 
 
 class ScreenCapture:
@@ -82,7 +79,14 @@ class ScreenCapture:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._last_logo_ocr_ts = 0.0
         self._last_logo_ocr_ok = False
-        self._freestyle_history = deque(maxlen=max(1, FREESTYLE_HISTORY_SIZE))
+        
+        self._hysteresis = HysteresisBuffer(
+            history_size=FREESTYLE_HISTORY_SIZE,
+            on_ratio=FREESTYLE_ON_RATIO,
+            on_min_samples=FREESTYLE_ON_MIN_SAMPLES,
+            off_ratio=FREESTYLE_OFF_RATIO,
+            off_min_samples=FREESTYLE_OFF_MIN_SAMPLES
+        )
 
         self._current_song_id: Optional[int] = None
         self._last_jacket_ts = 0.0
@@ -269,42 +273,16 @@ class ScreenCapture:
         신뢰도는 히스테리시스 버퍼의 hit 비율로 정의된다.
         """
         logo_now = await self._detect_freestyle_logo(full_frame)
-        self._freestyle_history.append(logo_now)
-        sample_count = len(self._freestyle_history)
-        hit_count    = sum(1 for v in self._freestyle_history if v)
-        ratio        = (hit_count / sample_count) if sample_count > 0 else 0.0
-
-        if self._is_song_select:
-            should_turn_off = (
-                sample_count >= max(1, FREESTYLE_OFF_MIN_SAMPLES)
-                and ratio <= FREESTYLE_OFF_RATIO
-            )
-            is_song_select = not should_turn_off
-        else:
-            is_song_select = (
-                sample_count >= max(1, FREESTYLE_ON_MIN_SAMPLES)
-                and ratio >= FREESTYLE_ON_RATIO
-            )
-
-        is_leaving = False
-        if is_song_select and sample_count >= 4:
-            half = sample_count // 2
-            history_list = list(self._freestyle_history)
-            first_half_ratio  = sum(history_list[:half]) / half
-            second_half_ratio = sum(history_list[half:]) / (sample_count - half)
-            if second_half_ratio < first_half_ratio:
-                is_leaving = True
+        is_song_select, is_leaving, confidence = self._hysteresis.update(logo_now)
 
         if is_song_select != self._is_song_select or is_leaving != self._last_is_leaving:
             self.log(
-                f"선곡판정 버퍼: hit={hit_count}/{sample_count} "
-                f"(ratio={ratio:.2f}) -> {'선곡' if is_song_select else '기타화면'}"
+                f"선곡판정 버퍼: hit={self._hysteresis.hit_count}/{self._hysteresis.sample_count} "
+                f"(ratio={self._hysteresis.ratio:.2f}) -> {'선곡' if is_song_select else '기타화면'}"
                 + (f" [이탈중]" if is_leaving else "")
             )
             self._last_is_leaving = is_leaving
 
-        # 이탈 중이면 신뢰도를 감소 방향으로 보정 (부드러운 fade-out 효과)
-        confidence = ratio * (0.5 if is_leaving else 1.0)
         return is_song_select, is_leaving, confidence
 
     async def _detect_freestyle_logo(self, full_frame: np.ndarray) -> bool:
@@ -319,5 +297,4 @@ class ScreenCapture:
                 self.log(f"로고 OCR: '{text}' (norm='{normalized}') -> {is_detected}")
                 self._last_logo_detected_val = is_detected
         return self._last_logo_ocr_ok
-
 

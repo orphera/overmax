@@ -48,9 +48,9 @@ class RecommendEntry:
     button_mode: str
     difficulty:  str
     level:       Optional[int]
-    floor:       Optional[float]   # 비공식 난이도 수치 (floorName 파싱)
-    floor_name:  Optional[str]     # 표시용 문자열 ex) "15.2"
-    rate:        Optional[float]   # None = 미탐색
+    floor:       Optional[float]
+    floor_name:  Optional[str]
+    rate:        Optional[float]
     is_max_combo: bool = False
 
     @property
@@ -96,18 +96,7 @@ class Recommender:
         max_results: int = 6,
         same_mode_only: bool = True,
     ) -> RecommendResult:
-        """
-        현재 패턴과 floor가 유사한 패턴 목록 반환.
-
-        Args:
-            song_id:        현재 곡 ID
-            button_mode:    현재 버튼 모드 ex) "4B"
-            difficulty:     현재 난이도   ex) "SC"
-            floor_range:    ±이 범위 안의 floor만 포함 (기본 ±0.0)
-            max_results:    최대 반환 수
-            same_mode_only: True면 같은 button_mode 패턴만
-        """
-        # 1. 현재 패턴의 floor 파악
+        """현재 패턴과 floor가 유사한 패턴 목록 반환."""
         current_song = self.vdb.search_by_id(song_id)
         if not current_song:
             return RecommendResult.empty()
@@ -122,15 +111,53 @@ class Recommender:
 
         floor_name_ref = current_pattern.get("floorName")
         ref_floor      = _parse_floor_value(floor_name_ref)
-        use_official   = ref_floor is None   # floorName 없으면 공식 난이도 체계
+        use_official   = ref_floor is None
 
         if use_official:
             ref_floor    = float(current_pattern.get("level", 0))
             ref_diff_grp = _diff_group(difficulty)
+        else:
+            ref_diff_grp = ""
 
-        # 2. 후보 수집
-        modes_to_check = [button_mode] if same_mode_only else BUTTON_MODES
-        candidates: list[RecommendEntry] = []
+        # 1. 후보 수집
+        candidates = self._get_candidates(
+            song_id, button_mode, difficulty,
+            ref_floor, use_official, ref_diff_grp,
+            floor_range, same_mode_only
+        )
+
+        if not candidates:
+            return RecommendResult.empty()
+
+        # 2. RecordDB 레이트 병합
+        self._merge_record_rates(candidates)
+
+        # 3. 정렬 및 결과 반환
+        def sort_key(e: RecommendEntry) -> tuple:
+            if e.is_played:
+                return (0, e.rate, e.floor or 0.0)
+            else:
+                return (1, e.floor or 0.0, 0.0)
+
+        candidates.sort(key=sort_key)
+        avg_rate, count = _calc_avg_rate(candidates)
+        return RecommendResult(candidates[:max_results], avg_rate, count, len(candidates))
+
+    def _get_candidates(
+        self,
+        target_song_id: int,
+        target_mode: str,
+        target_diff: str,
+        ref_floor: float,
+        use_official: bool,
+        ref_diff_grp: str,
+        floor_range: float,
+        same_mode_only: bool
+    ) -> list[RecommendEntry]:
+        """주어진 조건에 맞는 추천 후보를 수집한다."""
+        from data.varchive import BUTTON_MODES
+        modes_to_check = [target_mode] if same_mode_only else BUTTON_MODES
+        candidates = []
 
         for song in self.vdb.songs:
             try:
@@ -146,29 +173,23 @@ class Recommender:
                     if not p:
                         continue
 
-                    # ── 난이도 체계 분기 ──────────────────────────
                     cand_floor_name = p.get("floorName")
-                    cand_floor      = _parse_floor_value(cand_floor_name)
+                    cand_floor = _parse_floor_value(cand_floor_name)
 
                     if use_official:
-                        # 공식 체계: floorName 있는 후보는 제외(척도 불일치),
-                        # 같은 diff 그룹(NHM vs SC)만 비교
                         if cand_floor is not None:
                             continue
                         if _diff_group(diff) != ref_diff_grp:
                             continue
                         cand_floor = float(p.get("level", 0))
                     else:
-                        # 비공식 체계: floorName 없는 후보는 제외
                         if cand_floor is None:
                             continue
 
-                    # floor 범위 필터
                     if abs(cand_floor - ref_floor) > floor_range:
                         continue
 
-                    # 현재 패턴 자신은 제외
-                    if sid == song_id and mode == button_mode and diff == difficulty:
+                    if sid == target_song_id and mode == target_mode and diff == target_diff:
                         continue
 
                     candidates.append(RecommendEntry(
@@ -182,15 +203,15 @@ class Recommender:
                         floor_name=cand_floor_name,
                         rate=None,
                     ))
+        return candidates
 
-        if not candidates:
-            return RecommendResult.empty()
+    def _merge_record_rates(self, candidates: list[RecommendEntry]):
+        """후보 목록에 RecordDB의 레이트 정보를 병합한다."""
+        if not self.rdb.is_ready:
+            return
 
-        # 3. RecordDB bulk 조회
-        all_ids  = list({c.song_id for c in candidates})
-        rate_map: dict[tuple[int, str, str], dict] = {}
-        if self.rdb.is_ready:
-            rate_map = self.rdb.get_rate_map(all_ids)
+        all_ids = list({c.song_id for c in candidates})
+        rate_map = self.rdb.get_rate_map(all_ids)
 
         for entry in candidates:
             key = (entry.song_id, entry.button_mode, entry.difficulty)
@@ -198,19 +219,6 @@ class Recommender:
                 rec = rate_map[key]
                 entry.rate = rec["rate"]
                 entry.is_max_combo = rec["is_max_combo"]
-
-        # 4. 정렬
-        #   1. 기록 있음: rate 낮은 순 (연습이 필요한 약한 패턴 우선)
-        #   2. 기록 없음: floor/level 낮은 순 (신규 도전)
-        def sort_key(e: RecommendEntry) -> tuple:
-            if e.is_played:
-                return (0, e.rate, e.floor or 0.0)
-            else:
-                return (1, e.floor or 0.0, 0.0)
-
-        candidates.sort(key=sort_key)
-        avg_rate, count = _calc_avg_rate(candidates)
-        return RecommendResult(candidates[:max_results], avg_rate, count, len(candidates))
 
 
 def _calc_avg_rate(candidates: list[RecommendEntry]) -> tuple[float, int]:

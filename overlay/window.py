@@ -266,7 +266,7 @@ if PYQT_AVAILABLE:
             splitter.setStyleSheet(f"color: #505870; font-size: {_s(11, sc)}px;")
             layout.addWidget(splitter)
 
-            self._total_count_label = QLabel("0개 패턴")
+            self._total_count_label = QLabel("0/0개 패턴")
             self._total_count_label.setStyleSheet(
                 f"color: #505870; font-size: {_s(11, sc)}px; font-weight: 700;"
             )
@@ -358,9 +358,9 @@ if PYQT_AVAILABLE:
                     self._rec_layout.addWidget(PatternRow(entry, scale=self._scale))
 
             self._rec_layout.addStretch()
-            self._update_footer(recommendations.avg_rate, recommendations.total_count)
+            self._update_footer(recommendations.avg_rate, recommendations.has_record_count, recommendations.total_count)
 
-        def _update_footer(self, avg_rate: float, total_count: int):
+        def _update_footer(self, avg_rate: float, has_record_count: int, total_count: int):
             sc = self._scale
             if avg_rate < 0.0:
                 self._avg_rate_label.setText("——")
@@ -375,7 +375,7 @@ if PYQT_AVAILABLE:
                 )
 
             total_count_color = "#F0F4FF" if total_count > 0 else "#505870"
-            self._total_count_label.setText(f"{total_count}개 패턴")
+            self._total_count_label.setText(f"{has_record_count}/{total_count}개 패턴")
             self._total_count_label.setStyleSheet(
                 f"color: {total_count_color}; font-size: {_s(11, sc)}px; font-weight: 700;"
             )

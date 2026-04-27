@@ -72,9 +72,14 @@ class RecommendEntry:
 
 @dataclass
 class RecommendResult:
-    entries:      list[RecommendEntry]
-    avg_rate:     float
-    total_count:  int
+    entries:              list[RecommendEntry]
+    avg_rate:             float
+    has_record_count:     int
+    total_count:          int
+
+    @staticmethod
+    def empty() -> RecommendResult:
+        return RecommendResult([], -1.0, 0, 0)
 
 
 class Recommender:
@@ -105,7 +110,7 @@ class Recommender:
         # 1. 현재 패턴의 floor 파악
         current_song = self.vdb.search_by_id(song_id)
         if not current_song:
-            return RecommendResult([], -1.0, 0)
+            return RecommendResult.empty()
 
         current_pattern = (
             current_song.get("patterns", {})
@@ -113,7 +118,7 @@ class Recommender:
             .get(difficulty)
         )
         if not current_pattern:
-            return RecommendResult([], -1.0, 0)
+            return RecommendResult.empty()
 
         floor_name_ref = current_pattern.get("floorName")
         ref_floor      = _parse_floor_value(floor_name_ref)
@@ -179,7 +184,7 @@ class Recommender:
                     ))
 
         if not candidates:
-            return RecommendResult([], -1.0, 0)
+            return RecommendResult.empty()
 
         # 3. RecordDB bulk 조회
         all_ids  = list({c.song_id for c in candidates})
@@ -204,11 +209,12 @@ class Recommender:
                 return (1, e.floor or 0.0, 0.0)
 
         candidates.sort(key=sort_key)
-        avg_rate = _calc_avg_rate(candidates)
-        return RecommendResult(candidates[:max_results], avg_rate, len(candidates))
+        avg_rate, count = _calc_avg_rate(candidates)
+        return RecommendResult(candidates[:max_results], avg_rate, count, len(candidates))
 
 
-def _calc_avg_rate(candidates: list[RecommendEntry]) -> float:
+def _calc_avg_rate(candidates: list[RecommendEntry]) -> tuple[float, int]:
     """floor 범위 내 후보 전체 중 기록 있는 패턴의 rate 평균. 없으면 -1.0."""
     rates = [e.rate for e in candidates if e.rate is not None]
-    return sum(rates) / len(rates) if rates else -1.0
+    count = len(rates)
+    return sum(rates) / count if rates else -1.0, count

@@ -68,7 +68,7 @@ class OverlayController:
         all_patterns = [{"mode": mode, "patterns": []} for mode in BUTTON_MODES]
         self.signals.song_changed.emit("곡을 선택하세요", all_patterns)
         self.signals.mode_diff_changed.emit("", "")
-        self.signals.recommend_ready.emit(RecommendResult([], -1.0, 0), True)
+        self.signals.recommend_ready.emit(RecommendResult.empty(), True)
 
     def notify_screen(self, is_song_select: bool):
         self.log(f"화면 알림: {'선곡화면' if is_song_select else '기타화면'}")
@@ -127,12 +127,12 @@ class OverlayController:
         all_patterns = []
 
         if self._song_id is None:
-            return song_name, all_patterns, RecommendResult([], -1.0, 0)
+            return song_name, all_patterns, RecommendResult.empty()
 
         song = self.db.search_by_id(self._song_id)
         if not song:
             self.log(f"ID={self._song_id}를 DB에서 찾을 수 없음")
-            return song_name, all_patterns, RecommendResult([], -1.0, 0)
+            return song_name, all_patterns, RecommendResult.empty()
 
         song_name = song["name"]
         for mode in BUTTON_MODES:
@@ -140,7 +140,7 @@ class OverlayController:
             all_patterns.append({"mode": mode, "patterns": pts})
 
         if not (self._current_mode and self._current_diff):
-            return song_name, all_patterns, RecommendResult([], -1.0, 0)
+            return song_name, all_patterns, RecommendResult.empty()
 
         recommendations = self.recommender.recommend(
             song_id=self._song_id,
@@ -176,7 +176,7 @@ class OverlayController:
 
     def _refresh_recommendations(self):
         if self._song_id is None or not self._current_mode or not self._current_diff:
-            self.signals.recommend_ready.emit(RecommendResult([], -1.0, 0), True)
+            self.signals.recommend_ready.emit(RecommendResult.empty(), True)
             return
 
         recommendations = self.recommender.recommend(

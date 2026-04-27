@@ -23,7 +23,7 @@ except ImportError:
 
 import win32gui
 from data.varchive import BUTTON_MODES
-from data.recommend import RecommendEntry
+from data.recommend import RecommendResult
 from overlay.ui.pattern_view import VerticalTabPanel
 from overlay.ui.recommend_view import PatternRow
 from constants import BTN_COLORS, WINDOW_TITLE
@@ -42,7 +42,7 @@ if PYQT_AVAILABLE:
         position_changed  = pyqtSignal(int, int, int, int)
         roi_enabled_changed = pyqtSignal(bool)
         mode_diff_changed = pyqtSignal(str, str)
-        recommend_ready   = pyqtSignal(list, bool, float)
+        recommend_ready   = pyqtSignal(RecommendResult, bool)
         visibility_toggle_requested = pyqtSignal()
         status_changed    = pyqtSignal(bool)
         confidence_changed = pyqtSignal(float)
@@ -261,6 +261,17 @@ if PYQT_AVAILABLE:
                 f"color: #505870; font-size: {_s(11, sc)}px; font-weight: 700;"
             )
             layout.addWidget(self._avg_rate_label)
+
+            splitter = QLabel(" | ")
+            splitter.setStyleSheet(f"color: #505870; font-size: {_s(11, sc)}px;")
+            layout.addWidget(splitter)
+
+            self._total_count_label = QLabel("0개 패턴")
+            self._total_count_label.setStyleSheet(
+                f"color: #505870; font-size: {_s(11, sc)}px; font-weight: 700;"
+            )
+            layout.addWidget(self._total_count_label)
+
             return footer
 
         # ------------------------------------------------------------------
@@ -328,13 +339,13 @@ if PYQT_AVAILABLE:
             self._current_diff = diff or None
             self._apply_tab_update()
 
-        def _on_recommend_ready(self, entries: list[RecommendEntry], no_selection: bool, avg_rate: float):
+        def _on_recommend_ready(self, recommendations: RecommendResult, no_selection: bool):
             while self._rec_layout.count() > 0:
                 item = self._rec_layout.takeAt(0)
                 if item and item.widget():
                     item.widget().deleteLater()
 
-            if no_selection or not entries:
+            if no_selection or not recommendations.entries:
                 msg = "패턴을 감지하는 중..." if no_selection else "추천 결과 없음"
                 empty = QLabel(msg)
                 empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -343,24 +354,30 @@ if PYQT_AVAILABLE:
                 )
                 self._rec_layout.addWidget(empty)
             else:
-                for entry in entries:
+                for entry in recommendations.entries:
                     self._rec_layout.addWidget(PatternRow(entry, scale=self._scale))
 
             self._rec_layout.addStretch()
-            self._update_avg_rate_label(avg_rate)
+            self._update_footer(recommendations.avg_rate, recommendations.total_count)
 
-        def _update_avg_rate_label(self, avg_rate: float):
+        def _update_footer(self, avg_rate: float, total_count: int):
             sc = self._scale
             if avg_rate < 0.0:
                 self._avg_rate_label.setText("——")
                 self._avg_rate_label.setStyleSheet(
                     f"color: #505870; font-size: {_s(11, sc)}px; font-weight: 700;"
                 )
-                return
-            color = self._avg_rate_color(avg_rate)
-            self._avg_rate_label.setText(f"{avg_rate:.2f}%")
-            self._avg_rate_label.setStyleSheet(
-                f"color: {color}; font-size: {_s(11, sc)}px; font-weight: 700;"
+            else:
+                color = self._avg_rate_color(avg_rate)
+                self._avg_rate_label.setText(f"{avg_rate:.2f}%")
+                self._avg_rate_label.setStyleSheet(
+                    f"color: {color}; font-size: {_s(11, sc)}px; font-weight: 700;"
+                )
+
+            total_count_color = "#F0F4FF" if total_count > 0 else "#505870"
+            self._total_count_label.setText(f"{total_count}개 패턴")
+            self._total_count_label.setStyleSheet(
+                f"color: {total_count_color}; font-size: {_s(11, sc)}px; font-weight: 700;"
             )
 
         @staticmethod

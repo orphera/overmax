@@ -70,6 +70,13 @@ class RecommendEntry:
         return self.is_max_combo
 
 
+@dataclass
+class RecommendResult:
+    entries:      list[RecommendEntry]
+    avg_rate:     float
+    total_count:  int
+
+
 class Recommender:
     def __init__(self, varchive_db: VArchiveDB, record_db: RecordManager):
         self.vdb = varchive_db
@@ -83,7 +90,7 @@ class Recommender:
         floor_range: float = 0.0,
         max_results: int = 6,
         same_mode_only: bool = True,
-    ) -> list[RecommendEntry]:
+    ) -> RecommendResult:
         """
         현재 패턴과 floor가 유사한 패턴 목록 반환.
 
@@ -98,7 +105,7 @@ class Recommender:
         # 1. 현재 패턴의 floor 파악
         current_song = self.vdb.search_by_id(song_id)
         if not current_song:
-            return []
+            return RecommendResult([], -1.0, 0)
 
         current_pattern = (
             current_song.get("patterns", {})
@@ -106,7 +113,7 @@ class Recommender:
             .get(difficulty)
         )
         if not current_pattern:
-            return []
+            return RecommendResult([], -1.0, 0)
 
         floor_name_ref = current_pattern.get("floorName")
         ref_floor      = _parse_floor_value(floor_name_ref)
@@ -172,7 +179,7 @@ class Recommender:
                     ))
 
         if not candidates:
-            return []
+            return RecommendResult([], -1.0, 0)
 
         # 3. RecordDB bulk 조회
         all_ids  = list({c.song_id for c in candidates})
@@ -198,7 +205,7 @@ class Recommender:
 
         candidates.sort(key=sort_key)
         avg_rate = _calc_avg_rate(candidates)
-        return candidates[:max_results], avg_rate
+        return RecommendResult(candidates[:max_results], avg_rate, len(candidates))
 
 
 def _calc_avg_rate(candidates: list[RecommendEntry]) -> float:

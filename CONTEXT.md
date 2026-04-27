@@ -27,14 +27,17 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 
 ```
 WindowTracker
-→ ScreenCapture
-→ Detection Pipeline (ImageDB + mode_diff)
+→ ScreenCapture (HysteresisBuffer + OcrDetector)
+→ Detection Pipeline (ImageDB + PlayStateDetector)
 → GameSessionState (verified)
 → OverlayController
 → OverlayWindow (PyQt6)
-       └── VerticalTabPanel (난이도 탭)
-       └── PatternRow × N  (추천 목록)
+       └── HeaderWidget / FooterWidget
+       └── PatternView (난이도 탭)
+       └── RecommendView × N (추천 목록)
        └── SettingsWindow (설정)
+       └── SyncWindow (V-Archive 동기화)
+       └── DebugWindow (디버그 로그)
 ```
 
 패키지 구조: `capture/`, `core/`, `data/`, `detection/`, `overlay/`
@@ -47,21 +50,24 @@ WindowTracker
 
 - **선곡화면 감지**: FREESTYLE 로고 OCR + 히스토리/히스테리시스
 - **곡 인식**: 재킷 이미지 매칭 (ImageDB — perceptual hash + HOG + ORB, 가중치 0.45/0.35/0.20)
-- **버튼 모드**: BTN_MODE_ROI 평균색 vs 대표색 거리 비교 (4B/5B/6B/8B), 임계값 60
-- **난이도**: DIFF_PANEL_ROI 평균 밝기 비교, 상위 패널 vs 2위 margin ≥ 15.0
+- **PlayStateDetector** (`detection/play_state.py`): 모드/난이도/Max Combo/Rate를 원자 단위로 통합 감지
+  - **버튼 모드**: BTN_MODE_ROI 평균색 vs 대표색 거리 비교 (4B/5B/6B/8B), 임계값 60
+  - **난이도**: DIFF_PANEL_ROI 평균 밝기 비교, 상위 패널 vs 2위 margin ≥ 15.0
+  - **Max Combo**: 뱃지 영역 평균 밝기 ≥ 160
 
 ## Secondary Signals
 
-- **OCR (Windows OCR)**: FREESTYLE 로고 검증 / Rate 수집
+- **OCR (Windows OCR)**: `detection/ocr.py` — FREESTYLE 로고 검증 / Rate 수집
   - 3× upscale + Otsu binarization, force_invert 재시도 1회
   - OCR은 primary signal 불가 (small text, low contrast) — Rate 수집 및 로고 전용
+  - PlayStateDetector 내부에서 상태 안정화 시 1회 Rate OCR 수행
 
 ## State Handling
 
-- hysteresis 기반 선곡화면 판정 (on/off 비율 별도 임계값)
+- `HysteresisBuffer` (`capture/hysteresis.py`): 선곡화면 진입/이탈 판정 (on/off 비율 별도 임계값)
 - **Confidence Score**: 히스테리시스 버퍼의 hit 비율을 기반으로 산출 (0.0~1.0)
 - 후반 히스토리 비율 하락 감지 시 `[이탈중]` skip (Confidence 0.5x 보정)
-- `MODE_DIFF_HISTORY` 연속 동일 프레임 기반 안정화 (기본 3프레임)
+- `PlayStateDetector` 연속 동일 프레임 기반 안정화 (기본 3프레임)
 - `GameSessionState.is_stable` = True일 때만 상태 commit
 
 ## ROI 좌표
@@ -85,11 +91,16 @@ Letterbox/Pillarbox 자동 보정 포함.
 - Steam ID 기반 사용자 식별 (로그인 세션 자동 감지)
 - ROIManager 해상도 변환 완료 (Letterbox/Pillarbox 보정)
 - 설정창 추가 완료 (투명도 조절 및 설정 파일 분리 적용)
-- **V-Archive 기록 불러오기**: API 기반 데이터 수집 및 로컬 DB 병합 완료 (Read-only)
+- **V-Archive 기록 연동**: API 기반 데이터 수집 및 로컬 DB 병합 완료 + 갱신 후보 추출 및 등록 기능 (`SyncWindow`)
+- **Max Combo 감지**: 뱃지 영역 밝기 기반 감지 구현 완료
 - **오버레이 스케일링**: 0.75x ~ 1.5x 프리셋 지원 및 스냅 기능 구현 완료
 - **신뢰도 기반 투명도**: 인식 상태에 따라 오버레이가 부드럽게 페이드인/아웃됨
 - **설정 시스템 최적화**: `settings.user.json`에 변경된 항목만 저장(delta save) 및 값 검증(clamp/snap)
 - **자동 업데이트 시스템**: 앱(GitHub Releases) 및 이미지 DB(`image_index.db`) 자동 갱신 파이프라인 구축 완료
+- **Detection 리팩토링**: `mode_diff.py` → `PlayStateDetector` (`play_state.py`)로 모드/난이도/Max Combo/Rate 통합
+- **OCR 모듈 분리**: `capture/ocr_wrapper.py` → `detection/ocr.py` + `detection/ocr_wrapper.py`
+- **오버레이 분해**: 헤더/푸터/네비게이션 위젯 분리, `DebugWindow`·`SyncWindow` 독립 모듈화
+- **Core 유틸 분리**: `global_hotkey.py`, `utils.py`, `version.py` 추출
 
 ---
 
@@ -154,8 +165,6 @@ Letterbox/Pillarbox 자동 보정 포함.
 
 # Next Focus
 
-1. **Max Combo, Perfect 수집** — Max Combo, Perfect 영역에 대한 이미지매칭 구현, DB 스키마 변경 필요, UI에도 보여주게 수정
-1. **V-Archive 갱신 후보 추출** — 후보 추출 하고 업데이트 하는 기능 구현
 1. **Rate OCR 좌표 비율 추가 지원** — 현재 16:9 비율만 지원
 1. **DLC 필터링** — 추천 목록에서 미보유 DLC 제외
 1. **버튼 모드/난이도 인식 보강** — 단순 픽셀 거리/밝기 외에 보조 알고리즘 검토

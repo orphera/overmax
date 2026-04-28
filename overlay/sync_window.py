@@ -447,9 +447,18 @@ class SyncWindow(QWidget):
             self._accounts[steam_id] = account
         else:
             self._accounts.pop(steam_id, None)
-        # 현재 활성 steam_id 기준으로 버튼 활성화 여부 갱신
+        
+        self._update_ui_states()
+
+    def _update_ui_states(self):
+        """현재 계정 상태와 스캔 상태에 따라 UI 활성화 여부를 결정한다."""
         has_account = self._get_current_account() is not None
-        self._refresh_btn.setEnabled(has_account)
+        is_scanning = self._scan_in_progress
+        
+        # 불러오기 버튼은 계정이 있고 스캔 중이 아닐 때만 활성화
+        self._refresh_btn.setEnabled(has_account and not is_scanning)
+        
+        # 각 행의 등록 버튼도 계정 여부에 따라 업데이트
         for row in self._rows:
             row.set_upload_enabled(has_account)
 
@@ -477,7 +486,7 @@ class SyncWindow(QWidget):
             self._rescan_queued = True
             return
         self._scan_in_progress = True
-        self._refresh_btn.setEnabled(False)
+        self._update_ui_states()
         self._status_label.setText("비교 중...")
         self._clear_list()
         self._empty_label.setText("분석 중...")
@@ -496,8 +505,8 @@ class SyncWindow(QWidget):
     def _on_scan_finished(self, candidates: list[SyncCandidate]):
         self._scan_in_progress = False
         self._candidates = candidates
-        has_account = self._get_current_account() is not None
-        self._refresh_btn.setEnabled(has_account)
+        
+        self._update_ui_states()
 
         self._clear_list()
 
@@ -512,7 +521,7 @@ class SyncWindow(QWidget):
             return
 
         self._empty_label.hide()
-        self._rows = []
+        has_account = self._get_current_account() is not None
         for i, c in enumerate(candidates):
             row = _CandidateRow(i, c)
             row.set_upload_enabled(has_account)

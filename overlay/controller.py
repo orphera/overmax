@@ -170,9 +170,14 @@ class OverlayController:
         self._refresh_recommendations()
 
     def refresh_settings_steam_session(self):
-        if self._settings_window is None:
-            return
-        self._settings_window.refresh_current_steam_indicator()
+        if self._settings_window:
+            self._settings_window.refresh_current_steam_indicator()
+        
+        if self._sync_window:
+            steam_id = self.record_db.get_steam_id() if self.record_db else "__unknown__"
+            account_path = self._get_account_path_for_steam_id(steam_id)
+            account = parse_account_file(account_path) if account_path else None
+            self._sync_window.set_account(steam_id, account)
 
     def _refresh_recommendations(self):
         if self._song_id is None or not self._current_mode or not self._current_diff:

@@ -20,6 +20,10 @@ from constants import (
     DIFF_COLORS,
 )
 
+# 추가 메타 정보를 위해 sheet_meta 모듈을 import
+from data.sheet_meta import PatternSheetMeta
+_SHEET_META_AVAILABLE = True
+
 try:
     import httpx
     HTTPX_AVAILABLE = True
@@ -38,6 +42,16 @@ class VArchiveDB:
     def __init__(self):
         self.songs: list[dict] = []
         self._title_map: dict[str, list[dict]] = {}  # 곡명 소문자 → song list
+
+        # 패턴 시트 메타 로드
+        if _SHEET_META_AVAILABLE:
+            self.sheet_meta = PatternSheetMeta()
+            try:
+                self.sheet_meta.load()
+            except Exception as e:
+                print(f"[SheetMeta] 로드 실패: {e}")
+        else:
+            self.sheet_meta = None
 
     # ------------------------------------------------------------------
     # 로드 / 캐시
@@ -221,6 +235,15 @@ class VArchiveDB:
             if diff not in patterns:
                 continue
             info = patterns[diff]
+            # 패턴 메타 정보를 병합
+            meta = {}
+            if self.sheet_meta is not None:
+                try:
+                    meta = self.sheet_meta.get(song.get("name", ""), button_mode, diff) or {}
+                except Exception as e:
+                    print(f"[VArchive] 메타 조회 실패: {e}")
+                    meta = {}
+
             result.append({
                 "diff": diff,
                 "level": info.get("level"),
@@ -228,6 +251,10 @@ class VArchiveDB:
                 "floorName": info.get("floorName"),
                 "rating": info.get("rating"),
                 "color": DIFF_COLORS.get(diff, "#FFFFFF"),
+                # 병합된 메타 정보
+                "gold": meta.get("gold", ""),
+                "note": meta.get("note", ""),
+                "assist_key": meta.get("assist_key", ""),
             })
         return result
 

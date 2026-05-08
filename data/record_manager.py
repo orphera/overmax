@@ -16,6 +16,9 @@ class RecordManager:
         self.vclient = varchive_client
         self._varchive_cache: dict[tuple[int, str, str], tuple[float, bool]] = {}
         self._current_steam_id: Optional[str] = None
+        self._data_revision: int = 0
+        self._dirty_record_keys: set[tuple[int, str, str]] = set()
+        self._full_dirty: bool = True
 
     def initialize(self) -> bool:
         success = self.rdb.initialize()
@@ -53,6 +56,9 @@ class RecordManager:
                     continue
         
         print(f"[RecordManager] V-Archive 캐시 로드 완료: {len(self._varchive_cache)} 건 (steam_id={mask_steam_id(steam_id)})")
+        self._data_revision += 1
+        self._full_dirty = True
+        self._dirty_record_keys.clear()
 
     def upsert(
         self, 
@@ -63,7 +69,11 @@ class RecordManager:
         is_max_combo: bool = False
     ) -> bool:
         """로컬 DB에 저장 (V-Archive 캐시는 읽기 전용)"""
-        return self.rdb.upsert(song_id, button_mode, difficulty, rate, is_max_combo)
+        updated = self.rdb.upsert(song_id, button_mode, difficulty, rate, is_max_combo)
+        if updated:
+            self._data_revision += 1
+            self._dirty_record_keys.add((song_id, button_mode, difficulty))
+        return updated
 
     def delete(
         self, 
@@ -72,7 +82,11 @@ class RecordManager:
         difficulty: str
     ) -> bool:
         """로컬 DB에서 기록 삭제"""
-        return self.rdb.delete(song_id, button_mode, difficulty)
+        deleted = self.rdb.delete(song_id, button_mode, difficulty)
+        if deleted:
+            self._data_revision += 1
+            self._dirty_record_keys.add((song_id, button_mode, difficulty))
+        return deleted
 
     def get(self, song_id: int, button_mode: str, difficulty: str) -> Optional[dict]:
         local_data = self.rdb.get(song_id, button_mode, difficulty)
@@ -146,3 +160,15 @@ class RecordManager:
     @property
     def masked_steam_id(self) -> str:
         return self.rdb.masked_steam_id
+
+    @property
+    def data_revision(self) -> int:
+        return self._data_revision
+
+    def consume_dirty_info(self) -> tuple[bool, set[tuple[int, str, str]]]:
+        """(full_dirty, dirty_keys)를 반환하고 dirty 상태를 소모한다."""
+        full_dirty = self._full_dirty
+        dirty_keys = set(self._dirty_record_keys)
+        self._full_dirty = False
+        self._dirty_record_keys.clear()
+        return full_dirty, dirty_keys

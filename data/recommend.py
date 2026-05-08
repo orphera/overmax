@@ -82,10 +82,35 @@ class RecommendResult:
         return RecommendResult([], -1.0, 0, 0)
 
 
+@dataclass(frozen=True)
+class FloorCacheKey:
+    button_mode: str
+    scale_type: str
+    floor: float
+
+
+@dataclass
+class FloorRateSummary:
+    total_count: int = 0
+    has_record_count: int = 0
+    rate_sum: float = 0.0
+
+    @property
+    def avg_rate(self) -> float:
+        if self.has_record_count <= 0:
+            return -1.0
+        return self.rate_sum / self.has_record_count
+
+
 class Recommender:
     def __init__(self, varchive_db: VArchiveDB, record_db: RecordManager):
         self.vdb = varchive_db
         self.rdb = record_db
+        self._floor_rate_cache: dict[FloorCacheKey, FloorRateSummary] = {}
+        self._floor_rate_dirty: dict[FloorCacheKey, bool] = {}
+        self._floor_patterns: dict[FloorCacheKey, list[tuple[int, str, str]]] = {}
+        self._record_to_floor_key: dict[tuple[int, str, str], FloorCacheKey] = {}
+        self._cache_index_ready: bool = False
 
     def recommend(
         self,
@@ -140,8 +165,21 @@ class Recommender:
                 return (1, e.floor or 0.0, 0.0)
 
         candidates.sort(key=sort_key)
-        avg_rate, count = _calc_avg_rate(candidates)
-        return RecommendResult(candidates[:max_results], avg_rate, count, len(candidates))
+        summary = self._get_summary_from_cache(
+            song_id=song_id,
+            button_mode=button_mode,
+            difficulty=difficulty,
+            ref_floor=ref_floor,
+            use_official=use_official,
+            floor_range=floor_range,
+            same_mode_only=same_mode_only,
+        )
+        return RecommendResult(
+            candidates[:max_results],
+            summary.avg_rate,
+            summary.has_record_count,
+            summary.total_count,
+        )
 
     def _get_candidates(
         self,
@@ -220,9 +258,122 @@ class Recommender:
                 entry.rate = rec["rate"]
                 entry.is_max_combo = rec["is_max_combo"]
 
+    def _ensure_floor_rate_cache(self):
+        if not self._cache_index_ready:
+            self._build_floor_cache_index()
 
-def _calc_avg_rate(candidates: list[RecommendEntry]) -> tuple[float, int]:
-    """floor 범위 내 후보 전체 중 기록 있는 패턴의 rate 평균. 없으면 -1.0."""
-    rates = [e.rate for e in candidates if e.rate is not None]
-    count = len(rates)
-    return sum(rates) / count if rates else -1.0, count
+        full_dirty, dirty_keys = self.rdb.consume_dirty_info()
+        if full_dirty:
+            for key in self._floor_patterns:
+                self._floor_rate_dirty[key] = True
+        else:
+            for record_key in dirty_keys:
+                floor_key = self._record_to_floor_key.get(record_key)
+                if floor_key is not None:
+                    self._floor_rate_dirty[floor_key] = True
+
+        dirty_floor_keys = [k for k, is_dirty in self._floor_rate_dirty.items() if is_dirty]
+        if not dirty_floor_keys:
+            return
+
+        all_song_ids = []
+        for song in self.vdb.songs:
+            try:
+                song_id = int(song.get("title", 0))
+            except (ValueError, TypeError):
+                continue
+            all_song_ids.append(song_id)
+        rate_map = self.rdb.get_rate_map(list(set(all_song_ids))) if all_song_ids else {}
+        for key in dirty_floor_keys:
+            entries = self._floor_patterns.get(key, [])
+            summary = FloorRateSummary(total_count=len(entries))
+            for song_id, mode, diff in entries:
+                rec = rate_map.get((song_id, mode, diff))
+                if not rec:
+                    continue
+                rate = rec.get("rate", 0.0)
+                if rate <= 0.0:
+                    continue
+                summary.has_record_count += 1
+                summary.rate_sum += rate
+            self._floor_rate_cache[key] = summary
+            self._floor_rate_dirty[key] = False
+
+    def _build_floor_cache_index(self):
+        floor_patterns: dict[FloorCacheKey, list[tuple[int, str, str]]] = {}
+        record_to_floor_key: dict[tuple[int, str, str], FloorCacheKey] = {}
+
+        for song in self.vdb.songs:
+            try:
+                song_id = int(song.get("title", 0))
+            except (ValueError, TypeError):
+                continue
+            patterns = song.get("patterns", {})
+            for mode, mode_patterns in patterns.items():
+                for diff in DIFFICULTIES:
+                    p = mode_patterns.get(diff)
+                    if not p:
+                        continue
+                    floor_name = p.get("floorName")
+                    floor_val = _parse_floor_value(floor_name)
+                    if floor_val is None:
+                        level = p.get("level")
+                        if level is None:
+                            continue
+                        floor_val = float(level)
+                        scale_type = "OFFICIAL_SC" if diff in SC_GROUP else "OFFICIAL_NHM"
+                    else:
+                        scale_type = "UNOFFICIAL"
+                    key = FloorCacheKey(mode, scale_type, floor_val)
+                    record_key = (song_id, mode, diff)
+                    floor_patterns.setdefault(key, []).append(record_key)
+                    record_to_floor_key[record_key] = key
+
+        self._floor_patterns = floor_patterns
+        self._record_to_floor_key = record_to_floor_key
+        self._floor_rate_cache = {
+            key: FloorRateSummary(total_count=len(entries))
+            for key, entries in self._floor_patterns.items()
+        }
+        self._floor_rate_dirty = {key: True for key in self._floor_patterns}
+        self._cache_index_ready = True
+
+    def _get_summary_from_cache(
+        self,
+        song_id: int,
+        button_mode: str,
+        difficulty: str,
+        ref_floor: float,
+        use_official: bool,
+        floor_range: float,
+        same_mode_only: bool,
+    ) -> FloorRateSummary:
+        self._ensure_floor_rate_cache()
+
+        if use_official:
+            scale_type = "OFFICIAL_SC" if difficulty in SC_GROUP else "OFFICIAL_NHM"
+        else:
+            scale_type = "UNOFFICIAL"
+
+        from data.varchive import BUTTON_MODES
+        modes = [button_mode] if same_mode_only else BUTTON_MODES
+
+        total = 0
+        has_record = 0
+        rate_sum = 0.0
+        for key, summary in self._floor_rate_cache.items():
+            if key.button_mode not in modes:
+                continue
+            if key.scale_type != scale_type:
+                continue
+            if abs(key.floor - ref_floor) > floor_range:
+                continue
+            total += summary.total_count
+            has_record += summary.has_record_count
+            rate_sum += summary.rate_sum
+
+        return FloorRateSummary(
+            total_count=max(0, total),
+            has_record_count=max(0, has_record),
+            rate_sum=max(0.0, rate_sum),
+        )

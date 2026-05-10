@@ -17,7 +17,7 @@ def make_thumbnail(image_bgra: np.ndarray) -> np.ndarray:
     h, w = image_bgra.shape[:2]
     data = np.ascontiguousarray(image_bgra, dtype=np.uint8).tobytes()
     thumb = thumbnail_bgra_32(data, w, h)
-    return np.array(thumb, dtype=np.uint8).reshape((32, 32))
+    return np.frombuffer(thumb, dtype=np.uint8).reshape((32, 32))
 
 
 def has_thumbnail_changed(current: np.ndarray, prev: Optional[np.ndarray], threshold: float) -> bool:

@@ -13,6 +13,7 @@ if "%1"=="--debug" set "DEBUG_MODE=1"
 set "VENV_DIR=%PROJECT_DIR%.venv_build"
 set "PYTHON_EXE=%VENV_DIR%\Scripts\python.exe"
 set "UPX_DIR=%PROJECT_DIR%tools\upx"
+set "RUST_CV_DIR=%PROJECT_DIR%rust\overmax_cv"
 
 echo.
 echo  ===================================
@@ -23,7 +24,7 @@ echo.
 :: --------------------------------------------------
 :: 1. Setup Build Environment
 :: --------------------------------------------------
-echo [1/6] Setting up build environment...
+echo [1/7] Setting up build environment...
 
 :: Check if build venv exists
 if not exist "%VENV_DIR%" (
@@ -49,7 +50,7 @@ echo        Python %PY_VER% (Build Venv) OK
 :: --------------------------------------------------
 :: 2. Install dependencies
 :: --------------------------------------------------
-echo [2/6] Installing dependencies in build venv...
+echo [2/7] Installing dependencies in build venv...
 
 :: Update pip
 "%PYTHON_EXE%" -m pip install --upgrade pip --quiet
@@ -67,12 +68,51 @@ if errorlevel 1 (
     if errorlevel 1 goto :pip_error
 )
 
+:: Ensure maturin is installed for the Rust/PyO3 extension
+"%PYTHON_EXE%" -c "import maturin" >nul 2>&1
+if errorlevel 1 (
+    echo        Installing maturin
+    "%PYTHON_EXE%" -m pip install maturin --quiet
+    if errorlevel 1 goto :pip_error
+)
+
 echo        Dependencies OK
 
 :: --------------------------------------------------
-:: 3. Clean previous build
+:: 3. Build Rust extension
 :: --------------------------------------------------
-echo [3/6] Cleaning previous build...
+echo [3/7] Building Rust extension...
+
+where cargo >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Rust cargo not found in PATH. Install Rust before building.
+    pause
+    exit /b 1
+)
+
+if not exist "%RUST_CV_DIR%\Cargo.toml" (
+    echo [ERROR] Rust extension not found: %RUST_CV_DIR%
+    pause
+    exit /b 1
+)
+
+pushd "%RUST_CV_DIR%"
+set "VIRTUAL_ENV=%VENV_DIR%"
+"%PYTHON_EXE%" -m maturin develop --release
+set "RUST_BUILD_RESULT=%ERRORLEVEL%"
+popd
+
+if not "%RUST_BUILD_RESULT%"=="0" (
+    echo [ERROR] Rust extension build failed.
+    pause
+    exit /b 1
+)
+echo        Rust extension OK
+
+:: --------------------------------------------------
+:: 4. Clean previous build
+:: --------------------------------------------------
+echo [4/7] Cleaning previous build...
 if exist "%PROJECT_DIR%dist" (
     rmdir /s /q "%PROJECT_DIR%dist"
 )
@@ -82,9 +122,9 @@ if exist "%PROJECT_DIR%build" (
 echo        Done
 
 :: --------------------------------------------------
-:: 4. Run PyInstaller
+:: 5. Run PyInstaller
 :: --------------------------------------------------
-echo [4/6] Running PyInstaller...
+echo [5/7] Running PyInstaller...
 
 :: Detect/Setup UPX
 set "UPX_CMD="
@@ -137,9 +177,9 @@ if errorlevel 1 (
 )
 
 :: --------------------------------------------------
-:: 5. Post-process
+:: 6. Post-process
 :: --------------------------------------------------
-echo [5/6] Post-processing...
+echo [6/7] Post-processing...
 
 if not exist "%DIST_DIR%\cache" mkdir "%DIST_DIR%\cache"
 
@@ -153,9 +193,9 @@ if exist "%PROJECT_DIR%settings.json" (
 copy /y "%PROJECT_DIR%README.md" "%DIST_DIR%\README.md" >nul
 
 :: --------------------------------------------------
-:: 6. Build Release Artifacts (overmax.zip + manifest)
+:: 7. Build Release Artifacts (overmax.zip + manifest)
 :: --------------------------------------------------
-echo [6/6] Building release artifacts...
+echo [7/7] Building release artifacts...
 set "ZIP_PATH=%PROJECT_DIR%dist\overmax.zip"
 set "MANIFEST_PATH=%PROJECT_DIR%dist\release_manifest.json"
 

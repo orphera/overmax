@@ -3,10 +3,10 @@ use pyo3::prelude::*;
 
 const SIZE: usize = 64;
 const CELL: usize = 8;
-const CELLS: usize = 8;
 const BLOCKS: usize = 7;
 const BINS: usize = 9;
 const HOG_LEN: usize = BLOCKS * BLOCKS * 4 * BINS;
+const BLOCK_SIGMA: f32 = 4.0;
 
 #[pyfunction]
 fn version() -> &'static str {
@@ -21,8 +21,7 @@ fn hog_gray_64(data: &[u8]) -> PyResult<Vec<f32>> {
 
     let src = to_f32(data);
     let (gx, gy) = gradients(&src);
-    let cells = cell_histograms(&gx, &gy);
-    Ok(block_features(&cells))
+    Ok(block_features(&gx, &gy))
 }
 
 fn to_f32(data: &[u8]) -> Vec<f32> {
@@ -46,9 +45,9 @@ fn gradients(src: &[f32]) -> (Vec<f32>, Vec<f32>) {
 
 fn sample_x(src: &[f32], x: usize, y: usize) -> f32 {
     if x == 0 {
-        src[index(1, y)] - src[index(0, y)]
+        0.0
     } else if x == SIZE - 1 {
-        src[index(SIZE - 1, y)] - src[index(SIZE - 2, y)]
+        0.0
     } else {
         src[index(x + 1, y)] - src[index(x - 1, y)]
     }
@@ -56,29 +55,16 @@ fn sample_x(src: &[f32], x: usize, y: usize) -> f32 {
 
 fn sample_y(src: &[f32], x: usize, y: usize) -> f32 {
     if y == 0 {
-        src[index(x, 1)] - src[index(x, 0)]
+        0.0
     } else if y == SIZE - 1 {
-        src[index(x, SIZE - 1)] - src[index(x, SIZE - 2)]
+        0.0
     } else {
         src[index(x, y + 1)] - src[index(x, y - 1)]
     }
 }
 
-fn cell_histograms(gx: &[f32], gy: &[f32]) -> Vec<f32> {
-    let mut cells = vec![0.0; CELLS * CELLS * BINS];
-
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            let idx = index(x, y);
-            vote_pixel(&mut cells, x, y, gx[idx], gy[idx]);
-        }
-    }
-
-    cells
-}
-
-fn vote_pixel(cells: &mut [f32], x: usize, y: usize, gx: f32, gy: f32) {
-    let mag = (gx * gx + gy * gy).sqrt();
+fn vote_pixel(block: &mut [f32], x: usize, y: usize, gx: f32, gy: f32) {
+    let mag = (gx * gx + gy * gy).sqrt() * gaussian_weight(x, y);
     if mag == 0.0 {
         return;
     }
@@ -91,14 +77,20 @@ fn vote_pixel(cells: &mut [f32], x: usize, y: usize, gx: f32, gy: f32) {
     let frac_x = cell_x - left as f32;
     let frac_y = cell_y - top as f32;
 
-    vote_cell(cells, left, top, mag * (1.0 - frac_x) * (1.0 - frac_y), angle);
-    vote_cell(cells, left + 1, top, mag * frac_x * (1.0 - frac_y), angle);
-    vote_cell(cells, left, top + 1, mag * (1.0 - frac_x) * frac_y, angle);
-    vote_cell(cells, left + 1, top + 1, mag * frac_x * frac_y, angle);
+    vote_cell(block, left, top, mag * (1.0 - frac_x) * (1.0 - frac_y), angle);
+    vote_cell(block, left + 1, top, mag * frac_x * (1.0 - frac_y), angle);
+    vote_cell(block, left, top + 1, mag * (1.0 - frac_x) * frac_y, angle);
+    vote_cell(block, left + 1, top + 1, mag * frac_x * frac_y, angle);
 }
 
-fn vote_cell(cells: &mut [f32], cx: isize, cy: isize, mag: f32, angle: f32) {
-    if cx < 0 || cy < 0 || cx >= CELLS as isize || cy >= CELLS as isize {
+fn gaussian_weight(x: usize, y: usize) -> f32 {
+    let dx = x as f32 + 0.5 - CELL as f32;
+    let dy = y as f32 + 0.5 - CELL as f32;
+    (-(dx * dx + dy * dy) / (2.0 * BLOCK_SIGMA * BLOCK_SIGMA)).exp()
+}
+
+fn vote_cell(block: &mut [f32], cx: isize, cy: isize, mag: f32, angle: f32) {
+    if cx < 0 || cy < 0 || cx >= 2 || cy >= 2 {
         return;
     }
 
@@ -107,18 +99,18 @@ fn vote_cell(cells: &mut [f32], cx: isize, cy: isize, mag: f32, angle: f32) {
     let low = low_floor.rem_euclid(BINS as f32) as usize;
     let high = (low + 1) % BINS;
     let frac = bin - low_floor;
-    let base = cell_index(cx as usize, cy as usize, 0);
+    let base = block_cell_index(cx as usize, cy as usize, 0);
 
-    cells[base + low] += mag * (1.0 - frac);
-    cells[base + high] += mag * frac;
+    block[base + low] += mag * (1.0 - frac);
+    block[base + high] += mag * frac;
 }
 
-fn block_features(cells: &[f32]) -> Vec<f32> {
+fn block_features(gx: &[f32], gy: &[f32]) -> Vec<f32> {
     let mut features = Vec::with_capacity(HOG_LEN);
 
     for block_x in 0..BLOCKS {
         for block_y in 0..BLOCKS {
-            let mut block = collect_block(cells, block_x, block_y);
+            let mut block = collect_block(gx, gy, block_x, block_y);
             normalize_block(&mut block);
             features.extend(block);
         }
@@ -127,14 +119,19 @@ fn block_features(cells: &[f32]) -> Vec<f32> {
     features
 }
 
-fn collect_block(cells: &[f32], block_x: usize, block_y: usize) -> Vec<f32> {
+fn collect_block(gx: &[f32], gy: &[f32], block_x: usize, block_y: usize) -> Vec<f32> {
     let mut block = Vec::with_capacity(4 * BINS);
-    for cell_y in block_y..block_y + 2 {
-        for cell_x in block_x..block_x + 2 {
-            let start = cell_index(cell_x, cell_y, 0);
-            block.extend_from_slice(&cells[start..start + BINS]);
+    block.resize(4 * BINS, 0.0);
+
+    let start_x = block_x * CELL;
+    let start_y = block_y * CELL;
+    for y in start_y..start_y + 2 * CELL {
+        for x in start_x..start_x + 2 * CELL {
+            let idx = index(x, y);
+            vote_pixel(&mut block, x - start_x, y - start_y, gx[idx], gy[idx]);
         }
     }
+
     block
 }
 
@@ -158,8 +155,8 @@ fn index(x: usize, y: usize) -> usize {
     y * SIZE + x
 }
 
-fn cell_index(x: usize, y: usize, bin: usize) -> usize {
-    (y * CELLS + x) * BINS + bin
+fn block_cell_index(x: usize, y: usize, bin: usize) -> usize {
+    (x * 2 + y) * BINS + bin
 }
 
 #[pymodule]

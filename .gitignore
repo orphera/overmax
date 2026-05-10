@@ -9,6 +9,7 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+*.pdb
 .Python
 *.egg
 *.egg-info/

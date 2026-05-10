@@ -5,6 +5,7 @@ import sqlite3
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 import cv2
 import numpy as np
@@ -14,6 +15,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from detection.image_db import _compute_hashes
+
+HogBackend = Callable[[np.ndarray], np.ndarray]
+BLOCK_SIGMA = 4.0
 
 
 @dataclass(frozen=True)
@@ -63,70 +67,87 @@ def candidate_hog(gray: np.ndarray) -> np.ndarray:
     src = gray.astype(np.float32)
     gx = _central_diff_x(src)
     gy = _central_diff_y(src)
-    mag = np.sqrt(gx * gx + gy * gy)
-    angle = np.rad2deg(np.arctan2(gy, gx)) % 180.0
+    return _blocks_from_gradients(gx, gy)
 
-    cells = _cell_histograms(mag, angle)
-    return _blocks_from_cells(cells)
+
+def rust_hog(gray: np.ndarray) -> np.ndarray:
+    try:
+        from overmax_cv import hog_gray_64
+    except ImportError as exc:
+        raise SystemExit(
+            "overmax_cv is not installed. Build it with maturin first."
+        ) from exc
+    return np.array(hog_gray_64(gray.tobytes()), dtype=np.float32)
+
+
+def select_hog_backend(name: str) -> HogBackend:
+    if name == "rust":
+        return rust_hog
+    return candidate_hog
 
 
 def _central_diff_x(src: np.ndarray) -> np.ndarray:
     gx = np.zeros_like(src, dtype=np.float32)
     gx[:, 1:-1] = src[:, 2:] - src[:, :-2]
-    gx[:, 0] = src[:, 1] - src[:, 0]
-    gx[:, -1] = src[:, -1] - src[:, -2]
     return gx
 
 
 def _central_diff_y(src: np.ndarray) -> np.ndarray:
     gy = np.zeros_like(src, dtype=np.float32)
     gy[1:-1, :] = src[2:, :] - src[:-2, :]
-    gy[0, :] = src[1, :] - src[0, :]
-    gy[-1, :] = src[-1, :] - src[-2, :]
     return gy
 
 
-def _cell_histograms(mag: np.ndarray, angle: np.ndarray) -> np.ndarray:
-    cells = np.zeros((8, 8, 9), dtype=np.float32)
-    for y in range(mag.shape[0]):
-        for x in range(mag.shape[1]):
-            _vote_pixel(cells, x, y, float(mag[y, x]), float(angle[y, x]))
-    return cells
-
-
-def _vote_pixel(cells: np.ndarray, x: int, y: int, mag: float, angle: float) -> None:
+def _vote_pixel(block: np.ndarray, x: int, y: int, mag: float, angle: float) -> None:
     if mag == 0.0:
         return
+    mag *= _gaussian_weight(x, y)
     cell_x = (x + 0.5) / 8.0 - 0.5
     cell_y = (y + 0.5) / 8.0 - 0.5
     left = int(np.floor(cell_x))
     top = int(np.floor(cell_y))
     x_frac = cell_x - left
     y_frac = cell_y - top
-    _vote_cell(cells, left, top, mag * (1.0 - x_frac) * (1.0 - y_frac), angle)
-    _vote_cell(cells, left + 1, top, mag * x_frac * (1.0 - y_frac), angle)
-    _vote_cell(cells, left, top + 1, mag * (1.0 - x_frac) * y_frac, angle)
-    _vote_cell(cells, left + 1, top + 1, mag * x_frac * y_frac, angle)
+    _vote_cell(block, left, top, mag * (1.0 - x_frac) * (1.0 - y_frac), angle)
+    _vote_cell(block, left + 1, top, mag * x_frac * (1.0 - y_frac), angle)
+    _vote_cell(block, left, top + 1, mag * (1.0 - x_frac) * y_frac, angle)
+    _vote_cell(block, left + 1, top + 1, mag * x_frac * y_frac, angle)
 
 
-def _vote_cell(cells: np.ndarray, cx: int, cy: int, mag: float, angle: float) -> None:
-    if not (0 <= cx < 8 and 0 <= cy < 8):
+def _vote_cell(block: np.ndarray, cx: int, cy: int, mag: float, angle: float) -> None:
+    if not (0 <= cx < 2 and 0 <= cy < 2):
         return
     bins = (angle - 10.0) / 20.0
     low = int(np.floor(bins)) % 9
     frac = bins - np.floor(bins)
     high = (low + 1) % 9
-    cells[cy, cx, low] += mag * (1.0 - frac)
-    cells[cy, cx, high] += mag * frac
+    block[cy, cx, low] += mag * (1.0 - frac)
+    block[cy, cx, high] += mag * frac
 
 
-def _blocks_from_cells(cells: np.ndarray) -> np.ndarray:
+def _gaussian_weight(x: int, y: int) -> float:
+    dx = x + 0.5 - 8.0
+    dy = y + 0.5 - 8.0
+    return float(np.exp(-(dx * dx + dy * dy) / (2.0 * BLOCK_SIGMA * BLOCK_SIGMA)))
+
+
+def _blocks_from_gradients(gx: np.ndarray, gy: np.ndarray) -> np.ndarray:
+    mag = np.sqrt(gx * gx + gy * gy)
+    angle = np.rad2deg(np.arctan2(gy, gx)) % 180.0
     blocks = []
     for x in range(7):
         for y in range(7):
-            block = cells[y:y + 2, x:x + 2, :].reshape(-1)
+            block = _block_histogram(mag, angle, x * 8, y * 8)
             blocks.append(_normalize_block(block))
     return np.concatenate(blocks).astype(np.float32)
+
+
+def _block_histogram(mag: np.ndarray, angle: np.ndarray, x0: int, y0: int) -> np.ndarray:
+    block = np.zeros((2, 2, 9), dtype=np.float32)
+    for y in range(y0, y0 + 16):
+        for x in range(x0, x0 + 16):
+            _vote_pixel(block, x - x0, y - y0, float(mag[y, x]), float(angle[y, x]))
+    return np.transpose(block, (1, 0, 2)).reshape(-1)
 
 
 def _normalize_block(block: np.ndarray) -> np.ndarray:
@@ -137,10 +158,10 @@ def _normalize_block(block: np.ndarray) -> np.ndarray:
     return out / norm2
 
 
-def compare(name: str, gray: np.ndarray) -> HogStats:
+def compare(name: str, gray: np.ndarray, backend: HogBackend) -> HogStats:
     resized = cv2.resize(gray, (64, 64), interpolation=cv2.INTER_AREA)
     expected = cv2_hog(resized)
-    actual = candidate_hog(resized)
+    actual = backend(resized)
     diff = np.abs(expected - actual)
     return HogStats(
         name=name,
@@ -254,12 +275,17 @@ def evaluate_db(
     db_path: Path,
     top_k: int,
     hash_weight: float,
+    backend: HogBackend,
+    backend_name: str,
 ) -> None:
     entries = load_db_entries(db_path)
     paths = sorted(_iter_images(images_dir), key=lambda item: item.name)
-    results = [_evaluate_image(path, entries, top_k, hash_weight) for path in paths]
+    results = [
+        _evaluate_image(path, entries, top_k, hash_weight, backend)
+        for path in paths
+    ]
     results = [item for item in results if item is not None]
-    _print_search_summary(results, hash_weight)
+    _print_search_summary(results, hash_weight, backend_name)
 
 
 def _iter_images(images_dir: Path) -> list[Path]:
@@ -272,6 +298,7 @@ def _evaluate_image(
     entries: list[DbEntry],
     top_k: int,
     hash_weight: float,
+    backend: HogBackend,
 ) -> SearchResult | None:
     img = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
     gray = _to_gray(img)
@@ -282,7 +309,7 @@ def _evaluate_image(
     resized = cv2.resize(gray, (64, 64), interpolation=cv2.INTER_AREA)
     expected_id = path.stem
     cv2_match = _search(gray, cv2_hog(resized), entries, top_k, 0.45)
-    candidate = candidate_hog(resized)
+    candidate = backend(resized)
     candidate_match = _search(gray, candidate, entries, top_k, hash_weight)
     db_cosine = _stored_hog_cosine(expected_id, candidate, entries)
     return SearchResult(
@@ -358,10 +385,15 @@ def _stored_hog_cosine(
     return _cosine(candidate, match.hog)
 
 
-def _print_search_summary(results: list[SearchResult], hash_weight: float) -> None:
+def _print_search_summary(
+    results: list[SearchResult],
+    hash_weight: float,
+    backend_name: str,
+) -> None:
     total = len(results)
     if total == 0:
         print("images=0")
+        print(f"candidate_backend={backend_name}")
         print(f"candidate_hash_weight={hash_weight:.2f}")
         print("no images found")
         return
@@ -371,6 +403,7 @@ def _print_search_summary(results: list[SearchResult], hash_weight: float) -> No
     same_top1 = sum(1 for item in results if item.cv2_id == item.candidate_id)
     cosines = np.array([item.db_cosine for item in results], dtype=np.float32)
     print(f"images={total}")
+    print(f"candidate_backend={backend_name}")
     print(f"candidate_hash_weight={hash_weight:.2f}")
     print(f"cv2_expected_top1={cv2_hits}/{total} ({_percent(cv2_hits, total):.2f}%)")
     print(
@@ -421,6 +454,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=Path("cache/image_index.db"))
     parser.add_argument("--images-dir", type=Path)
+    parser.add_argument("--backend", choices=["candidate", "rust"], default="candidate")
     parser.add_argument("--hash-weight", type=float, default=0.45)
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("images", nargs="*", type=Path)
@@ -429,12 +463,20 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    backend = select_hog_backend(args.backend)
     if args.images_dir is not None:
-        evaluate_db(args.images_dir, args.db, args.top_k, args.hash_weight)
+        evaluate_db(
+            args.images_dir,
+            args.db,
+            args.top_k,
+            args.hash_weight,
+            backend,
+            args.backend,
+        )
         return
 
     samples = load_image_samples(args.images) if args.images else make_synthetic_samples()
-    stats = [compare(name, gray) for name, gray in samples]
+    stats = [compare(name, gray, backend) for name, gray in samples]
     print_stats(stats)
 
 

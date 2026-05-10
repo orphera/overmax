@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-import cv2
 import numpy as np
+from overmax_cv import hashes_gray, hog_gray, image_features
 
 
 @dataclass
@@ -141,15 +141,13 @@ class ImageDB:
     # ------------------------------------------------------------------
 
     def search(self, img: np.ndarray, top_k: int = 10) -> Optional[tuple[str, float]]:
-        gray = _to_gray(img)
-        if gray is None:
+        features = _compute_features(img)
+        if features is None:
             return None
-
-        q_ph, q_dh, q_ah = _compute_hashes(gray)
+        q_ph, q_dh, q_ah, q_hog = features
         q_ph_uint = np.uint64(int(q_ph, 16))
         q_dh_uint = np.uint64(int(q_dh, 16))
         q_ah_uint = np.uint64(int(q_ah, 16))
-        q_hog = _compute_hog(gray)
 
         with self._cache_lock:
             n = len(self._image_ids)
@@ -221,13 +219,12 @@ class ImageDB:
             print("[ImageDB] song_id 비어있음")
             return False
 
-        gray = _to_gray(img)
-        if gray is None:
+        features = _compute_features(img)
+        if features is None:
             print("[ImageDB] 이미지 변환 실패")
             return False
 
-        ph, dh, ah = _compute_hashes(gray)
-        hog = _compute_hog(gray)
+        ph, dh, ah, hog = features
 
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -374,57 +371,41 @@ def _row_to_entry(row) -> _CachedEntry:
     return _make_entry(str(image_id), ph, dh, ah, hog)
 
 
-def _to_gray(img: np.ndarray) -> Optional[np.ndarray]:
+def _compute_features(img: np.ndarray) -> Optional[tuple[str, str, str, np.ndarray]]:
+    prepared = _prepare_image(img)
+    if prepared is None:
+        return None
+    data, width, height, channels = prepared
+    ph, dh, ah, hog = image_features(data, width, height, channels)
+    return ph, dh, ah, np.array(hog, dtype=np.float32)
+
+
+def _prepare_image(img: np.ndarray) -> Optional[tuple[bytes, int, int, int]]:
     if img is None or img.size == 0:
         return None
     if img.ndim == 2:
-        return img
-    if img.ndim == 3 and img.shape[2] == 4:
-        return cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-    if img.ndim == 3 and img.shape[2] == 3:
-        return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        height, width = img.shape
+        return _image_bytes(img), width, height, 1
+    if img.ndim == 3 and img.shape[2] in (3, 4):
+        height, width, channels = img.shape
+        return _image_bytes(img), width, height, channels
     return None
 
 
+def _image_bytes(img: np.ndarray) -> bytes:
+    return np.ascontiguousarray(img, dtype=np.uint8).tobytes()
+
+
 def _compute_hashes(gray: np.ndarray) -> tuple[str, str, str]:
-    return _phash(gray), _dhash(gray), _ahash(gray)
-
-
-def _bits_to_hex(bits: np.ndarray) -> str:
-    packed = np.packbits(bits.reshape(-1).astype(np.uint8), bitorder="big")
-    return "".join(f"{b:02x}" for b in packed)
-
-
-def _ahash(gray: np.ndarray) -> str:
-    r = cv2.resize(gray, (8, 8), interpolation=cv2.INTER_AREA).astype(np.float32)
-    return _bits_to_hex(r > float(np.mean(r)))
-
-
-def _dhash(gray: np.ndarray) -> str:
-    r = cv2.resize(gray, (9, 8), interpolation=cv2.INTER_AREA).astype(np.float32)
-    return _bits_to_hex(r[:, 1:] > r[:, :-1])
-
-
-def _phash(gray: np.ndarray) -> str:
-    r = cv2.resize(gray, (32, 32), interpolation=cv2.INTER_AREA).astype(np.float32)
-    dct = cv2.dct(r)
-    low = dct[:8, :8]
-    median = float(np.median(low.reshape(-1)[1:]))
-    return _bits_to_hex(low > median)
+    if gray is None or gray.ndim != 2:
+        return "0" * 16, "0" * 16, "0" * 16
+    height, width = gray.shape
+    return hashes_gray(_image_bytes(gray), width, height)
 
 
 def _compute_hog(gray: np.ndarray) -> np.ndarray:
-    resized = cv2.resize(gray, (64, 64), interpolation=cv2.INTER_AREA)
-    descriptor = cv2.HOGDescriptor(
-        _winSize=(64, 64), _blockSize=(16, 16),
-        _blockStride=(8, 8), _cellSize=(8, 8), _nbins=9,
-    )
-    features = descriptor.compute(resized)
-    if features is None:
+    if gray is None or gray.ndim != 2:
         return np.zeros((1764,), dtype=np.float32)
-    return features.reshape(-1).astype(np.float32)
+    height, width = gray.shape
+    return np.array(hog_gray(_image_bytes(gray), width, height), dtype=np.float32)
 
-
-if __name__ == "__main__":
-    from detection.image_db_cli import run_cli
-    run_cli()

@@ -1,0 +1,4 @@
+# Runtime dependencies plus OpenCV-based verification/development tools.
+-r requirements.txt
+
+opencv-python>=4.9.0

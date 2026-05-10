@@ -2,8 +2,8 @@
 
 from typing import Optional
 
-import cv2
 import numpy as np
+from overmax_cv import thumbnail_bgra_32
 
 
 def crop_roi(frame: np.ndarray, roi: tuple[int, int, int, int]) -> np.ndarray:
@@ -14,8 +14,10 @@ def crop_roi(frame: np.ndarray, roi: tuple[int, int, int, int]) -> np.ndarray:
 
 
 def make_thumbnail(image_bgra: np.ndarray) -> np.ndarray:
-    gray = cv2.cvtColor(image_bgra, cv2.COLOR_BGRA2GRAY)
-    return cv2.resize(gray, (32, 32), interpolation=cv2.INTER_AREA)
+    h, w = image_bgra.shape[:2]
+    data = np.ascontiguousarray(image_bgra, dtype=np.uint8).tobytes()
+    thumb = thumbnail_bgra_32(data, w, h)
+    return np.array(thumb, dtype=np.uint8).reshape((32, 32))
 
 
 def has_thumbnail_changed(current: np.ndarray, prev: Optional[np.ndarray], threshold: float) -> bool:

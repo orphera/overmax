@@ -24,7 +24,6 @@ a = Analysis(
         "winrt.windows.globalization",
         "winrt.windows.foundation",
         "winrt.windows.foundation.collections",
-        "cv2",
         "mss",
         "mss.windows",
         "win32gui",

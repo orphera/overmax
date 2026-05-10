@@ -1,9 +1,11 @@
 # TASKS
 
-Overmax의 현재 작업은 Python 기반 인식 파이프라인을 유지하면서,
-성능 영향이 큰 이미지 특징 계산부터 Rust/PyO3 backend로 검증 이전하는 것이다.
+Overmax의 현재 작업은 Python 기반 verified pipeline을 유지하면서,
+OpenCV 런타임 의존성을 Rust/PyO3 backend로 단계적으로 이전하는 것이다.
 
-## 현재 단계: Rust HOG 검증
+상세 계획은 `docs/opencv-to-rust-plan.md`를 따른다.
+
+## 완료: Rust HOG 검증
 
 - [x] `rust/overmax_cv` PyO3 확장 골격 유지
 - [x] Python 3.14 환경에서 빌드되도록 PyO3 버전 조정
@@ -11,7 +13,34 @@ Overmax의 현재 작업은 Python 기반 인식 파이프라인을 유지하면
 - [x] `test/hog_compat_check.py --backend rust` 검증 경로 추가
 - [x] 실제 재킷 이미지셋으로 DB top-1 기준 확인
 - [x] OpenCV HOG에 더 가깝게 block-local 투표, Gaussian block weight, border gradient 보정 적용
-- [ ] 기준 통과 전까지 `detection/image_db.py` 프로덕션 경로 변경 금지
+- [x] 기준 통과 전까지 `detection/image_db.py` 프로덕션 경로 변경 금지
+
+## 현재 단계: OpenCV 제거 Phase 1
+
+- [x] OpenCV 사용 지점 조사
+- [x] 단계별 이전 문서 작성
+- [x] Rust feature API 추가: grayscale, area resize, hash, HOG
+- [x] `detection/image_db.py`에서 런타임 `cv2` 제거
+- [x] `capture/helpers.py` thumbnail 경로에서 `cv2` 제거
+- [x] `test/jackets` 795개 top-1 검증
+- [x] Phase 1 결과 문서 갱신
+
+## 완료: OpenCV 제거 Phase 2
+
+- [x] Rust OCR preprocess API 추가: 3x upscale, grayscale, Otsu, padding, BMP encoding
+- [x] `detection/ocr_wrapper.py`에서 `cv2` 제거
+- [x] OCR import smoke test
+- [ ] 가능하면 정적 OCR ROI 샘플 비교
+
+## 현재 단계: OpenCV 제거 Phase 3
+
+- [x] `runtime_patch.py`의 `patch_cv2()` 제거
+- [x] `overmax.spec` hiddenimports에서 `cv2` 제거
+- [x] `requirements.txt`에서 `opencv-python-headless` 제거
+- [x] OpenCV 기반 검증/개발 도구용 `requirements-dev.txt` 분리
+- [x] PyInstaller 빌드 후 결과물 확인
+- [x] 앱 import smoke test
+- [ ] 실제 앱 실행 smoke test
 
 ## 검증 기준
 

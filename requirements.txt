@@ -3,7 +3,6 @@
 
 # 화면 캡처 및 이미지 처리
 mss>=9.0.1
-opencv-python-headless>=4.9.0
 numpy>=1.26.0
 
 # Windows OCR API (핵심 엔진 교체) [cite: 36]

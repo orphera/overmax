@@ -511,7 +511,13 @@ class SyncWindow(QWidget):
 
     def _scan_worker(self):
         try:
-            candidates = build_candidates(self._vdb, self._record_manager)
+            if not self._current_steam_id:
+                raise ValueError("steam_id is not set for SyncWindow scan")
+            candidates = build_candidates(
+                self._vdb,
+                self._record_manager,
+                self._current_steam_id,
+            )
         except Exception as e:
             candidates = []
             print(f"[SyncWindow] 스캔 오류: {e}")

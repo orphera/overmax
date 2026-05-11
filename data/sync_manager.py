@@ -55,13 +55,17 @@ class SyncCandidate:
 def build_candidates(
     varchive_db: VArchiveDB,
     record_manager: RecordManager,
+    steam_id: str,
 ) -> list[SyncCandidate]:
     """
-    RecordManager의 전체 로컬 기록과 V-Archive 캐시를 비교하여
+    지정된 steam_id 기준으로 RecordManager의 로컬 기록과 V-Archive 캐시를 비교하여
     등록 후보 목록을 반환한다.
     """
-    # 로컬 DB 전체 조회 — steam_id 기반
-    local_map = _load_all_local(record_manager)
+    if not steam_id or steam_id == "__unknown__":
+        return []
+
+    # 로컬 DB 전체 조회 — 전달된 steam_id 기반
+    local_map = _load_all_local(record_manager, steam_id)
     if not local_map:
         return []
 
@@ -119,17 +123,19 @@ def _sort_key(c: SyncCandidate) -> tuple:
     return (2, 0.0)
 
 
-def _load_all_local(record_manager: RecordManager) -> dict[tuple[int, str, str], tuple[float, bool]]:
-    """RecordDB에서 현재 steam_id의 전체 기록을 가져온다."""
+def _load_all_local(
+    record_manager: RecordManager,
+    steam_id: str,
+) -> dict[tuple[int, str, str], tuple[float, bool]]:
+    """RecordDB에서 지정된 steam_id의 전체 기록을 가져온다."""
     rdb = record_manager.rdb
     if not rdb.is_ready:
         return {}
 
-    import sqlite3
-    steam_id = rdb.get_steam_id()
-    if steam_id == "__unknown__":
+    if not steam_id or steam_id == "__unknown__":
         return {}
 
+    import sqlite3
     try:
         with sqlite3.connect(rdb.db_path) as conn:
             rows = conn.execute(

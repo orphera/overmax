@@ -1,9 +1,11 @@
 # TASKS
 
 Overmax의 현재 작업은 Python 기반 verified pipeline을 유지하면서,
-OpenCV 런타임 의존성을 Rust/PyO3 backend로 단계적으로 이전하는 것이다.
+OpenCV 런타임 의존성 제거 이후 Qt/PyQt6 영역의 배포 크기와 구조를
+단계적으로 정리하는 것이다.
 
-상세 계획은 `docs/opencv-to-rust-plan.md`를 따른다.
+OpenCV 제거 상세 기록은 `docs/opencv-to-rust-plan.md`를 따른다.
+Qt 정리 상세 계획은 `docs/qt-runtime-plan.md`를 따른다.
 
 ## 완료: Rust HOG 검증
 
@@ -15,7 +17,7 @@ OpenCV 런타임 의존성을 Rust/PyO3 backend로 단계적으로 이전하는 
 - [x] OpenCV HOG에 더 가깝게 block-local 투표, Gaussian block weight, border gradient 보정 적용
 - [x] 기준 통과 전까지 `detection/image_db.py` 프로덕션 경로 변경 금지
 
-## 현재 단계: OpenCV 제거 Phase 1
+## 완료: OpenCV 제거 Phase 1
 
 - [x] OpenCV 사용 지점 조사
 - [x] 단계별 이전 문서 작성
@@ -30,9 +32,9 @@ OpenCV 런타임 의존성을 Rust/PyO3 backend로 단계적으로 이전하는 
 - [x] Rust OCR preprocess API 추가: 3x upscale, grayscale, Otsu, padding, BMP encoding
 - [x] `detection/ocr_wrapper.py`에서 `cv2` 제거
 - [x] OCR import smoke test
-- [ ] 가능하면 정적 OCR ROI 샘플 비교
+- [x] 가능하면 정적 OCR ROI 샘플 비교
 
-## 현재 단계: OpenCV 제거 Phase 3
+## 완료: OpenCV 제거 Phase 3
 
 - [x] `runtime_patch.py`의 `patch_cv2()` 제거
 - [x] `overmax.spec` hiddenimports에서 `cv2` 제거
@@ -40,7 +42,37 @@ OpenCV 런타임 의존성을 Rust/PyO3 backend로 단계적으로 이전하는 
 - [x] OpenCV 기반 검증/개발 도구용 `requirements-dev.txt` 분리
 - [x] PyInstaller 빌드 후 결과물 확인
 - [x] 앱 import smoke test
+- [x] 실제 앱 실행 smoke test
+
+## 현재 단계: Qt 런타임 정리 Phase 0
+
+- [x] PyQt6 사용 지점 조사
+- [x] Qt 런타임 정리 계획 문서 작성
+- [x] `dist/overmax.zip` 산출물 크기 기록
+- [x] 개별 DLL 크기 기록
+- [x] 현재 `overmax.spec`의 Qt include/exclude 조정 한계 확인
+- [ ] 앱 import smoke test
 - [ ] 실제 앱 실행 smoke test
+
+## 완료: Qt 런타임 정리 Phase 1
+
+- [x] 사용하지 않는 Qt plugin/module 제외 후보 검토
+- [x] `overmax.spec` 조정 한계 도달 판단
+- [x] 추가 spec 조정은 보류
+- [x] 배포 산출물 크기 기준은 `dist/overmax.zip`으로 기록
+
+## 다음 단계: Qt UI 구조 정리 Phase 2
+
+- [ ] `overlay/settings_window.py` 기능 단위 분리
+- [ ] `overlay/sync_window.py` 기능 단위 분리
+- [ ] `overlay/controller.py` orchestration 경계 정리
+- [ ] 각 파일 500라인 이하 또는 초과 사유 명시
+
+## 예정: Qt 경계 정리 Phase 3
+
+- [ ] verified state → UI payload 변환 로직을 Qt 독립 계층으로 분리
+- [ ] Qt signal bridge를 표시 계층 경계에만 유지
+- [ ] detection/capture/core에서 Qt import 없음 확인
 
 ## 검증 기준
 

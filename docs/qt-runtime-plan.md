@@ -305,15 +305,40 @@ overlay/tray_icon.py             47 lines
 
 ### Phase 3: UI boundary 정리
 
-- verified state → UI payload 변환 로직을 Qt 독립 계층으로 분리
-- Qt signal bridge는 표시 계층에만 남김
-- detection/capture/core에서 Qt import가 없는지 확인
+- [x] verified state → UI payload 변환 로직을 Qt 독립 계층으로 분리
+- [x] Qt signal bridge는 표시 계층에만 남김
+- [x] detection/capture/core에서 Qt import가 없는지 확인
 
 성공 조건:
 
 - verified pipeline 변경 없음
 - UI payload 로직은 Qt 없이 검증 가능
 - 앱 smoke test 통과
+
+2026-05-11 결과:
+
+```text
+overlay/ui_payload.py      172 lines
+overlay/controller.py      278 lines
+test/ui_payload_check.py    71 lines
+```
+
+분리 경계:
+
+- `overlay/ui_payload.py`: `GameSessionState`에서 song/mode/recommendation UI payload로 변환
+- `overlay/controller.py`: Qt signal emit과 창 생명주기 orchestration만 유지
+- `test/ui_payload_check.py`: Qt 없이 payload diff, initial state, recommendation refresh smoke 확인
+
+검증:
+
+```text
+.\.venv_build\Scripts\python.exe -m py_compile overlay\ui_payload.py overlay\controller.py test\ui_payload_check.py
+.\.venv_build\Scripts\python.exe test\ui_payload_check.py
+.\.venv_build\Scripts\python.exe -c "import main; print('import ok')"
+rg -n "from PyQt6|import PyQt6|QtCore|QtWidgets|QtGui" detection capture core -g "*.py"
+```
+
+`rg` 명령은 매칭 없음(exit 1)으로 확인했다.
 
 ### Phase 4: 대체 UI spike 여부 결정
 

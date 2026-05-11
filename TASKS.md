@@ -68,11 +68,16 @@ Qt 정리 상세 계획은 `docs/qt-runtime-plan.md`를 따른다.
 - [x] `overlay/controller.py` orchestration 경계 정리
 - [x] 각 파일 500라인 이하 또는 초과 사유 명시
 
-## 다음 단계: Qt 경계 정리 Phase 3
+## 완료: Qt 경계 정리 Phase 3
 
-- [ ] verified state → UI payload 변환 로직을 Qt 독립 계층으로 분리
-- [ ] Qt signal bridge를 표시 계층 경계에만 유지
-- [ ] detection/capture/core에서 Qt import 없음 확인
+- [x] verified state → UI payload 변환 로직을 Qt 독립 계층으로 분리
+- [x] Qt signal bridge를 표시 계층 경계에만 유지
+- [x] detection/capture/core에서 Qt import 없음 확인
+
+## 다음 단계: Qt 대체 UI spike 여부 결정
+
+- [ ] Phase 0~3 결과 기준으로 PyQt6 대체 spike 필요성 판단
+- [ ] 대체 UI 후보를 검토하더라도 verified pipeline 변경 금지
 
 ## 검증 기준
 

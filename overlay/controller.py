@@ -1,6 +1,5 @@
 """Overlay controller that bridges runtime events to Qt UI."""
 
-import json
 import sys
 import threading
 from typing import Optional
@@ -14,12 +13,13 @@ try:
 except ImportError:
     PYQT_AVAILABLE = False
 
-from data.varchive import VArchiveDB, BUTTON_MODES
-from data.recommend import Recommender, RecommendResult
+from data.varchive import VArchiveDB
+from data.recommend import Recommender
 from data.varchive_client import VArchiveRecordClient
 from data.varchive_uploader import parse_account_file
 from core.game_state import GameSessionState
 from overlay.ui.navigation import RoiOverlayWindow
+from overlay.ui_payload import OverlayPayloadBuilder, OverlayUpdatePayload
 from overlay.window import OverlaySignals, OverlayWindow
 from overlay.settings_window import SettingsWindow
 from overlay.sync_window import SyncWindow
@@ -31,6 +31,7 @@ class OverlayController:
         self.record_db = record_db
         self.varchive_client = varchive_client
         self.recommender = Recommender(db, record_db)
+        self.payload_builder = OverlayPayloadBuilder(db, self.recommender, self.log)
         self.signals = OverlaySignals()
         self._app: Optional[QApplication] = None
         self._window: Optional[OverlayWindow] = None
@@ -40,10 +41,6 @@ class OverlayController:
         self._tray_icon: Optional[QSystemTrayIcon] = None
         self._debug_log_cb = None
         self._debug_toggle_cb = None
-
-        self._song_id: Optional[int] = None
-        self._current_mode: Optional[str] = None
-        self._current_diff: Optional[str] = None
 
         self._last_window_rect: Optional[tuple[int, int, int, int]] = None
 
@@ -60,10 +57,7 @@ class OverlayController:
         return str(legacy_path) if legacy_path else ""
 
     def _emit_initial_state(self):
-        all_patterns = [{"mode": mode, "patterns": []} for mode in BUTTON_MODES]
-        self.signals.song_changed.emit("곡을 선택하세요", all_patterns)
-        self.signals.mode_diff_changed.emit("", "")
-        self.signals.recommend_ready.emit(RecommendResult.empty(), True)
+        self._emit_payload(self.payload_builder.build_initial())
 
     def notify_screen(self, is_song_select: bool):
         self.log(f"화면 알림: {'선곡화면' if is_song_select else '기타화면'}")
@@ -86,80 +80,21 @@ class OverlayController:
 
     def notify_state(self, state: GameSessionState):
         """인식된 게임 상태를 수신하여 UI 시그널 일괄 처리(Batch)."""
-        self._check_and_emit_status(state.is_stable)
+        payload = self.payload_builder.build_state_update(state)
+        self._emit_payload(payload)
 
-        if not state.is_stable:
-            return
-
-        song_changed, mode_diff_changed = self._check_state_diff(state)
-        if not (song_changed or mode_diff_changed):
-            return
-
-        self._update_internal_state(state)
-        song_name, all_patterns, recommendations = self._fetch_ui_data()
-        self._emit_update_signals(song_changed, mode_diff_changed, song_name, all_patterns, recommendations)
-
-    def _check_and_emit_status(self, is_stable: bool):
-        if getattr(self, "_last_verified", None) != is_stable:
-            self.signals.status_changed.emit(is_stable)
-            self._last_verified = is_stable
-
-    def _check_state_diff(self, state: GameSessionState) -> tuple[bool, bool]:
-        song_changed = self._song_id != state.song_id
-        mode_diff_changed = (
-            self._current_mode != state.mode
-            or self._current_diff != state.diff
-        )
-        return song_changed, mode_diff_changed
-
-    def _update_internal_state(self, state: GameSessionState):
-        self._song_id = state.song_id
-        self._current_mode = state.mode
-        self._current_diff = state.diff
-
-    def _fetch_ui_data(self) -> tuple[str, list, RecommendResult]:
-        song_name = "곡을 선택하세요"
-        all_patterns = []
-
-        if self._song_id is None:
-            return song_name, all_patterns, RecommendResult.empty()
-
-        song = self.db.search_by_id(self._song_id)
-        if not song:
-            self.log(f"ID={self._song_id}를 DB에서 찾을 수 없음")
-            return song_name, all_patterns, RecommendResult.empty()
-
-        song_name = song["name"]
-        for mode in BUTTON_MODES:
-            pts = self.db.format_pattern_info(song, mode)
-            all_patterns.append({"mode": mode, "patterns": pts})
-
-        if not (self._current_mode and self._current_diff):
-            return song_name, all_patterns, RecommendResult.empty()
-
-        recommendations = self.recommender.recommend(
-            song_id=self._song_id,
-            button_mode=self._current_mode,
-            difficulty=self._current_diff,
-        )
-
-        return song_name, all_patterns, recommendations
-
-    def _emit_update_signals(self, song_changed: bool, mode_diff_changed: bool, song_name: str, all_patterns: list, recommendations: RecommendResult):
-        if song_changed:
-            if self._song_id is None:
-                self._emit_initial_state()
-            else:
-                self.signals.song_changed.emit(song_name, all_patterns)
-
-        if mode_diff_changed:
-            self.signals.mode_diff_changed.emit(
-                self._current_mode or "",
-                self._current_diff or "",
+    def _emit_payload(self, payload: OverlayUpdatePayload):
+        if payload.status_changed is not None:
+            self.signals.status_changed.emit(payload.status_changed)
+        if payload.song is not None:
+            self.signals.song_changed.emit(payload.song.title, payload.song.all_patterns)
+        if payload.mode_diff is not None:
+            self.signals.mode_diff_changed.emit(payload.mode_diff.mode, payload.mode_diff.diff)
+        if payload.recommendations is not None:
+            self.signals.recommend_ready.emit(
+                payload.recommendations.result,
+                payload.recommendations.no_selection,
             )
-
-        if song_changed or mode_diff_changed:
-            self.signals.recommend_ready.emit(recommendations, False)
 
     def notify_record_updated(self):
         self._refresh_recommendations()
@@ -175,16 +110,8 @@ class OverlayController:
             self._sync_window.set_account(steam_id, account)
 
     def _refresh_recommendations(self):
-        if self._song_id is None or not self._current_mode or not self._current_diff:
-            self.signals.recommend_ready.emit(RecommendResult.empty(), True)
-            return
-
-        recommendations = self.recommender.recommend(
-            song_id=self._song_id,
-            button_mode=self._current_mode,
-            difficulty=self._current_diff,
-        )
-        self.signals.recommend_ready.emit(recommendations, False)
+        payload = self.payload_builder.build_recommendation_refresh()
+        self.signals.recommend_ready.emit(payload.result, payload.no_selection)
 
     def set_roi_overlay_enabled(self, enabled: bool):
         if self._roi_window is None:

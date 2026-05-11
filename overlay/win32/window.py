@@ -89,6 +89,24 @@ class Win32OverlayWindow:
         if self.hwnd:
             win32gui.InvalidateRect(self.hwnd, None, True)
 
+    def show(self) -> None:
+        hwnd = self.create()
+        win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
+        win32gui.UpdateWindow(hwnd)
+
+    def hide(self) -> None:
+        if self.hwnd:
+            win32gui.ShowWindow(self.hwnd, win32con.SW_HIDE)
+
+    def toggle_visibility(self) -> None:
+        if self.is_visible():
+            self.hide()
+        else:
+            self.show()
+
+    def is_visible(self) -> bool:
+        return bool(self.hwnd and win32gui.IsWindowVisible(self.hwnd))
+
     def show_for(self, duration_ms: int) -> int:
         hwnd = self.create()
         win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
@@ -102,12 +120,25 @@ class Win32OverlayWindow:
         self._user_move_cb = callback
 
     def apply_saved_position(self, x: int, y: int) -> tuple[int, int]:
+        self.create()
         self._manual_position = True
         win32gui.SetWindowPos(
             self.hwnd, 0, x, y, 0, 0,
             win32con.SWP_NOACTIVATE | win32con.SWP_NOSIZE | win32con.SWP_NOZORDER,
         )
         return win32gui.GetWindowRect(self.hwnd)[:2]
+
+    def move_to_game_rect(self, left: int, top: int, width: int, height: int) -> None:
+        if self._manual_position:
+            return
+        hwnd = self.create()
+        monitor = self._get_monitor_rect(hwnd)
+        dpi = self._get_window_dpi(hwnd)
+        x, y = calculate_game_position((left, top, width, height), monitor, dpi)
+        win32gui.SetWindowPos(
+            hwnd, 0, x, y, 0, 0,
+            win32con.SWP_NOACTIVATE | win32con.SWP_NOSIZE | win32con.SWP_NOZORDER,
+        )
 
     def simulate_user_move(self, x: int, y: int) -> tuple[int, int]:
         self._manual_position = True

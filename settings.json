@@ -22,6 +22,7 @@
     "title": "Overmax Debug Log"
   },
   "overlay": {
+    "main_backend": "pyqt6",
     "toggle_hotkey": "F3",
     "tray_tooltip": "Overmax - DJMAX Respect V 난이도 오버레이",
     "hint_label": "F3: 표시/숨김  |  드래그로 위치 이동",

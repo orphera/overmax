@@ -113,8 +113,8 @@ PyQt6 대체 UI 검토는 `docs/qt-ui-alternatives.md`를 따른다.
 
 - [x] 프로덕션 코드용 Win32 overlay module 위치 결정
 - [x] smoke test helper와 프로덕션 renderer 경계 분리
-- [ ] `overlay/ui_payload.py` payload를 Win32 overlay update 입력으로 연결
-- [ ] PyQt6 메인 오버레이와 Win32 메인 오버레이를 설정/플래그로 선택 가능하게 구성
+- [x] `overlay/ui_payload.py` payload를 Win32 overlay update 입력으로 연결
+- [x] PyQt6 메인 오버레이와 Win32 메인 오버레이를 설정/플래그로 선택 가능하게 구성
 - [ ] 기본 경로는 기존 PyQt6로 유지하고 Win32는 opt-in으로 시작
 - [ ] overlay 표시/숨김, 위치 이동/저장, opacity, scale 반영
 - [ ] game focus를 방해하지 않는 noactivate/topmost 동작 확인

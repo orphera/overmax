@@ -41,6 +41,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "title": "Overmax Debug Log",
     },
     "overlay": {
+        "main_backend": "pyqt6",
         "toggle_hotkey": "F3",
         "tray_tooltip": "Overmax - DJMAX Respect V 난이도 오버레이",
         "hint_label": "F3: 표시/숨김  |  드래그로 위치 이동",
@@ -146,6 +147,9 @@ def _normalize_dict(settings: dict[str, Any]):
     """설정값이 유효한 범위를 벗어나지 않도록 조정한다."""
     # Overlay Scale - 가장 가까운 프리셋으로 스냅
     overlay = settings.get("overlay", {})
+    backend = str(overlay.get("main_backend", "pyqt6")).strip().lower()
+    overlay["main_backend"] = backend if backend in {"pyqt6", "win32"} else "pyqt6"
+
     if "scale" in overlay:
         try:
             val = float(overlay["scale"])

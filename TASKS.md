@@ -82,11 +82,18 @@ PyQt6 대체 UI 검토는 `docs/qt-ui-alternatives.md`를 따른다.
 - [x] PySide6 import/package 크기 기준 확인
 - [x] PySide6 최소 오버레이 smoke test
 - [x] PyQt6 유지 / PySide6 전환 / Win32 후속 spike 중 다음 방향 결정
+- [x] Win32 직접 오버레이 최소 smoke test 추가
+- [x] Win32 topmost/layered/noactivate/capture exclusion 확인
 - [ ] 대체 UI 후보를 검토하더라도 verified pipeline 변경 금지
 
 1차 결론: PySide6는 최소 기능 smoke test를 통과했지만, 크기 절감 근거가
 부족하므로 전환 후보에서 보류한다. 다음 대체 UI spike는 Win32 직접 오버레이를
 메인 오버레이 한정으로 검토한다.
+
+Win32 최소 smoke는 `test/win32_overlay_smoke.py`에서 별도 확인한다. 2026-05-11
+기준 `--show` 실행 시 `capture_excluded=True`를 확인했다. 아직 프로덕션
+오버레이 교체 후보로 보기에는 렌더링 품질, DPI, 폰트, 입력 처리, 트레이/보조 창
+분리 전략 검토가 남아 있다.
 
 ## 검증 기준
 

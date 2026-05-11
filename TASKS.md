@@ -1,8 +1,8 @@
 # TASKS
 
 Overmax의 현재 작업은 Python 기반 verified pipeline을 유지하면서,
-OpenCV 런타임 의존성 제거 이후 Qt/PyQt6 영역의 배포 크기와 구조를
-단계적으로 정리하는 것이다.
+OpenCV 런타임 의존성 제거와 Qt/PyQt6 영역의 기준 정리를 마친 뒤,
+Win32 직접 오버레이를 프로덕션 메인 오버레이 후보로 단계적으로 연결하는 것이다.
 
 OpenCV 제거 상세 기록은 `docs/opencv-to-rust-plan.md`를 따른다.
 Qt 정리 상세 계획은 `docs/qt-runtime-plan.md`를 따른다.
@@ -75,7 +75,7 @@ PyQt6 대체 UI 검토는 `docs/qt-ui-alternatives.md`를 따른다.
 - [x] Qt signal bridge를 표시 계층 경계에만 유지
 - [x] detection/capture/core에서 Qt import 없음 확인
 
-## 진행 중: Qt 대체 UI Phase 4
+## 완료: Qt 대체 UI Phase 4
 
 - [x] Phase 0~3 결과 기준으로 PyQt6 대체 spike 필요성 판단
 - [x] 대체 UI 후보 평가 기준 문서화
@@ -95,52 +95,38 @@ PyQt6 대체 UI 검토는 `docs/qt-ui-alternatives.md`를 따른다.
 - [x] Win32 ClearType 텍스트 배경 모드 보정 smoke 확인
 - [x] 대체 UI 후보를 검토하더라도 verified pipeline 변경 금지
 
-1차 결론: PySide6는 최소 기능 smoke test를 통과했지만, 크기 절감 근거가
-부족하므로 전환 후보에서 보류한다. 다음 대체 UI spike는 Win32 직접 오버레이를
-메인 오버레이 한정으로 검토한다.
+결론:
 
-Win32 최소 smoke는 `test/win32_overlay_smoke.py`에서 별도 확인한다. 2026-05-11
-기준 `--show` 실행 시 `capture_excluded=True`를 확인했다. 아직 프로덕션
-오버레이 교체 후보로 보기에는 렌더링 품질, DPI, 폰트, 입력 처리, 트레이/보조 창
-분리 전략 검토가 남아 있다.
+- PySide6는 최소 기능 smoke test를 통과했지만 배포 크기 절감 근거가 부족해 보류한다.
+- Win32 직접 오버레이는 메인 오버레이 한정 프로덕션 후보로 승격한다.
+- `scratch\win32_overlay_smoke.zip`은 8,692,687 bytes (8.29 MiB)로 측정되어,
+  Qt 기반 산출물 대비 크기 절감 가능성이 충분하다.
+- Win32 smoke는 창 속성, 캡처 제외, payload 연결, 위치 저장, DPI/멀티모니터
+  계산, 렌더링 API, 긴 텍스트 레이아웃, 메모리 DC 픽셀 검증, ClearType 배경
+  모드까지 통과했다.
+- 상세 기록은 `docs/qt-ui-alternatives.md`의 Win32 1~9차 결과를 따른다.
 
-Win32 2차 smoke에서는 `--diagnostics`로 필수 extended style, DPI, monitor rect를
-확인했고, PyInstaller 최소 산출물도 측정했다. `scratch\win32_overlay_smoke.zip`은
-8,692,687 bytes (8.29 MiB)로, Qt 기반 smoke보다 크기 절감 가능성은 뚜렷하다.
-다만 실제 오버레이 UI를 동일 품질로 다시 그리는 비용은 아직 별도 검토 대상이다.
+## 진행 중: Win32 프로덕션 전환 Phase 5
 
-Win32 3차 smoke에서는 `--payload-sample` 옵션으로 Qt 독립
-`OverlayPayloadBuilder`가 만든 초기/verified payload를 Win32 렌더링 상태에
-적용했다. 소스 실행 기준 diagnostics와 1초 표시 루프 모두 통과했으며,
-verified pipeline과 프로덕션 PyQt6 경로는 변경하지 않았다.
+목표는 PyQt6 전체 제거가 아니라, 검증된 Win32 렌더링 경로를 메인 오버레이에
+먼저 연결하고 보조 창은 기존 PyQt6 경로에 남기는 것이다.
 
-Win32 4차 smoke에서는 `--position-check` 옵션으로 PyQt6 오버레이와 같은
-`calculate_overlay_position()` 경로를 사용해 기본 위치를 산출하고, 저장된 위치
-적용 및 사용자 이동 완료 콜백을 확인했다. 이 검토도 smoke test 범위에만
-머물렀고 프로덕션 오버레이 교체는 아직 시작하지 않았다.
+- [ ] 프로덕션 코드용 Win32 overlay module 위치 결정
+- [ ] smoke test helper와 프로덕션 renderer 경계 분리
+- [ ] `overlay/ui_payload.py` payload를 Win32 overlay update 입력으로 연결
+- [ ] PyQt6 메인 오버레이와 Win32 메인 오버레이를 설정/플래그로 선택 가능하게 구성
+- [ ] 기본 경로는 기존 PyQt6로 유지하고 Win32는 opt-in으로 시작
+- [ ] overlay 표시/숨김, 위치 이동/저장, opacity, scale 반영
+- [ ] game focus를 방해하지 않는 noactivate/topmost 동작 확인
+- [ ] 캡처 제외 실패 시 verified pipeline에는 영향 없이 UI만 보수적으로 동작
+- [ ] 트레이, 설정, 동기화, 디버그 창은 PyQt6 유지
+- [ ] Win32 경로에서도 import smoke 및 실제 앱 smoke test 통과
+- [ ] PyInstaller 빌드 후 Win32 opt-in 경로 import/실행 확인
+- [ ] 배포 전 기본값 전환 여부를 별도 판단
 
-Win32 5차 smoke에서는 `--dpi-check`로 100%, 125%, 150%, 200% DPI와 좌/우
-가상 멀티모니터 배치를 계산 검증했다. 모든 케이스에서 scaled window rect가
-대상 monitor 내부에 머무르는 것을 확인했다.
-
-Win32 6차 smoke에서는 `--render-check`로 layered alpha, rounded window region,
-Segoe UI ClearType font 생성, 텍스트 extent 산출을 확인했다. 다만 이는 API
-성공 여부 확인이며, PyQt6와 동일한 시각 품질을 보장하는 단계는 아니다.
-
-Win32 7차 smoke에서는 `--layout-check --long-payload-sample`로 긴 제목,
-추천 행, footer가 주어진 영역의 높이를 넘지 않는지 확인했다. 폭이 긴 텍스트는
-`DT_END_ELLIPSIS`로 줄임 처리하는 경로를 사용하며, smoke는 overflow가 실제로
-발생하는 샘플에서도 높이 잘림이 없을 때만 통과한다.
-
-Win32 8차 smoke에서는 `test/win32_overlay_pixel_check.py`로 같은 GDI 렌더링을
-메모리 DC에 그리고 픽셀 샘플을 확인했다. 패널 배경, 밝은 텍스트, 강조색,
-cyan 상태 램프, divider 픽셀이 모두 검출되어 blank render가 아님을 자동으로
-확인했다. 이는 실제 화면 육안 품질 비교를 대체하지는 않는다.
-
-Win32 9차 smoke에서는 layered window에서 ClearType 가장자리 품질이 흔들리지
-않도록 텍스트 렌더링 시 실제 배경색을 지정한 `OPAQUE` 배경 모드를 사용하게
-조정했다. `--render-check`, `--layout-check --long-payload-sample`,
-`test/win32_overlay_pixel_check.py`, `--show` 경로가 모두 통과했다.
+Phase 5에서는 detection/capture/core와 recommendation 로직을 변경하지 않는다.
+Win32 경로가 실패해도 verified state commit과 기록 저장 흐름은 영향을 받지
+않아야 한다.
 
 ## 검증 기준
 

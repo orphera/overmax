@@ -557,3 +557,59 @@ unique_colors=123
   육안 품질, 고DPI ClearType 품질을 완전히 대체하지 않는다.
 - 다음 검토는 `--show` 또는 별도 screenshot 기반으로 PyQt6 오버레이와 실제
   표시 품질을 비교하는 단계가 적절하다.
+
+## 2026-05-11 Win32 9차 결과
+
+Win32 layered window에서 ClearType 가장자리 품질이 흔들리지 않도록,
+텍스트 렌더링 시 실제 배경색을 지정하고 `OPAQUE` 배경 모드를 사용하게 조정했다.
+
+검증:
+
+```text
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --render-check --payload-sample
+alpha=232
+rounded_region=True
+font_created=True
+font_quality=5
+text_extent=(96, 20)
+
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --layout-check --long-payload-sample
+title=width:432/240 height:20/26 fits_width:False fits_height:True
+mode_diff=width:43/56 height:20/24 fits_width:True fits_height:True
+subtitle=width:226/306 height:20/28 fits_width:True fits_height:True
+footer=width:454/306 height:20/20 fits_width:False fits_height:True
+recommendation_1=width:581/298 height:20/24 fits_width:False fits_height:True
+recommendation_2=width:447/298 height:20/24 fits_width:False fits_height:True
+overflowing_cases=4
+
+.\.venv_build\Scripts\python.exe test\win32_overlay_pixel_check.py
+total_pixels=61200
+non_blank_pixels=52624
+panel_bg_pixels=43401
+bright_text_pixels=2828
+accent_pixels=1072
+cyan_pixels=26
+divider_pixels=310
+unique_colors=123
+
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --show --payload-sample --duration-ms 1000
+capture_excluded=True
+dpi=96
+```
+
+확인된 항목:
+
+- 텍스트 출력은 `TRANSPARENT` 배경 모드가 아니라 실제 패널/배지 배경색을 가진
+  `OPAQUE` 배경 모드를 사용한다.
+- `--render-check`, `--layout-check --long-payload-sample`, 픽셀 smoke,
+  실제 표시 루프가 모두 통과했다.
+- 긴 텍스트는 폭 초과를 허용하되 높이 잘림 없이 `DT_END_ELLIPSIS` 경로로 처리한다.
+- Win32 smoke는 여전히 프로덕션 PyQt6 경로와 verified pipeline을 변경하지 않는다.
+
+9차 판단:
+
+- Win32 직접 오버레이는 메인 오버레이 한정 프로덕션 후보로 승격해도 된다.
+- 전환은 PyQt6 전체 제거가 아니라, 메인 overlay window만 opt-in으로 바꾸는
+  Phase 5로 진행한다.
+- 트레이, 설정, 동기화, 디버그 창은 PyQt6에 남겨 전환 범위를 작게 유지한다.
+- 기본값 전환은 실제 앱 smoke test와 PyInstaller 산출물 검증 이후 별도로 판단한다.

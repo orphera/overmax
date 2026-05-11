@@ -89,7 +89,8 @@ class PatternSheetMeta:
                 if mode == "5B":
                     meta["assist_key"] = str(row.get("보조 키 여부", "") or row.get("보조키여부", "")).strip()
 
-                items[key] = meta
+                if any(meta.values()):
+                    items[key] = meta
 
         # 캐시 파일 저장
         try:

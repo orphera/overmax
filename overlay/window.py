@@ -199,7 +199,7 @@ if PYQT_AVAILABLE:
 
         def _on_song_changed(self, title: str, all_patterns: list):
             if self._header:
-                self._header.update_song(title)
+                self._header.update_song(title, all_patterns)
             self._patterns_cache = {item["mode"]: item["patterns"] for item in all_patterns}
             self._apply_tab_update()
 

@@ -49,21 +49,10 @@ class DiffTab(QFrame):
         )
         layout.addWidget(self._floor_label)
 
-        # 메타 정보 표시용 레이블 (황배 여부/비고/보조 키)
-        self._meta_label = QLabel("")
-        self._meta_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._meta_label.setStyleSheet(
-            f"color: #FFD166; font-size: {_s(8, sc)}px; font-weight: 600; background: transparent;"
-        )
-        layout.addWidget(self._meta_label)
-
     def set_info(
         self,
         floor_name: Optional[str],
         level: Optional[int],
-        gold: str = "",
-        note: str = "",
-        assist_key: str = "",
     ):
         self._exists = True
         self._floor_name = floor_name
@@ -75,23 +64,12 @@ class DiffTab(QFrame):
             if self._active
             else f"color: #8891A7; font-size: {_s(10, sc)}px; font-weight: 600; background: transparent;"
         )
-        # 메타 정보 문자열 구성
-        badges: list[str] = []
-        if gold:
-            badges.append(f"황배:{gold}")
-        if assist_key:
-            badges.append(f"보조:{assist_key}")
-        if note:
-            badges.append(str(note))
-        self._meta_label.setText(" / ".join(badges))
         self._update_style()
 
     def clear(self):
         self._exists = False
         self._floor_name = None
         self._floor_label.setText("—")
-        # 메타 레이블 초기화
-        self._meta_label.setText("")
         self._update_style()
 
     def set_active(self, active: bool):
@@ -148,9 +126,6 @@ class VerticalTabPanel(QWidget):
                 tab.set_info(
                     p.get("floorName"),
                     p.get("level"),
-                    p.get("gold", ""),
-                    p.get("note", ""),
-                    p.get("assist_key", ""),
                 )
             else:
                 tab.clear()

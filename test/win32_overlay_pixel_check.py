@@ -14,10 +14,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from win32_overlay_geometry import BASE_HEIGHT, BASE_WIDTH
 from win32_overlay_payload_sample import long_payload_view_state
-from win32_overlay_render import PANEL_BG
-from win32_overlay_smoke import Win32OverlaySmoke
+from overlay.win32.geometry import BASE_HEIGHT, BASE_WIDTH
+from overlay.win32.render import PANEL_BG
+from overlay.win32.window import Win32OverlayWindow
 
 BLACK = win32api.RGB(0, 0, 0)
 
@@ -45,13 +45,13 @@ def render_pixel_diagnostics() -> PixelDiagnostics:
     memory_dc = win32gui.CreateCompatibleDC(screen_dc)
     bitmap = win32gui.CreateCompatibleBitmap(screen_dc, BASE_WIDTH, BASE_HEIGHT)
     old_bitmap = win32gui.SelectObject(memory_dc, bitmap)
-    smoke = Win32OverlaySmoke(long_payload_view_state())
+    window = Win32OverlayWindow(long_payload_view_state())
     try:
         _fill_background(memory_dc)
-        smoke._draw_panel(memory_dc)
+        window.draw(memory_dc)
         return sample_pixels(memory_dc)
     finally:
-        smoke._destroy_font()
+        window.destroy()
         win32gui.SelectObject(memory_dc, old_bitmap)
         win32gui.DeleteObject(bitmap)
         win32gui.DeleteDC(memory_dc)

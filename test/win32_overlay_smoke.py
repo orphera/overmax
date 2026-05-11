@@ -1,68 +1,33 @@
-"""Minimal Win32 overlay spike.
-
-This script is intentionally separate from production overlay code. It checks
-whether a direct Win32 window can satisfy the main overlay window constraints
-without pulling in Qt.
-"""
+"""Smoke CLI for the production Win32 overlay candidate."""
 
 from __future__ import annotations
 
 import argparse
-import ctypes
 import sys
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
-
-import win32api
-import win32con
-import win32gui
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from win32_overlay_geometry import (
-    BASE_HEIGHT,
-    BASE_WIDTH,
-    DpiCase,
-    PositionDiagnostics,
-    build_dpi_cases,
-    calculate_game_position,
-)
-from win32_overlay_payload_sample import (
-    Win32OverlayViewState,
-    default_view_state,
-    long_payload_view_state,
-    sample_payload_view_state,
-)
-from win32_overlay_render import (
-    BADGE_BG,
-    PANEL_BG,
-    TEXT_FLAGS,
+from overlay.win32.geometry import DpiCase, PositionDiagnostics, build_dpi_cases
+from overlay.win32.render import (
     RenderDiagnostics,
     TextLayoutDiagnostics,
-    build_text_layout_diagnostics,
-    print_render_diagnostics,
-    print_text_layout_diagnostics,
     render_diagnostics_ok,
     text_layout_diagnostics_ok,
 )
+from overlay.win32.view_state import Win32OverlayViewState, default_view_state
+from overlay.win32.window import (
+    WindowDiagnostics,
+    Win32OverlayWindow,
+    set_process_dpi_awareness,
+)
+from win32_overlay_payload_sample import (
+    long_payload_view_state,
+    sample_payload_view_state,
+)
 
-WDA_EXCLUDEFROMCAPTURE = 0x00000011
-CLASS_NAME = "OvermaxWin32OverlaySmoke"
-WINDOW_TITLE = "Overmax Win32 overlay smoke"
 DEFAULT_DURATION_MS = 3000
-
-
-@dataclass(frozen=True)
-class WindowDiagnostics:
-    capture_excluded: bool
-    dpi: int
-    monitor: tuple[int, int, int, int]
-    rect: tuple[int, int, int, int]
-    style_ok: bool
-    ex_style: int
 
 
 def parse_args() -> argparse.Namespace:
@@ -78,319 +43,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--long-payload-sample", action="store_true")
     parser.add_argument("--duration-ms", type=int, default=DEFAULT_DURATION_MS)
     return parser.parse_args()
-
-
-def set_process_dpi_awareness() -> None:
-    try:
-        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
-    except Exception:
-        try:
-            ctypes.windll.shcore.SetProcessDpiAwareness(2)
-        except Exception:
-            pass
-
-
-def set_capture_exclusion(hwnd: int) -> bool:
-    try:
-        ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)
-        return True
-    except Exception as exc:
-        print(f"SetWindowDisplayAffinity failed: {exc}")
-        return False
-
-
-class Win32OverlaySmoke:
-    def __init__(self, view_state: Optional[Win32OverlayViewState] = None) -> None:
-        self.hinst = win32api.GetModuleHandle(None)
-        self.hwnd = 0
-        self.capture_excluded = False
-        self._font = 0
-        self._view_state = view_state or default_view_state()
-        self._manual_position = False
-        self._user_move_cb: Optional[Callable[[int, int], None]] = None
-        self._rounded_region_applied = False
-        self._register_class()
-
-    def _register_class(self) -> None:
-        wc = win32gui.WNDCLASS()
-        wc.hInstance = self.hinst
-        wc.lpszClassName = CLASS_NAME
-        wc.lpfnWndProc = self._wnd_proc
-        wc.hCursor = win32gui.LoadCursor(0, win32con.IDC_ARROW)
-        wc.hbrBackground = win32con.COLOR_WINDOW + 1
-
-        try:
-            win32gui.RegisterClass(wc)
-        except win32gui.error:
-            # Re-running the smoke in the same interpreter can reuse the class.
-            pass
-
-    def create(self) -> int:
-        ex_style = (
-            win32con.WS_EX_LAYERED
-            | win32con.WS_EX_TOPMOST
-            | win32con.WS_EX_TOOLWINDOW
-            | win32con.WS_EX_NOACTIVATE
-        )
-        self.hwnd = win32gui.CreateWindowEx(
-            ex_style,
-            CLASS_NAME,
-            WINDOW_TITLE,
-            win32con.WS_POPUP,
-            120,
-            120,
-            BASE_WIDTH,
-            BASE_HEIGHT,
-            0,
-            0,
-            self.hinst,
-            None,
-        )
-        win32gui.SetLayeredWindowAttributes(self.hwnd, 0, 232, win32con.LWA_ALPHA)
-        self._rounded_region_applied = self._apply_rounded_region(self.hwnd)
-        self.capture_excluded = set_capture_exclusion(self.hwnd)
-        return self.hwnd
-
-    def position_diagnostics(self) -> PositionDiagnostics:
-        hwnd = self.create()
-        monitor = self._get_monitor_rect(hwnd)
-        calculated = calculate_game_position((200, 120, 1280, 720), monitor)
-        saved = self.apply_saved_position(calculated[0] + 24, calculated[1] + 18)
-        callback_positions: list[tuple[int, int]] = []
-        self.set_user_move_callback(lambda x, y: callback_positions.append((x, y)))
-        moved = self.simulate_user_move(saved[0] + 12, saved[1] + 10)
-        return PositionDiagnostics(
-            calculated=calculated,
-            saved=saved,
-            moved=moved,
-            callback_position=callback_positions[-1],
-            monitor=monitor,
-        )
-
-    def render_diagnostics(self) -> RenderDiagnostics:
-        hwnd = self.create()
-        hdc = win32gui.GetDC(hwnd)
-        try:
-            self._select_font(hdc)
-            text_extent = win32gui.GetTextExtentPoint32(hdc, self._view_state.title)
-        finally:
-            win32gui.ReleaseDC(hwnd, hdc)
-        return RenderDiagnostics(
-            alpha=232,
-            rounded_region=self._rounded_region_applied,
-            font_created=bool(self._font),
-            font_quality=win32con.CLEARTYPE_QUALITY,
-            text_extent=text_extent,
-        )
-
-    def text_layout_diagnostics(self) -> TextLayoutDiagnostics:
-        hwnd = self.create()
-        hdc = win32gui.GetDC(hwnd)
-        try:
-            self._select_font(hdc)
-            return build_text_layout_diagnostics(hdc, self._view_state)
-        finally:
-            win32gui.ReleaseDC(hwnd, hdc)
-
-    def diagnostics(self) -> WindowDiagnostics:
-        hwnd = self.create()
-        return WindowDiagnostics(
-            capture_excluded=self.capture_excluded,
-            dpi=self._get_window_dpi(hwnd),
-            monitor=self._get_monitor_rect(hwnd),
-            rect=win32gui.GetWindowRect(hwnd),
-            style_ok=self._required_styles_present(hwnd),
-            ex_style=win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE),
-        )
-
-    def show_for(self, duration_ms: int) -> int:
-        hwnd = self.create()
-        win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
-        win32gui.UpdateWindow(hwnd)
-        ctypes.windll.user32.SetTimer(hwnd, 1, duration_ms, None)
-        print(f"capture_excluded={self.capture_excluded}")
-        print(f"dpi={self._get_window_dpi(hwnd)}")
-        return self._message_loop()
-
-    def set_user_move_callback(self, callback: Callable[[int, int], None]) -> None:
-        self._user_move_cb = callback
-
-    def apply_saved_position(self, x: int, y: int) -> tuple[int, int]:
-        self._manual_position = True
-        win32gui.SetWindowPos(
-            self.hwnd, 0, x, y, 0, 0,
-            win32con.SWP_NOACTIVATE | win32con.SWP_NOSIZE | win32con.SWP_NOZORDER,
-        )
-        return win32gui.GetWindowRect(self.hwnd)[:2]
-
-    def simulate_user_move(self, x: int, y: int) -> tuple[int, int]:
-        self._manual_position = True
-        win32gui.SetWindowPos(
-            self.hwnd, 0, x, y, 0, 0,
-            win32con.SWP_NOACTIVATE | win32con.SWP_NOSIZE | win32con.SWP_NOZORDER,
-        )
-        self._emit_user_move()
-        return win32gui.GetWindowRect(self.hwnd)[:2]
-
-    def _message_loop(self) -> int:
-        msg = win32gui.GetMessage(None, 0, 0)
-        while msg[0] != 0:
-            win32gui.TranslateMessage(msg[1])
-            win32gui.DispatchMessage(msg[1])
-            msg = win32gui.GetMessage(None, 0, 0)
-        return 0
-
-    def _wnd_proc(self, hwnd: int, msg: int, wparam: int, lparam: int) -> int:
-        if msg == win32con.WM_PAINT:
-            self._paint(hwnd)
-            return 0
-        if msg == win32con.WM_TIMER:
-            win32gui.DestroyWindow(hwnd)
-            return 0
-        if msg == win32con.WM_EXITSIZEMOVE:
-            self._emit_user_move()
-            return 0
-        if msg == win32con.WM_NCHITTEST:
-            return win32con.HTCAPTION
-        if msg == win32con.WM_SETCURSOR:
-            win32gui.SetCursor(win32gui.LoadCursor(0, win32con.IDC_SIZEALL))
-            return 1
-        if msg == win32con.WM_DESTROY:
-            self._destroy_font()
-            win32gui.PostQuitMessage(0)
-            return 0
-        return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
-
-    def _emit_user_move(self) -> None:
-        if self._user_move_cb is None:
-            return
-        left, top, _, _ = win32gui.GetWindowRect(self.hwnd)
-        self._user_move_cb(left, top)
-
-    def _apply_rounded_region(self, hwnd: int) -> bool:
-        try:
-            region = win32gui.CreateRoundRectRgn(0, 0, BASE_WIDTH, BASE_HEIGHT, 24, 24)
-            win32gui.SetWindowRgn(hwnd, region, True)
-            return True
-        except Exception as exc:
-            print(f"SetWindowRgn failed: {exc}")
-            return False
-
-    def _paint(self, hwnd: int) -> None:
-        hdc, paint_struct = win32gui.BeginPaint(hwnd)
-        try:
-            self._draw_panel(hdc)
-        finally:
-            win32gui.EndPaint(hwnd, paint_struct)
-
-    def _draw_panel(self, hdc: int) -> None:
-        brush = win32gui.CreateSolidBrush(PANEL_BG)
-        old_brush = win32gui.SelectObject(hdc, brush)
-        try:
-            win32gui.RoundRect(hdc, 8, 8, 352, 162, 24, 24)
-        finally:
-            win32gui.SelectObject(hdc, old_brush)
-            win32gui.DeleteObject(brush)
-
-        lamp_color = (
-            win32api.RGB(0, 212, 255)
-            if self._view_state.is_stable
-            else win32api.RGB(255, 75, 75)
-        )
-        self._draw_lamp(hdc, 26, 31, lamp_color)
-        self._draw_text(
-            hdc, self._view_state.title, 42, 20, 240, 46,
-            win32api.RGB(255, 209, 102),
-        )
-        self._draw_badge(hdc, self._view_state.mode_diff, 270, 20, 334, 48)
-        self._draw_text(hdc, "ui_payload -> Win32 renderer", 24, 50, 330, 78)
-        for index, line in enumerate(self._view_state.recommendations[:2], start=1):
-            top = 88 + ((index - 1) * 28)
-            self._draw_text(hdc, f"{index:02d}  {line}", 32, top, 330, top + 24)
-        self._draw_footer(hdc)
-
-    def _draw_lamp(self, hdc: int, x: int, y: int, color: int) -> None:
-        brush = win32gui.CreateSolidBrush(color)
-        old_brush = win32gui.SelectObject(hdc, brush)
-        try:
-            win32gui.Ellipse(hdc, x, y, x + 7, y + 7)
-        finally:
-            win32gui.SelectObject(hdc, old_brush)
-            win32gui.DeleteObject(brush)
-
-    def _draw_badge(self, hdc: int, text: str, left: int, top: int, right: int, bottom: int) -> None:
-        brush = win32gui.CreateSolidBrush(BADGE_BG)
-        old_brush = win32gui.SelectObject(hdc, brush)
-        try:
-            win32gui.RoundRect(hdc, left, top, right, bottom, 12, 12)
-        finally:
-            win32gui.SelectObject(hdc, old_brush)
-            win32gui.DeleteObject(brush)
-        self._draw_text(hdc, text, left + 8, top + 4, right, bottom, bg_color=BADGE_BG)
-
-    def _draw_footer(self, hdc: int) -> None:
-        pen = win32gui.CreatePen(win32con.PS_SOLID, 1, win32api.RGB(48, 58, 78))
-        old_pen = win32gui.SelectObject(hdc, pen)
-        try:
-            win32gui.MoveToEx(hdc, 24, 148)
-            win32gui.LineTo(hdc, 334, 148)
-        finally:
-            win32gui.SelectObject(hdc, old_pen)
-            win32gui.DeleteObject(pen)
-        self._draw_text(hdc, self._view_state.footer, 24, 150, 330, 170)
-
-    def _draw_text(
-        self,
-        hdc: int,
-        text: str,
-        left: int,
-        top: int,
-        right: int,
-        bottom: int,
-        color: int = win32api.RGB(230, 236, 255),
-        bg_color: int = PANEL_BG,
-    ) -> None:
-        self._select_font(hdc)
-        win32gui.SetBkMode(hdc, win32con.OPAQUE)
-        win32gui.SetBkColor(hdc, bg_color)
-        win32gui.SetTextColor(hdc, color)
-        win32gui.DrawText(hdc, text, -1, (left, top, right, bottom), TEXT_FLAGS)
-
-    def _select_font(self, hdc: int) -> None:
-        if not self._font:
-            logfont = win32gui.LOGFONT()
-            logfont.lfFaceName = "Segoe UI"
-            logfont.lfHeight = -15
-            logfont.lfWeight = win32con.FW_SEMIBOLD
-            logfont.lfQuality = win32con.CLEARTYPE_QUALITY
-            self._font = win32gui.CreateFontIndirect(logfont)
-        win32gui.SelectObject(hdc, self._font)
-
-    def _destroy_font(self) -> None:
-        if self._font:
-            win32gui.DeleteObject(self._font)
-            self._font = 0
-
-    def _get_window_dpi(self, hwnd: int) -> int:
-        try:
-            return int(ctypes.windll.user32.GetDpiForWindow(hwnd))
-        except Exception:
-            return 96
-
-    def _get_monitor_rect(self, hwnd: int) -> tuple[int, int, int, int]:
-        monitor = win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONEAREST)
-        info = win32api.GetMonitorInfo(monitor)
-        return tuple(info["Monitor"])
-
-    def _required_styles_present(self, hwnd: int) -> bool:
-        ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
-        required = (
-            win32con.WS_EX_LAYERED
-            | win32con.WS_EX_TOPMOST
-            | win32con.WS_EX_TOOLWINDOW
-            | win32con.WS_EX_NOACTIVATE
-        )
-        return (ex_style & required) == required
 
 
 def print_diagnostics(diagnostics: WindowDiagnostics) -> None:
@@ -429,6 +81,31 @@ def dpi_cases_ok(cases: list[DpiCase]) -> bool:
     return all(case.within_monitor for case in cases)
 
 
+def print_render_diagnostics(diagnostics: RenderDiagnostics) -> None:
+    print(f"alpha={diagnostics.alpha}")
+    print(f"rounded_region={diagnostics.rounded_region}")
+    print(f"font_created={diagnostics.font_created}")
+    print(f"font_quality={diagnostics.font_quality}")
+    print(f"text_extent={diagnostics.text_extent}")
+
+
+def print_text_layout_diagnostics(diagnostics: TextLayoutDiagnostics) -> None:
+    for case in diagnostics.cases:
+        print(
+            "{name}=width:{text_width}/{width} height:{text_height}/{height} "
+            "fits_width:{fits_width} fits_height:{fits_height}".format(
+                name=case.name,
+                text_width=case.text_width,
+                width=case.width,
+                text_height=case.text_height,
+                height=case.height,
+                fits_width=case.fits_width,
+                fits_height=case.fits_height,
+            )
+        )
+    print(f"overflowing_cases={len(diagnostics.overflowing_cases)}")
+
+
 def resolve_view_state(args: argparse.Namespace) -> Win32OverlayViewState:
     if args.long_payload_sample:
         return long_payload_view_state()
@@ -448,11 +125,11 @@ def main() -> int:
     view_state = resolve_view_state(args)
 
     if args.diagnostics:
-        print_diagnostics(Win32OverlaySmoke(view_state).diagnostics())
+        print_diagnostics(Win32OverlayWindow(view_state).diagnostics())
         return 0
 
     if args.position_check:
-        print_position_diagnostics(Win32OverlaySmoke(view_state).position_diagnostics())
+        print_position_diagnostics(Win32OverlayWindow(view_state).position_diagnostics())
         return 0
 
     if args.dpi_check:
@@ -461,12 +138,12 @@ def main() -> int:
         return 0 if dpi_cases_ok(cases) else 1
 
     if args.render_check:
-        diagnostics = Win32OverlaySmoke(view_state).render_diagnostics()
+        diagnostics = Win32OverlayWindow(view_state).render_diagnostics()
         print_render_diagnostics(diagnostics)
         return 0 if render_diagnostics_ok(diagnostics) else 1
 
     if args.layout_check:
-        diagnostics = Win32OverlaySmoke(view_state).text_layout_diagnostics()
+        diagnostics = Win32OverlayWindow(view_state).text_layout_diagnostics()
         print_text_layout_diagnostics(diagnostics)
         return 0 if text_layout_diagnostics_ok(diagnostics) else 1
 
@@ -474,7 +151,7 @@ def main() -> int:
         print("Use --import-only, --diagnostics, --layout-check, or --show")
         return 2
 
-    return Win32OverlaySmoke(view_state).show_for(args.duration_ms)
+    return Win32OverlayWindow(view_state).show_for(args.duration_ms)
 
 
 if __name__ == "__main__":

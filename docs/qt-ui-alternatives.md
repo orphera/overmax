@@ -613,3 +613,33 @@ dpi=96
   Phase 5로 진행한다.
 - 트레이, 설정, 동기화, 디버그 창은 PyQt6에 남겨 전환 범위를 작게 유지한다.
 - 기본값 전환은 실제 앱 smoke test와 PyInstaller 산출물 검증 이후 별도로 판단한다.
+
+## 2026-05-11 Win32 Phase 5 시작 결과
+
+Phase 5의 첫 범위는 프로덕션 코드 위치 확정과 smoke/prod 경계 분리로 제한했다.
+Win32 메인 오버레이 후보는 `overlay/win32/` 패키지로 이동하고, smoke CLI는
+해당 패키지를 호출하는 검증 도구로 축소했다.
+
+결정:
+
+- 프로덕션 Win32 main overlay 후보 위치는 `overlay/win32/`로 둔다.
+- `overlay/win32/window.py`는 창 생성, noactivate/topmost/layered 속성, 캡처 제외,
+  위치 이동 콜백, diagnostics를 담당한다.
+- `overlay/win32/render.py`는 GDI drawing path와 렌더링 diagnostics를 담당한다.
+- `overlay/win32/view_state.py`는 `overlay/ui_payload.py`의 payload를 Win32 표시
+  상태로 변환하는 경계로 둔다.
+- 기존 `test/win32_overlay_smoke.py`는 프로덕션 구현을 import해서 확인하는 CLI로만
+  유지한다.
+
+검증:
+
+```text
+.\.venv_build\Scripts\python.exe -m py_compile overlay\win32\__init__.py overlay\win32\geometry.py overlay\win32\view_state.py overlay\win32\render.py overlay\win32\window.py test\win32_overlay_smoke.py test\win32_overlay_payload_sample.py test\win32_overlay_pixel_check.py test\win32_overlay_geometry.py test\win32_overlay_render.py
+```
+
+판단:
+
+- Phase 5의 첫 두 항목은 verified pipeline, detection/capture/core, recommendation
+  로직을 변경하지 않고 완료했다.
+- 다음 작업은 `overlay/ui_payload.py` payload를 실제 Win32 overlay update 입력으로
+  연결하는 단계다.

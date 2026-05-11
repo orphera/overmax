@@ -6,6 +6,7 @@ OpenCV 런타임 의존성 제거 이후 Qt/PyQt6 영역의 배포 크기와 구
 
 OpenCV 제거 상세 기록은 `docs/opencv-to-rust-plan.md`를 따른다.
 Qt 정리 상세 계획은 `docs/qt-runtime-plan.md`를 따른다.
+PyQt6 대체 UI 검토는 `docs/qt-ui-alternatives.md`를 따른다.
 
 ## 완료: Rust HOG 검증
 
@@ -74,10 +75,18 @@ Qt 정리 상세 계획은 `docs/qt-runtime-plan.md`를 따른다.
 - [x] Qt signal bridge를 표시 계층 경계에만 유지
 - [x] detection/capture/core에서 Qt import 없음 확인
 
-## 다음 단계: Qt 대체 UI spike 여부 결정
+## 진행 중: Qt 대체 UI Phase 4
 
-- [ ] Phase 0~3 결과 기준으로 PyQt6 대체 spike 필요성 판단
+- [x] Phase 0~3 결과 기준으로 PyQt6 대체 spike 필요성 판단
+- [x] 대체 UI 후보 평가 기준 문서화
+- [x] PySide6 import/package 크기 기준 확인
+- [x] PySide6 최소 오버레이 smoke test
+- [x] PyQt6 유지 / PySide6 전환 / Win32 후속 spike 중 다음 방향 결정
 - [ ] 대체 UI 후보를 검토하더라도 verified pipeline 변경 금지
+
+1차 결론: PySide6는 최소 기능 smoke test를 통과했지만, 크기 절감 근거가
+부족하므로 전환 후보에서 보류한다. 다음 대체 UI spike는 Win32 직접 오버레이를
+메인 오버레이 한정으로 검토한다.
 
 ## 검증 기준
 

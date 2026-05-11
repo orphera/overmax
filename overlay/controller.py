@@ -41,6 +41,7 @@ class OverlayController:
         self._app: Optional[QApplication] = None
         self._window: Optional[OverlayWindow] = None
         self._roi_window: Optional[RoiOverlayWindow] = None
+        self._sync_window: Optional[SyncWindow] = None
         self._settings_window: Optional[SettingsWindow] = None
         self._tray_icon: Optional[QSystemTrayIcon] = None
         self._debug_log_cb = None

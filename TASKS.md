@@ -117,8 +117,8 @@ PyQt6 대체 UI 검토는 `docs/qt-ui-alternatives.md`를 따른다.
 - [x] PyQt6 메인 오버레이와 Win32 메인 오버레이를 설정/플래그로 선택 가능하게 구성
 - [x] 기본 경로는 기존 PyQt6로 유지하고 Win32는 opt-in으로 시작
 - [x] overlay 표시/숨김, 위치 이동/저장, opacity, scale 반영
-- [ ] game focus를 방해하지 않는 noactivate/topmost 동작 확인
-- [ ] 캡처 제외 실패 시 verified pipeline에는 영향 없이 UI만 보수적으로 동작
+- [x] game focus를 방해하지 않는 noactivate/topmost 동작 확인
+- [x] 캡처 제외 실패 시 verified pipeline에는 영향 없이 UI만 보수적으로 동작
 - [ ] 트레이, 설정, 동기화, 디버그 창은 PyQt6 유지
 - [ ] Win32 경로에서도 import smoke 및 실제 앱 smoke test 통과
 - [ ] PyInstaller 빌드 후 Win32 opt-in 경로 import/실행 확인
@@ -127,6 +127,12 @@ PyQt6 대체 UI 검토는 `docs/qt-ui-alternatives.md`를 따른다.
 Phase 5에서는 detection/capture/core와 recommendation 로직을 변경하지 않는다.
 Win32 경로가 실패해도 verified state commit과 기록 저장 흐름은 영향을 받지
 않아야 한다.
+
+2026-05-11 확인:
+- Win32 diagnostics에서 `capture_excluded=True`, `style_ok=True`,
+  `noactivate=True`, `topmost=True`, `focus_preserved=True`를 확인했다.
+- `SetWindowDisplayAffinity` 실패는 예외로 전파하지 않고, Win32 overlay 표시만
+  억제한다. detection/capture/core/recommendation 경로는 변경하지 않았다.
 
 ## 검증 기준
 

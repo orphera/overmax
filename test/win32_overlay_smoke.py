@@ -48,6 +48,9 @@ def parse_args() -> argparse.Namespace:
 def print_diagnostics(diagnostics: WindowDiagnostics) -> None:
     print(f"capture_excluded={diagnostics.capture_excluded}")
     print(f"style_ok={diagnostics.style_ok}")
+    print(f"noactivate={diagnostics.noactivate}")
+    print(f"topmost={diagnostics.topmost}")
+    print(f"focus_preserved={diagnostics.focus_preserved}")
     print(f"dpi={diagnostics.dpi}")
     print(f"rect={diagnostics.rect}")
     print(f"monitor={diagnostics.monitor}")

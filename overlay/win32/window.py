@@ -38,6 +38,9 @@ class WindowDiagnostics:
     monitor: tuple[int, int, int, int]
     rect: tuple[int, int, int, int]
     style_ok: bool
+    noactivate: bool
+    topmost: bool
+    focus_preserved: bool
     ex_style: int
 
 
@@ -53,11 +56,14 @@ def set_process_dpi_awareness() -> None:
 
 def set_capture_exclusion(hwnd: int) -> bool:
     try:
-        ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)
-        return True
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        if user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE):
+            return True
+        error = ctypes.get_last_error()
+        print(f"SetWindowDisplayAffinity failed: winerror={error}")
     except Exception as exc:
         print(f"SetWindowDisplayAffinity failed: {exc}")
-        return False
+    return False
 
 
 class Win32OverlayWindow:
@@ -95,6 +101,9 @@ class Win32OverlayWindow:
 
     def show(self) -> None:
         hwnd = self.create()
+        if not self._can_show_overlay():
+            self.hide()
+            return
         win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
         win32gui.UpdateWindow(hwnd)
 
@@ -113,6 +122,10 @@ class Win32OverlayWindow:
 
     def show_for(self, duration_ms: int) -> int:
         hwnd = self.create()
+        if not self._can_show_overlay():
+            print(f"capture_excluded={self.capture_excluded}")
+            print("show_suppressed=True")
+            return 0
         win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
         win32gui.UpdateWindow(hwnd)
         ctypes.windll.user32.SetTimer(hwnd, 1, duration_ms, None)
@@ -220,13 +233,17 @@ class Win32OverlayWindow:
 
     def diagnostics(self) -> WindowDiagnostics:
         hwnd = self.create()
+        ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
         return WindowDiagnostics(
             capture_excluded=self.capture_excluded,
             dpi=self._get_window_dpi(hwnd),
             monitor=self._get_monitor_rect(hwnd),
             rect=win32gui.GetWindowRect(hwnd),
             style_ok=self._required_styles_present(hwnd),
-            ex_style=win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE),
+            noactivate=self._has_ex_style(ex_style, win32con.WS_EX_NOACTIVATE),
+            topmost=self._has_ex_style(ex_style, win32con.WS_EX_TOPMOST),
+            focus_preserved=self._foreground_preserved_by_show(hwnd),
+            ex_style=ex_style,
         )
 
     def destroy(self) -> None:
@@ -312,6 +329,22 @@ class Win32OverlayWindow:
         ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
         required = self._window_ex_style()
         return (ex_style & required) == required
+
+    def _has_ex_style(self, ex_style: int, flag: int) -> bool:
+        return (ex_style & flag) == flag
+
+    def _foreground_preserved_by_show(self, hwnd: int) -> bool:
+        if not self._can_show_overlay():
+            return False
+        before = win32gui.GetForegroundWindow()
+        win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
+        win32gui.UpdateWindow(hwnd)
+        after = win32gui.GetForegroundWindow()
+        win32gui.ShowWindow(hwnd, win32con.SW_HIDE)
+        return before == after
+
+    def _can_show_overlay(self) -> bool:
+        return self.capture_excluded
 
     def _window_ex_style(self) -> int:
         return (

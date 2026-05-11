@@ -105,6 +105,8 @@ class OverlayController:
 
     def notify_confidence(self, confidence: float):
         self.signals.confidence_changed.emit(confidence)
+        if self._using_win32_overlay():
+            self._window.update_confidence(confidence)
 
     def notify_window_pos(self, left, top, width, height):
         self.log(f"창 위치: ({left},{top}) {width}x{height}")
@@ -250,9 +252,10 @@ class OverlayController:
 
         self._settings_window = SettingsWindow()
         self._settings_window.hide()
-        if isinstance(self._window, OverlayWindow):
-            self._settings_window.opacity_changed.connect(self._window.update_base_opacity)
+        self._settings_window.opacity_changed.connect(self._window.update_base_opacity)
         self._settings_window.scale_changed.connect(self.signals.scale_changed)
+        if self._using_win32_overlay():
+            self.signals.scale_changed.connect(self._window.rebuild_ui)
         self._settings_window.fetch_varchive_requested.connect(self._on_fetch_varchive)
         self.signals.settings_requested.connect(self._settings_window.show_window)
 

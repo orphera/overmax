@@ -23,11 +23,12 @@ from overlay.win32.render import (
     build_text_layout_diagnostics,
 )
 from overlay.win32.view_state import Win32OverlayViewState, default_view_state
+from settings import SETTINGS
 
 WDA_EXCLUDEFROMCAPTURE = 0x00000011
 CLASS_NAME = "OvermaxWin32Overlay"
 WINDOW_TITLE = "Overmax Win32 overlay"
-DEFAULT_ALPHA = 232
+MIN_CONFIDENCE_OPACITY = 0.3
 
 
 @dataclass(frozen=True)
@@ -65,7 +66,10 @@ class Win32OverlayWindow:
         self.hwnd = 0
         self.capture_excluded = False
         self._view_state = view_state or default_view_state()
-        self._renderer = Win32OverlayRenderer()
+        self._scale = _read_overlay_scale()
+        self._base_opacity = _read_base_opacity()
+        self._last_confidence = 1.0
+        self._renderer = Win32OverlayRenderer(self._scale)
         self._manual_position = False
         self._user_move_cb: Optional[Callable[[int, int], None]] = None
         self._rounded_region_applied = False
@@ -77,9 +81,9 @@ class Win32OverlayWindow:
         ex_style = self._window_ex_style()
         self.hwnd = win32gui.CreateWindowEx(
             ex_style, CLASS_NAME, WINDOW_TITLE, win32con.WS_POPUP,
-            120, 120, BASE_WIDTH, BASE_HEIGHT, 0, 0, self.hinst, None,
+            120, 120, *self._window_size(), 0, 0, self.hinst, None,
         )
-        win32gui.SetLayeredWindowAttributes(self.hwnd, 0, DEFAULT_ALPHA, win32con.LWA_ALPHA)
+        self._apply_opacity()
         self._rounded_region_applied = self._apply_rounded_region(self.hwnd)
         self.capture_excluded = set_capture_exclusion(self.hwnd)
         return self.hwnd
@@ -119,6 +123,28 @@ class Win32OverlayWindow:
     def set_user_move_callback(self, callback: Callable[[int, int], None]) -> None:
         self._user_move_cb = callback
 
+    def update_base_opacity(self, base_opacity: float) -> None:
+        self._base_opacity = _clamp_float(base_opacity, 0.1, 1.0, 0.8)
+        self._apply_opacity()
+
+    def update_confidence(self, confidence: float) -> None:
+        self._last_confidence = _clamp_float(confidence, 0.0, 1.0, 1.0)
+        self._apply_opacity()
+
+    def rebuild_ui(self, scale: float) -> None:
+        self._scale = _clamp_float(scale, 0.1, 4.0, 1.0)
+        self._renderer.set_scale(self._scale)
+        if not self.hwnd:
+            return
+        x, y, _, _ = win32gui.GetWindowRect(self.hwnd)
+        width, height = self._window_size()
+        win32gui.SetWindowPos(
+            self.hwnd, 0, x, y, width, height,
+            win32con.SWP_NOACTIVATE | win32con.SWP_NOZORDER,
+        )
+        self._rounded_region_applied = self._apply_rounded_region(self.hwnd)
+        win32gui.InvalidateRect(self.hwnd, None, True)
+
     def apply_saved_position(self, x: int, y: int) -> tuple[int, int]:
         self.create()
         self._manual_position = True
@@ -134,7 +160,7 @@ class Win32OverlayWindow:
         hwnd = self.create()
         monitor = self._get_monitor_rect(hwnd)
         dpi = self._get_window_dpi(hwnd)
-        x, y = calculate_game_position((left, top, width, height), monitor, dpi)
+        x, y = calculate_game_position((left, top, width, height), monitor, dpi, self._scale)
         win32gui.SetWindowPos(
             hwnd, 0, x, y, 0, 0,
             win32con.SWP_NOACTIVATE | win32con.SWP_NOSIZE | win32con.SWP_NOZORDER,
@@ -151,6 +177,9 @@ class Win32OverlayWindow:
 
     def draw(self, hdc: int) -> None:
         self._renderer.draw_panel(hdc, self._view_state)
+
+    def drawing_size(self) -> tuple[int, int]:
+        return self._window_size()
 
     def position_diagnostics(self) -> PositionDiagnostics:
         hwnd = self.create()
@@ -173,7 +202,7 @@ class Win32OverlayWindow:
         finally:
             win32gui.ReleaseDC(hwnd, hdc)
         return RenderDiagnostics(
-            DEFAULT_ALPHA,
+            self._alpha(),
             self._rounded_region_applied,
             self._renderer.font_created,
             win32con.CLEARTYPE_QUALITY,
@@ -185,7 +214,7 @@ class Win32OverlayWindow:
         hdc = win32gui.GetDC(hwnd)
         try:
             self._renderer.select_font(hdc)
-            return build_text_layout_diagnostics(hdc, self._view_state)
+            return build_text_layout_diagnostics(hdc, self._view_state, self._scale)
         finally:
             win32gui.ReleaseDC(hwnd, hdc)
 
@@ -252,7 +281,9 @@ class Win32OverlayWindow:
 
     def _apply_rounded_region(self, hwnd: int) -> bool:
         try:
-            region = win32gui.CreateRoundRectRgn(0, 0, BASE_WIDTH, BASE_HEIGHT, 24, 24)
+            width, height = self._window_size()
+            radius = max(1, round(24 * self._scale))
+            region = win32gui.CreateRoundRectRgn(0, 0, width, height, radius, radius)
             win32gui.SetWindowRgn(hwnd, region, True)
             return True
         except Exception as exc:
@@ -289,3 +320,37 @@ class Win32OverlayWindow:
             | win32con.WS_EX_TOOLWINDOW
             | win32con.WS_EX_NOACTIVATE
         )
+
+    def _window_size(self) -> tuple[int, int]:
+        return (
+            max(1, round(BASE_WIDTH * self._scale)),
+            max(1, round(BASE_HEIGHT * self._scale)),
+        )
+
+    def _apply_opacity(self) -> None:
+        if self.hwnd:
+            win32gui.SetLayeredWindowAttributes(
+                self.hwnd, 0, self._alpha(), win32con.LWA_ALPHA
+            )
+
+    def _alpha(self) -> int:
+        confidence = MIN_CONFIDENCE_OPACITY + (
+            (1.0 - MIN_CONFIDENCE_OPACITY) * self._last_confidence
+        )
+        return max(1, min(255, round(255 * self._base_opacity * confidence)))
+
+
+def _read_overlay_scale() -> float:
+    return _clamp_float(SETTINGS.get("overlay", {}).get("scale", 1.0), 0.1, 4.0, 1.0)
+
+
+def _read_base_opacity() -> float:
+    value = SETTINGS.get("overlay", {}).get("base_opacity", 0.8)
+    return _clamp_float(value, 0.1, 1.0, 0.8)
+
+
+def _clamp_float(value: object, low: float, high: float, fallback: float) -> float:
+    try:
+        return max(low, min(high, float(value)))
+    except (TypeError, ValueError):
+        return fallback

@@ -31,27 +31,31 @@ class PositionDiagnostics:
     monitor: tuple[int, int, int, int]
 
 
-def scale_for_dpi(dpi: int) -> float:
-    return max(1.0, dpi / BASE_DPI)
+def scale_for_dpi(dpi: int, ui_scale: float = 1.0) -> float:
+    return max(1.0, dpi / BASE_DPI) * max(0.1, ui_scale)
 
 
-def scaled_value(value: int, dpi: int) -> int:
-    return max(1, round(value * scale_for_dpi(dpi)))
+def scaled_value(value: int, dpi: int, ui_scale: float = 1.0) -> int:
+    return max(1, round(value * scale_for_dpi(dpi, ui_scale)))
 
 
-def scaled_window_size(dpi: int) -> tuple[int, int]:
-    return scaled_value(BASE_WIDTH, dpi), scaled_value(BASE_HEIGHT, dpi)
+def scaled_window_size(dpi: int, ui_scale: float = 1.0) -> tuple[int, int]:
+    return (
+        scaled_value(BASE_WIDTH, dpi, ui_scale),
+        scaled_value(BASE_HEIGHT, dpi, ui_scale),
+    )
 
 
 def calculate_game_position(
     game_rect: tuple[int, int, int, int],
     monitor: tuple[int, int, int, int],
     dpi: int = BASE_DPI,
+    ui_scale: float = 1.0,
 ) -> tuple[int, int]:
     left, top, width, height = game_rect
     screen_x, screen_y, screen_right, screen_bottom = monitor
-    window_width, window_height = scaled_window_size(dpi)
-    margin = scaled_value(BASE_MARGIN, dpi)
+    window_width, window_height = scaled_window_size(dpi, ui_scale)
+    margin = scaled_value(BASE_MARGIN, dpi, ui_scale)
     return calculate_overlay_position(
         left + width + margin,
         top + height - window_height - margin,

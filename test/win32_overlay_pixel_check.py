@@ -15,7 +15,6 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from win32_overlay_payload_sample import long_payload_view_state
-from overlay.win32.geometry import BASE_HEIGHT, BASE_WIDTH
 from overlay.win32.render import PANEL_BG
 from overlay.win32.window import Win32OverlayWindow
 
@@ -43,13 +42,14 @@ def main() -> int:
 def render_pixel_diagnostics() -> PixelDiagnostics:
     screen_dc = win32gui.GetDC(0)
     memory_dc = win32gui.CreateCompatibleDC(screen_dc)
-    bitmap = win32gui.CreateCompatibleBitmap(screen_dc, BASE_WIDTH, BASE_HEIGHT)
-    old_bitmap = win32gui.SelectObject(memory_dc, bitmap)
     window = Win32OverlayWindow(long_payload_view_state())
+    width, height = window.drawing_size()
+    bitmap = win32gui.CreateCompatibleBitmap(screen_dc, width, height)
+    old_bitmap = win32gui.SelectObject(memory_dc, bitmap)
     try:
-        _fill_background(memory_dc)
+        _fill_background(memory_dc, width, height)
         window.draw(memory_dc)
-        return sample_pixels(memory_dc)
+        return sample_pixels(memory_dc, width, height)
     finally:
         window.destroy()
         win32gui.SelectObject(memory_dc, old_bitmap)
@@ -58,15 +58,15 @@ def render_pixel_diagnostics() -> PixelDiagnostics:
         win32gui.ReleaseDC(0, screen_dc)
 
 
-def _fill_background(hdc: int) -> None:
+def _fill_background(hdc: int, width: int, height: int) -> None:
     brush = win32gui.CreateSolidBrush(BLACK)
     try:
-        win32gui.FillRect(hdc, (0, 0, BASE_WIDTH, BASE_HEIGHT), brush)
+        win32gui.FillRect(hdc, (0, 0, width, height), brush)
     finally:
         win32gui.DeleteObject(brush)
 
 
-def sample_pixels(hdc: int) -> PixelDiagnostics:
+def sample_pixels(hdc: int, width: int, height: int) -> PixelDiagnostics:
     counts: dict[str, int] = {
         "non_blank": 0,
         "panel_bg": 0,
@@ -76,11 +76,11 @@ def sample_pixels(hdc: int) -> PixelDiagnostics:
         "divider": 0,
     }
     unique_colors: set[int] = set()
-    for y in range(BASE_HEIGHT):
-        for x in range(BASE_WIDTH):
+    for y in range(height):
+        for x in range(width):
             _sample_pixel(win32gui.GetPixel(hdc, x, y), counts, unique_colors)
     return PixelDiagnostics(
-        total_pixels=BASE_WIDTH * BASE_HEIGHT,
+        total_pixels=width * height,
         non_blank_pixels=counts["non_blank"],
         panel_bg_pixels=counts["panel_bg"],
         bright_text_pixels=counts["bright_text"],

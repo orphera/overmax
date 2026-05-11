@@ -53,13 +53,20 @@ class TextLayoutDiagnostics:
 
 
 class Win32OverlayRenderer:
-    def __init__(self) -> None:
+    def __init__(self, scale: float = 1.0) -> None:
         self._font = 0
+        self._scale = scale
+
+    def set_scale(self, scale: float) -> None:
+        if abs(self._scale - scale) < 0.001:
+            return
+        self._scale = max(0.1, scale)
+        self.destroy()
 
     def draw_panel(self, hdc: int, view_state: Win32OverlayViewState) -> None:
         self._draw_background(hdc)
         lamp_color = self._lamp_color(view_state.is_stable)
-        self._draw_lamp(hdc, 26, 31, lamp_color)
+        self._draw_lamp(hdc, self._s(26), self._s(31), lamp_color)
         self._draw_text(hdc, view_state.title, 42, 20, 240, 46, win32api.RGB(255, 209, 102))
         self._draw_badge(hdc, view_state.mode_diff, 270, 20, 334, 48)
         self._draw_text(hdc, "ui_payload -> Win32 renderer", 24, 50, 330, 78)
@@ -72,7 +79,7 @@ class Win32OverlayRenderer:
         if not self._font:
             logfont = win32gui.LOGFONT()
             logfont.lfFaceName = "Segoe UI"
-            logfont.lfHeight = -15
+            logfont.lfHeight = -self._s(15)
             logfont.lfWeight = win32con.FW_SEMIBOLD
             logfont.lfQuality = win32con.CLEARTYPE_QUALITY
             self._font = win32gui.CreateFontIndirect(logfont)
@@ -87,11 +94,22 @@ class Win32OverlayRenderer:
     def font_created(self) -> bool:
         return bool(self._font)
 
+    def _s(self, value: int) -> int:
+        return max(1, round(value * self._scale))
+
     def _draw_background(self, hdc: int) -> None:
         brush = win32gui.CreateSolidBrush(PANEL_BG)
         old_brush = win32gui.SelectObject(hdc, brush)
         try:
-            win32gui.RoundRect(hdc, 8, 8, 352, 162, 24, 24)
+            win32gui.RoundRect(
+                hdc,
+                self._s(8),
+                self._s(8),
+                self._s(352),
+                self._s(162),
+                self._s(24),
+                self._s(24),
+            )
         finally:
             win32gui.SelectObject(hdc, old_brush)
             win32gui.DeleteObject(brush)
@@ -100,7 +118,7 @@ class Win32OverlayRenderer:
         brush = win32gui.CreateSolidBrush(color)
         old_brush = win32gui.SelectObject(hdc, brush)
         try:
-            win32gui.Ellipse(hdc, x, y, x + 7, y + 7)
+            win32gui.Ellipse(hdc, x, y, x + self._s(7), y + self._s(7))
         finally:
             win32gui.SelectObject(hdc, old_brush)
             win32gui.DeleteObject(brush)
@@ -108,8 +126,9 @@ class Win32OverlayRenderer:
     def _draw_badge(self, hdc: int, text: str, left: int, top: int, right: int, bottom: int) -> None:
         brush = win32gui.CreateSolidBrush(BADGE_BG)
         old_brush = win32gui.SelectObject(hdc, brush)
+        rect = self._rect(left, top, right, bottom)
         try:
-            win32gui.RoundRect(hdc, left, top, right, bottom, 12, 12)
+            win32gui.RoundRect(hdc, *rect, self._s(12), self._s(12))
         finally:
             win32gui.SelectObject(hdc, old_brush)
             win32gui.DeleteObject(brush)
@@ -119,8 +138,8 @@ class Win32OverlayRenderer:
         pen = win32gui.CreatePen(win32con.PS_SOLID, 1, win32api.RGB(48, 58, 78))
         old_pen = win32gui.SelectObject(hdc, pen)
         try:
-            win32gui.MoveToEx(hdc, 24, 148)
-            win32gui.LineTo(hdc, 334, 148)
+            win32gui.MoveToEx(hdc, self._s(24), self._s(148))
+            win32gui.LineTo(hdc, self._s(334), self._s(148))
         finally:
             win32gui.SelectObject(hdc, old_pen)
             win32gui.DeleteObject(pen)
@@ -141,7 +160,10 @@ class Win32OverlayRenderer:
         win32gui.SetBkMode(hdc, win32con.OPAQUE)
         win32gui.SetBkColor(hdc, bg_color)
         win32gui.SetTextColor(hdc, color)
-        win32gui.DrawText(hdc, text, -1, (left, top, right, bottom), TEXT_FLAGS)
+        win32gui.DrawText(hdc, text, -1, self._rect(left, top, right, bottom), TEXT_FLAGS)
+
+    def _rect(self, left: int, top: int, right: int, bottom: int) -> tuple[int, int, int, int]:
+        return self._s(left), self._s(top), self._s(right), self._s(bottom)
 
     def _lamp_color(self, is_stable: bool) -> int:
         if is_stable:
@@ -152,14 +174,15 @@ class Win32OverlayRenderer:
 def build_text_layout_diagnostics(
     hdc: int,
     view_state: Win32OverlayViewState,
+    scale: float = 1.0,
 ) -> TextLayoutDiagnostics:
     cases = [
-        _measure_case(hdc, "title", view_state.title, 240, 26),
-        _measure_case(hdc, "mode_diff", view_state.mode_diff, 56, 24),
-        _measure_case(hdc, "subtitle", "ui_payload -> Win32 renderer", 306, 28),
-        _measure_case(hdc, "footer", view_state.footer, 306, 20),
+        _measure_case(hdc, "title", view_state.title, 240, 26, scale),
+        _measure_case(hdc, "mode_diff", view_state.mode_diff, 56, 24, scale),
+        _measure_case(hdc, "subtitle", "ui_payload -> Win32 renderer", 306, 28, scale),
+        _measure_case(hdc, "footer", view_state.footer, 306, 20, scale),
     ]
-    cases.extend(_measure_recommendation_cases(hdc, view_state.recommendations))
+    cases.extend(_measure_recommendation_cases(hdc, view_state.recommendations, scale))
     return TextLayoutDiagnostics(cases)
 
 
@@ -170,7 +193,7 @@ def text_layout_diagnostics_ok(diagnostics: TextLayoutDiagnostics) -> bool:
 def render_diagnostics_ok(diagnostics: RenderDiagnostics) -> bool:
     text_width, text_height = diagnostics.text_extent
     return (
-        diagnostics.alpha == 232
+        1 <= diagnostics.alpha <= 255
         and diagnostics.rounded_region
         and diagnostics.font_created
         and diagnostics.font_quality == win32con.CLEARTYPE_QUALITY
@@ -181,10 +204,11 @@ def render_diagnostics_ok(diagnostics: RenderDiagnostics) -> bool:
 def _measure_recommendation_cases(
     hdc: int,
     recommendations: list[str],
+    scale: float,
 ) -> list[TextLayoutCase]:
     cases: list[TextLayoutCase] = []
     for index, line in enumerate(recommendations[:2], start=1):
-        cases.append(_measure_case(hdc, f"recommendation_{index}", line, 298, 24))
+        cases.append(_measure_case(hdc, f"recommendation_{index}", line, 298, 24, scale))
     return cases
 
 
@@ -194,14 +218,17 @@ def _measure_case(
     text: str,
     width: int,
     height: int,
+    scale: float,
 ) -> TextLayoutCase:
     text_width, text_height = win32gui.GetTextExtentPoint32(hdc, text)
+    scaled_width = max(1, round(width * scale))
+    scaled_height = max(1, round(height * scale))
     return TextLayoutCase(
         name=name,
-        width=width,
+        width=scaled_width,
         text_width=text_width,
-        height=height,
+        height=scaled_height,
         text_height=text_height,
-        fits_width=text_width <= width,
-        fits_height=text_height <= height,
+        fits_width=text_width <= scaled_width,
+        fits_height=text_height <= scaled_height,
     )

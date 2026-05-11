@@ -18,6 +18,8 @@ class HeaderWidget(QFrame):
         super().__init__(parent)
         self._scale = scale
         self._song_name = ""
+        self._mode = ""
+        self._diff = ""
         self._pattern_cache = {}
         self._build_ui()
 
@@ -80,25 +82,8 @@ class HeaderWidget(QFrame):
 
         self.update_mode("", "")
 
-
-    def update_status(self, is_stable: bool):
-        sc = self._scale
-        color = "#00D4FF" if is_stable else "#FF4B4B"
-        self._status_lamp.setStyleSheet(
-            f"background-color: {color}; border-radius: {_s(3, sc)}px;"
-        )
-
-    def update_mode(self, mode: str, diff: str):
-        sc = self._scale
-        self._mode_label.setText(mode if mode else "—")
-        mode_color = BTN_COLORS.get(mode, [(0x6A, 0x4D, 0x3D)])[0]
-        mode_color_str = f"rgb({mode_color[2]}, {mode_color[1]}, {mode_color[0]})"
-        self._mode_label.setStyleSheet(
-            f"color: #F0F4FF; background-color: {mode_color_str}; "
-            f"font-size: {_s(12, sc)}px; font-weight: 900; border-radius: {_s(3, sc)}px;"
-        )
-
-        pattern_found = self._pattern_cache.get(mode, {}).get(diff)
+    def _update_meta_label(self):
+        pattern_found = self._pattern_cache.get(self._mode, {}).get(self._diff)
 
         if pattern_found:
             gold = pattern_found.get("gold", "")
@@ -119,7 +104,29 @@ class HeaderWidget(QFrame):
             self._meta_label.setText("—")
 
 
+    def update_status(self, is_stable: bool):
+        sc = self._scale
+        color = "#00D4FF" if is_stable else "#FF4B4B"
+        self._status_lamp.setStyleSheet(
+            f"background-color: {color}; border-radius: {_s(3, sc)}px;"
+        )
+
+    def update_mode(self, mode: str, diff: str):
+        self._mode = mode
+        self._diff = diff
+        sc = self._scale
+        self._mode_label.setText(mode if mode else "—")
+        mode_color = BTN_COLORS.get(mode, [(0x6A, 0x4D, 0x3D)])[0]
+        mode_color_str = f"rgb({mode_color[2]}, {mode_color[1]}, {mode_color[0]})"
+        self._mode_label.setStyleSheet(
+            f"color: #F0F4FF; background-color: {mode_color_str}; "
+            f"font-size: {_s(12, sc)}px; font-weight: 900; border-radius: {_s(3, sc)}px;"
+        )
+
+        self._update_meta_label()
+
     def update_song(self, title: str, all_patterns: list):
         self._song_name = title
         self._pattern_cache = {pl["mode"]: {p["diff"]: p for p in pl["patterns"]} for pl in all_patterns}
         self._song_label.setText(title)
+        self._update_meta_label()

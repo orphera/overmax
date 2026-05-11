@@ -185,6 +185,16 @@ recommendation, verified pipeline은 변경하지 않는다.
   설정 아이콘 `⚙` 위치와 body 시작 여백을 추가 보정했다.
 - Win32 캡처 비교 기준으로 추천 row 배경의 왼쪽 시작선을 배지 시작선에 맞추고,
   `⚙`는 `Segoe UI Emoji` 전용 폰트로 렌더링하도록 분리했다.
+- `overlay/win32/window.py`가 `overlay/win32/geometry.py`와 같은 DPI scale 기준으로
+  창 크기, renderer scale, 설정 버튼 hit-test, rounded region을 계산하도록 맞췄다.
+  `WM_DPICHANGED`도 같은 경로로 처리한다.
+- Win32 renderer의 scale helper 오타를 바로잡아 diagnostics/render/layout/pixel
+  smoke가 실제 GDI 렌더링 경로까지 통과하도록 확인했다.
+- PyQt6 기준 padding/margin을 다시 대조해 Win32 logical height를 337로 조정하고,
+  header 내부 12/8 margin, body gap 6, 추천 목록 top/bottom 8, 추천 행 30px,
+  행 간격 3px 기준에 맞춰 Win32 row/tab/footer 좌표를 보정했다.
+- GDI `DrawText`의 emoji font fallback 차이로 설정 아이콘 렌더링이 불안정해,
+  Win32 설정 아이콘은 폰트 글리프 대신 GDI line/circle drawing으로 처리한다.
 
 완료 기준:
 - [ ] 같은 payload에서 PyQt6와 Win32 오버레이가 한 화면 안에서 명확히 다른

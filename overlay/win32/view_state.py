@@ -72,8 +72,8 @@ def _format_mode_diff(payload: OverlayUpdatePayload, fallback: str) -> str:
 
 def _format_recommendations(
     payload: OverlayUpdatePayload,
-    fallback: list[str],
-) -> list[str]:
+    fallback: list[Win32Recommendation | str],
+) -> list[Win32Recommendation | str]:
     if payload.recommendations is None:
         return fallback
     if payload.recommendations.no_selection:

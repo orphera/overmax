@@ -320,3 +320,158 @@ ex_style=0x08080088
 - 멀티 모니터와 125% 이상 DPI에서 좌표 및 크기 확인
 - 텍스트 품질, rounded region, per-pixel alpha 적용 비용 검토
 - 트레이/설정/동기화/디버그 창은 계속 PyQt6에 남기는 혼합 전략 검토
+
+## 2026-05-11 Win32 3차 결과
+
+Win32 smoke에 `--payload-sample` 옵션을 추가해 Qt 독립
+`overlay/ui_payload.py` 경계를 실제 Win32 렌더링 입력으로 연결했다.
+
+검증:
+
+```text
+.\.venv_build\Scripts\python.exe -m py_compile test\win32_overlay_smoke.py test\ui_payload_check.py overlay\ui_payload.py
+
+.\.venv_build\Scripts\python.exe test\ui_payload_check.py
+ui_payload_check_ok
+
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --import-only
+Win32 import ok
+
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --diagnostics --payload-sample
+capture_excluded=True
+style_ok=True
+dpi=96
+rect=(120, 120, 480, 290)
+monitor=(0, 0, 1920, 1080)
+ex_style=0x08080088
+
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --show --payload-sample --duration-ms 1000
+capture_excluded=True
+dpi=96
+```
+
+확인된 항목:
+
+- `OverlayPayloadBuilder.build_initial()`과 verified `GameSessionState` update를
+  Win32 표시 상태로 변환 가능
+- payload 샘플 경로에서도 `WDA_EXCLUDEFROMCAPTURE`와 필수 extended style 유지
+- PyQt6 signal/window 경로를 거치지 않고 추천 제목, 모드/난이도, 추천 행,
+  footer 요약을 GDI 렌더러에 전달
+- verified pipeline과 프로덕션 `overlay/controller.py`, `overlay/window.py` 변경 없음
+
+3차 판단:
+
+- Phase 3에서 분리한 UI payload 경계는 Win32 직접 오버레이 후보에도 재사용 가능하다.
+- 다음 검토는 payload 전달 가능성이 아니라 렌더링 품질과 좌표/입력 동작이다.
+- 아직 실제 프로덕션 오버레이 교체 단계는 아니며, Win32 후보는 계속 smoke test
+  범위에 둔다.
+
+## 2026-05-11 Win32 4차 결과
+
+Win32 smoke에 `--position-check` 옵션을 추가해 위치 계산과 사용자 이동 저장
+경계를 확인했다. payload 샘플 헬퍼는 `test/win32_overlay_payload_sample.py`로
+분리해 smoke 본문 파일 크기를 500라인 이하로 유지했다.
+
+검증:
+
+```text
+.\.venv_build\Scripts\python.exe -m py_compile test\win32_overlay_smoke.py test\win32_overlay_payload_sample.py test\ui_payload_check.py overlay\ui_payload.py overlay\utils.py
+
+.\.venv_build\Scripts\python.exe test\ui_payload_check.py
+ui_payload_check_ok
+
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --diagnostics --payload-sample
+capture_excluded=True
+style_ok=True
+dpi=96
+rect=(120, 120, 480, 290)
+monitor=(0, 0, 1920, 1080)
+ex_style=0x08080088
+
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --position-check --payload-sample
+calculated=(1496, 654)
+saved=(1520, 672)
+moved=(1532, 682)
+callback_position=(1532, 682)
+monitor=(0, 0, 1920, 1080)
+
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --show --payload-sample --duration-ms 1000
+capture_excluded=True
+dpi=96
+```
+
+확인된 항목:
+
+- Win32 후보도 기존 `overlay.utils.calculate_overlay_position()`을 재사용 가능
+- 저장된 위치 적용은 `SetWindowPos(..., SWP_NOACTIVATE | SWP_NOSIZE | SWP_NOZORDER)`로 처리 가능
+- 사용자 이동 완료 시점은 `WM_EXITSIZEMOVE`에서 콜백으로 전달 가능
+- 자동 smoke에서는 같은 콜백 경로를 `simulate_user_move()`로 검증
+- 기존 PyQt6 프로덕션 경로와 verified pipeline 변경 없음
+
+4차 판단:
+
+- 기본 위치 계산과 수동 위치 저장 경계는 Win32 직접 오버레이에서도 큰 구조 변경 없이 옮길 수 있다.
+- 남은 큰 리스크는 실제 DPI 배율/멀티 모니터 환경에서의 좌표 일관성, 텍스트 품질,
+  per-pixel alpha 또는 region 기반 rounded rendering 품질이다.
+- 트레이/설정/동기화/디버그 창은 계속 Win32 main overlay spike와 분리해 판단한다.
+
+## 2026-05-11 Win32 5차 결과
+
+Win32 smoke에 `--dpi-check` 옵션을 추가해 DPI 배율과 가상 멀티모니터 배치를
+계산 검증했다. 실제 고DPI 모니터가 없어도 기본 산식이 monitor rect 밖으로
+나가지 않는지 확인하기 위한 순수 smoke이다.
+
+검증:
+
+```text
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --dpi-check
+dpi=96 scale=1.00 size=(360, 170) position=(1496, 654) within_monitor=True monitor=(0, 0, 1920, 1080)
+dpi=120 scale=1.25 size=(450, 212) position=(1560, 668) within_monitor=True monitor=(0, 0, 2560, 1440)
+dpi=144 scale=1.50 size=(540, 255) position=(3404, 621) within_monitor=True monitor=(1920, 0, 4480, 1440)
+dpi=192 scale=2.00 size=(720, 340) position=(-1820, 508) within_monitor=True monitor=(-1920, 0, 0, 1080)
+```
+
+확인된 항목:
+
+- 96/120/144/192 DPI에서 window size와 margin을 같은 scale로 계산 가능
+- primary monitor, right-side virtual monitor, left-side virtual monitor rect에서
+  결과 window가 대상 monitor 내부에 머무름
+- `--dpi-check`는 모든 케이스가 `within_monitor=True`일 때만 성공 종료
+
+5차 판단:
+
+- DPI 대응의 계산 경계는 Win32 후보에서도 작게 유지할 수 있다.
+- 실제 검증은 125% 이상 DPI 모니터에서 `GetDpiForWindow()` 값과 표시 크기가
+  계산 결과와 일치하는지 별도로 봐야 한다.
+
+## 2026-05-11 Win32 6차 결과
+
+Win32 smoke에 `--render-check` 옵션을 추가해 렌더링 품질과 관련된 첫 번째
+API 경계를 확인했다.
+
+검증:
+
+```text
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --render-check --payload-sample
+alpha=232
+rounded_region=True
+font_created=True
+font_quality=5
+text_extent=(96, 20)
+```
+
+확인된 항목:
+
+- `SetLayeredWindowAttributes(..., alpha=232, LWA_ALPHA)` 경로 유지
+- `CreateRoundRectRgn`/`SetWindowRgn`으로 rounded window region 적용 성공
+- Segoe UI font handle 생성 성공
+- `CLEARTYPE_QUALITY` font 설정과 텍스트 extent 산출 성공
+- `--render-check`는 alpha, region, font, text extent 조건을 만족해야 성공 종료
+
+6차 판단:
+
+- API 수준에서는 rounded region과 ClearType 기반 텍스트 렌더링을 적용할 수 있다.
+- 하지만 GDI `RoundRect`와 window region 조합은 per-pixel alpha가 아니므로,
+  PyQt6의 antialias rounded corner와 동일 품질이라고 볼 수는 없다.
+- 다음 렌더링 검토는 스크린샷 또는 실제 표시 육안 확인으로 corner edge,
+  텍스트 elide, 추천 row 밀도, 고DPI 폰트 크기를 비교해야 한다.

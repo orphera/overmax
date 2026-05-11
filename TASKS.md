@@ -86,7 +86,11 @@ PyQt6 대체 UI 검토는 `docs/qt-ui-alternatives.md`를 따른다.
 - [x] Win32 topmost/layered/noactivate/capture exclusion 확인
 - [x] Win32 diagnostics로 style/DPI/monitor 정보 확인
 - [x] Win32 smoke PyInstaller 산출물 크기 측정
-- [ ] 대체 UI 후보를 검토하더라도 verified pipeline 변경 금지
+- [x] `overlay/ui_payload.py` 샘플 데이터를 Win32 렌더링 입력으로 연결
+- [x] Win32 위치 계산, 저장 위치 적용, 사용자 이동 콜백 smoke 확인
+- [x] Win32 DPI/멀티모니터 좌표 계산 smoke 확인
+- [x] Win32 alpha/rounded region/ClearType font diagnostics 확인
+- [x] 대체 UI 후보를 검토하더라도 verified pipeline 변경 금지
 
 1차 결론: PySide6는 최소 기능 smoke test를 통과했지만, 크기 절감 근거가
 부족하므로 전환 후보에서 보류한다. 다음 대체 UI spike는 Win32 직접 오버레이를
@@ -101,6 +105,24 @@ Win32 2차 smoke에서는 `--diagnostics`로 필수 extended style, DPI, monitor
 확인했고, PyInstaller 최소 산출물도 측정했다. `scratch\win32_overlay_smoke.zip`은
 8,692,687 bytes (8.29 MiB)로, Qt 기반 smoke보다 크기 절감 가능성은 뚜렷하다.
 다만 실제 오버레이 UI를 동일 품질로 다시 그리는 비용은 아직 별도 검토 대상이다.
+
+Win32 3차 smoke에서는 `--payload-sample` 옵션으로 Qt 독립
+`OverlayPayloadBuilder`가 만든 초기/verified payload를 Win32 렌더링 상태에
+적용했다. 소스 실행 기준 diagnostics와 1초 표시 루프 모두 통과했으며,
+verified pipeline과 프로덕션 PyQt6 경로는 변경하지 않았다.
+
+Win32 4차 smoke에서는 `--position-check` 옵션으로 PyQt6 오버레이와 같은
+`calculate_overlay_position()` 경로를 사용해 기본 위치를 산출하고, 저장된 위치
+적용 및 사용자 이동 완료 콜백을 확인했다. 이 검토도 smoke test 범위에만
+머물렀고 프로덕션 오버레이 교체는 아직 시작하지 않았다.
+
+Win32 5차 smoke에서는 `--dpi-check`로 100%, 125%, 150%, 200% DPI와 좌/우
+가상 멀티모니터 배치를 계산 검증했다. 모든 케이스에서 scaled window rect가
+대상 monitor 내부에 머무르는 것을 확인했다.
+
+Win32 6차 smoke에서는 `--render-check`로 layered alpha, rounded window region,
+Segoe UI ClearType font 생성, 텍스트 extent 산출을 확인했다. 다만 이는 API
+성공 여부 확인이며, PyQt6와 동일한 시각 품질을 보장하는 단계는 아니다.
 
 ## 검증 기준
 

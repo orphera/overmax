@@ -90,6 +90,8 @@ PyQt6 대체 UI 검토는 `docs/qt-ui-alternatives.md`를 따른다.
 - [x] Win32 위치 계산, 저장 위치 적용, 사용자 이동 콜백 smoke 확인
 - [x] Win32 DPI/멀티모니터 좌표 계산 smoke 확인
 - [x] Win32 alpha/rounded region/ClearType font diagnostics 확인
+- [x] Win32 긴 텍스트 elide/레이아웃 밀도 smoke 확인
+- [x] Win32 메모리 DC 픽셀 렌더링 smoke 확인
 - [x] 대체 UI 후보를 검토하더라도 verified pipeline 변경 금지
 
 1차 결론: PySide6는 최소 기능 smoke test를 통과했지만, 크기 절감 근거가
@@ -123,6 +125,16 @@ Win32 5차 smoke에서는 `--dpi-check`로 100%, 125%, 150%, 200% DPI와 좌/우
 Win32 6차 smoke에서는 `--render-check`로 layered alpha, rounded window region,
 Segoe UI ClearType font 생성, 텍스트 extent 산출을 확인했다. 다만 이는 API
 성공 여부 확인이며, PyQt6와 동일한 시각 품질을 보장하는 단계는 아니다.
+
+Win32 7차 smoke에서는 `--layout-check --long-payload-sample`로 긴 제목,
+추천 행, footer가 주어진 영역의 높이를 넘지 않는지 확인했다. 폭이 긴 텍스트는
+`DT_END_ELLIPSIS`로 줄임 처리하는 경로를 사용하며, smoke는 overflow가 실제로
+발생하는 샘플에서도 높이 잘림이 없을 때만 통과한다.
+
+Win32 8차 smoke에서는 `test/win32_overlay_pixel_check.py`로 같은 GDI 렌더링을
+메모리 DC에 그리고 픽셀 샘플을 확인했다. 패널 배경, 밝은 텍스트, 강조색,
+cyan 상태 램프, divider 픽셀이 모두 검출되어 blank render가 아님을 자동으로
+확인했다. 이는 실제 화면 육안 품질 비교를 대체하지는 않는다.
 
 ## 검증 기준
 

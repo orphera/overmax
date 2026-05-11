@@ -475,3 +475,85 @@ text_extent=(96, 20)
   PyQt6의 antialias rounded corner와 동일 품질이라고 볼 수는 없다.
 - 다음 렌더링 검토는 스크린샷 또는 실제 표시 육안 확인으로 corner edge,
   텍스트 elide, 추천 row 밀도, 고DPI 폰트 크기를 비교해야 한다.
+
+## 2026-05-11 Win32 7차 결과
+
+Win32 smoke에 `--layout-check`와 긴 payload 샘플을 추가해, 텍스트가 실제
+오버레이 슬롯 안에서 높이 잘림 없이 처리되는지 확인했다. 렌더링 보조 로직은
+`test/win32_overlay_render.py`로 분리해 smoke 본문 파일 크기를 500라인 이하로
+유지했다.
+
+검증:
+
+```text
+.\.venv_build\Scripts\python.exe -m py_compile test\win32_overlay_smoke.py test\win32_overlay_payload_sample.py test\win32_overlay_render.py
+
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --layout-check --long-payload-sample
+title=width:432/240 height:20/26 fits_width:False fits_height:True
+mode_diff=width:43/56 height:20/24 fits_width:True fits_height:True
+subtitle=width:226/306 height:20/28 fits_width:True fits_height:True
+footer=width:454/306 height:20/20 fits_width:False fits_height:True
+recommendation_1=width:581/298 height:20/24 fits_width:False fits_height:True
+recommendation_2=width:447/298 height:20/24 fits_width:False fits_height:True
+overflowing_cases=4
+
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --render-check --payload-sample
+alpha=232
+rounded_region=True
+font_created=True
+font_quality=5
+text_extent=(96, 20)
+```
+
+확인된 항목:
+
+- 긴 제목, 추천 행, footer 샘플에서 폭 초과 케이스가 실제로 발생함
+- 모든 텍스트 슬롯의 높이 조건은 통과함
+- Win32 텍스트 렌더링은 `DT_END_ELLIPSIS`를 사용해 폭 초과를 줄임 처리함
+- footer 텍스트 영역은 16px에서 20px로 조정해 Segoe UI 15px font 높이와 맞춤
+
+7차 판단:
+
+- 텍스트 elide와 기본 row 밀도는 자동 smoke에서 더 이상 즉시 탈락하지 않는다.
+- 아직 실제 화면 캡처 기반의 corner edge, 안티앨리어싱, 고DPI 폰트 품질 비교는
+  남아 있다.
+- 프로덕션 PyQt6 오버레이 교체는 계속 시작하지 않는다.
+
+## 2026-05-11 Win32 8차 결과
+
+Win32 렌더링을 실제 화면에 띄우기 전 단계로, 같은 GDI drawing path를 메모리
+DC에 그리고 픽셀 샘플을 확인하는 smoke를 추가했다. 목적은 렌더링 API 성공
+여부를 넘어서, panel/text/accent/status/divider가 실제 픽셀로 찍히는지를
+자동으로 확인하는 것이다.
+
+검증:
+
+```text
+.\.venv_build\Scripts\python.exe -m py_compile test\win32_overlay_pixel_check.py test\win32_overlay_smoke.py test\win32_overlay_render.py test\win32_overlay_payload_sample.py
+
+.\.venv_build\Scripts\python.exe test\win32_overlay_pixel_check.py
+total_pixels=61200
+non_blank_pixels=52624
+panel_bg_pixels=43401
+bright_text_pixels=2828
+accent_pixels=1072
+cyan_pixels=26
+divider_pixels=310
+unique_colors=123
+```
+
+확인된 항목:
+
+- 메모리 DC 렌더링이 blank frame이 아님
+- 패널 배경색 픽셀이 충분히 검출됨
+- 밝은 텍스트, 제목 강조색, cyan 상태 램프, divider 픽셀이 각각 검출됨
+- 긴 payload 샘플 기반 렌더링 경로에서도 픽셀 색상 다양성이 확인됨
+
+8차 판단:
+
+- Win32 후보의 GDI 렌더링 경로는 API 성공뿐 아니라 실제 픽셀 생성까지 자동
+  smoke로 확인 가능하다.
+- 이 검증은 화면 합성, layered alpha의 실제 desktop blend, rounded edge의
+  육안 품질, 고DPI ClearType 품질을 완전히 대체하지 않는다.
+- 다음 검토는 `--show` 또는 별도 screenshot 기반으로 PyQt6 오버레이와 실제
+  표시 품질을 비교하는 단계가 적절하다.

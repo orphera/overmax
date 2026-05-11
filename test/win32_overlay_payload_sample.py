@@ -83,6 +83,19 @@ def sample_payload_view_state() -> Win32OverlayViewState:
     return apply_payload_to_view_state(state, payload)
 
 
+def long_payload_view_state() -> Win32OverlayViewState:
+    return Win32OverlayViewState(
+        title="Very Long Payload Title For Win32 Overlay Density Check",
+        mode_diff="8B SC",
+        is_stable=True,
+        recommendations=[
+            "SC 15  Extremely Long Recommendation Song Name For Elide Check  99.99%",
+            "MX 14  Another Long Candidate With No Record Marker  --",
+        ],
+        footer="avg 100.00% / records 123/456 / long footer density sample",
+    )
+
+
 def apply_payload_to_view_state(
     state: Win32OverlayViewState,
     payload: OverlayUpdatePayload,

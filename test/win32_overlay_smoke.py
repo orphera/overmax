@@ -33,7 +33,18 @@ from win32_overlay_geometry import (
 from win32_overlay_payload_sample import (
     Win32OverlayViewState,
     default_view_state,
+    long_payload_view_state,
     sample_payload_view_state,
+)
+from win32_overlay_render import (
+    TEXT_FLAGS,
+    RenderDiagnostics,
+    TextLayoutDiagnostics,
+    build_text_layout_diagnostics,
+    print_render_diagnostics,
+    print_text_layout_diagnostics,
+    render_diagnostics_ok,
+    text_layout_diagnostics_ok,
 )
 
 WDA_EXCLUDEFROMCAPTURE = 0x00000011
@@ -52,15 +63,6 @@ class WindowDiagnostics:
     ex_style: int
 
 
-@dataclass(frozen=True)
-class RenderDiagnostics:
-    alpha: int
-    rounded_region: bool
-    font_created: bool
-    font_quality: int
-    text_extent: tuple[int, int]
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--import-only", action="store_true")
@@ -68,8 +70,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--position-check", action="store_true")
     parser.add_argument("--dpi-check", action="store_true")
     parser.add_argument("--render-check", action="store_true")
+    parser.add_argument("--layout-check", action="store_true")
     parser.add_argument("--show", action="store_true")
     parser.add_argument("--payload-sample", action="store_true")
+    parser.add_argument("--long-payload-sample", action="store_true")
     parser.add_argument("--duration-ms", type=int, default=DEFAULT_DURATION_MS)
     return parser.parse_args()
 
@@ -176,6 +180,15 @@ class Win32OverlaySmoke:
             font_quality=win32con.CLEARTYPE_QUALITY,
             text_extent=text_extent,
         )
+
+    def text_layout_diagnostics(self) -> TextLayoutDiagnostics:
+        hwnd = self.create()
+        hdc = win32gui.GetDC(hwnd)
+        try:
+            self._select_font(hdc)
+            return build_text_layout_diagnostics(hdc, self._view_state)
+        finally:
+            win32gui.ReleaseDC(hwnd, hdc)
 
     def diagnostics(self) -> WindowDiagnostics:
         hwnd = self.create()
@@ -322,7 +335,7 @@ class Win32OverlaySmoke:
         finally:
             win32gui.SelectObject(hdc, old_pen)
             win32gui.DeleteObject(pen)
-        self._draw_text(hdc, self._view_state.footer, 24, 150, 330, 166)
+        self._draw_text(hdc, self._view_state.footer, 24, 150, 330, 170)
 
     def _draw_text(
         self,
@@ -337,7 +350,7 @@ class Win32OverlaySmoke:
         self._select_font(hdc)
         win32gui.SetBkMode(hdc, win32con.TRANSPARENT)
         win32gui.SetTextColor(hdc, color)
-        win32gui.DrawText(hdc, text, -1, (left, top, right, bottom), win32con.DT_SINGLELINE)
+        win32gui.DrawText(hdc, text, -1, (left, top, right, bottom), TEXT_FLAGS)
 
     def _select_font(self, hdc: int) -> None:
         if not self._font:
@@ -408,31 +421,13 @@ def print_dpi_cases(cases: list[DpiCase]) -> None:
         )
 
 
-def print_render_diagnostics(diagnostics: RenderDiagnostics) -> None:
-    print(f"alpha={diagnostics.alpha}")
-    print(f"rounded_region={diagnostics.rounded_region}")
-    print(f"font_created={diagnostics.font_created}")
-    print(f"font_quality={diagnostics.font_quality}")
-    print(f"text_extent={diagnostics.text_extent}")
-
-
 def dpi_cases_ok(cases: list[DpiCase]) -> bool:
     return all(case.within_monitor for case in cases)
 
 
-def render_diagnostics_ok(diagnostics: RenderDiagnostics) -> bool:
-    text_width, text_height = diagnostics.text_extent
-    return (
-        diagnostics.alpha == 232
-        and diagnostics.rounded_region
-        and diagnostics.font_created
-        and diagnostics.font_quality == win32con.CLEARTYPE_QUALITY
-        and text_width > 0
-        and text_height > 0
-    )
-
-
 def resolve_view_state(args: argparse.Namespace) -> Win32OverlayViewState:
+    if args.long_payload_sample:
+        return long_payload_view_state()
     if args.payload_sample:
         return sample_payload_view_state()
     return default_view_state()
@@ -466,8 +461,13 @@ def main() -> int:
         print_render_diagnostics(diagnostics)
         return 0 if render_diagnostics_ok(diagnostics) else 1
 
+    if args.layout_check:
+        diagnostics = Win32OverlaySmoke(view_state).text_layout_diagnostics()
+        print_text_layout_diagnostics(diagnostics)
+        return 0 if text_layout_diagnostics_ok(diagnostics) else 1
+
     if not args.show:
-        print("Use --import-only, --diagnostics, or --show")
+        print("Use --import-only, --diagnostics, --layout-check, or --show")
         return 2
 
     return Win32OverlaySmoke(view_state).show_for(args.duration_ms)

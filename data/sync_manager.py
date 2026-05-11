@@ -69,8 +69,8 @@ def build_candidates(
     if not local_map:
         return []
 
-    # V-Archive 캐시 참조 (record_manager 내부 캐시 직접 접근)
-    varchive_cache = record_manager._varchive_cache   # {(song_id, mode, diff): (rate, mc)}
+    # V-Archive 캐시 동적 로드 — 지정된 steam_id 기준
+    varchive_cache = _load_varchive_cache(record_manager, steam_id)  # {(song_id, mode, diff): (rate, mc)}
 
     candidates: list[SyncCandidate] = []
 
@@ -153,3 +153,33 @@ def _load_all_local(
     except Exception as e:
         print(f"[SyncManager] 로컬 기록 조회 실패: {e}")
         return {}
+
+
+def _load_varchive_cache(
+    record_manager: RecordManager,
+    steam_id: str,
+) -> dict[tuple[int, str, str], tuple[float, bool]]:
+    """V-Archive vclient으로부터 지정된 steam_id의 캐시를 로드한다."""
+    if not steam_id or steam_id == "__unknown__":
+        return {}
+
+    cache: dict[tuple[int, str, str], tuple[float, bool]] = {}
+    try:
+        for button in [4, 5, 6, 8]:
+            button_mode = f"{button}B"
+            records = record_manager.vclient.load_cached_records(steam_id, button)
+            for rec in records:
+                try:
+                    song_id = int(rec.get("title", 0))
+                    diff = rec.get("pattern")
+                    rate = float(rec.get("score", 0.0))
+                    is_max_combo = bool(rec.get("maxCombo", False))
+                    if song_id is not None and diff:
+                        cache[(song_id, button_mode, diff)] = (rate, is_max_combo)
+                except (ValueError, TypeError):
+                    continue
+    except Exception as e:
+        print(f"[SyncManager] V-Archive 캐시 로드 실패 (steam_id={steam_id}): {e}")
+    
+    return cache
+

@@ -32,7 +32,7 @@ class SettingsWindow(QWidget):
     opacity_changed = pyqtSignal(float)
     scale_changed   = pyqtSignal(float)
     fetch_varchive_requested = pyqtSignal(str, str, int)  # steam_id, v_id, button (0 for all)
-    sync_requested = pyqtSignal()   # 동기화 창 열기 요청
+    sync_requested = pyqtSignal(str, str, str)   # 동기화 창 열기 요청 (steam_id, persona_name, account_path)
     account_file_changed = pyqtSignal(str, str)  # steam_id, account_path
 
     def __init__(self):
@@ -432,7 +432,7 @@ class SettingsWindow(QWidget):
         sync_btn.setFixedSize(85, 28)
         sync_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         sync_btn.setStyleSheet(self._fetch_btn_style(is_all=True))
-        sync_btn.clicked.connect(self.sync_requested.emit)
+        sync_btn.clicked.connect(lambda _, sid=s.steam_id, name=s.persona_name, path=account_edit: self.sync_requested.emit(sid, name, path.text().strip()))
         account_row.addWidget(sync_btn)
 
         row_layout.addLayout(account_row)

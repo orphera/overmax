@@ -255,6 +255,7 @@ class SyncWindow(QWidget):
         self._drag_pos = QPoint()
         self._scan_in_progress = False
         self._rescan_queued = False
+        self._current_steam_id: Optional[str] = None
 
         self._setup_window()
         self._build_ui()
@@ -435,8 +436,9 @@ class SyncWindow(QWidget):
         return footer
 
     def _get_current_account(self) -> Optional[AccountInfo]:
-        steam_id = self._record_manager.get_steam_id()
-        return self._accounts.get(steam_id)
+        if not self._current_steam_id:
+            return None
+        return self._accounts.get(self._current_steam_id)
 
     # ------------------------------------------------------------------
     # 공개 API
@@ -462,7 +464,20 @@ class SyncWindow(QWidget):
         for row in self._rows:
             row.set_upload_enabled(has_account)
 
-    def show_window(self):
+    def show_window(self, steam_id: str, persona_name: str, account_path: str):
+        self._current_steam_id = steam_id
+
+        path = account_path.strip()
+        account = None
+        if path:
+            from data.varchive_uploader import parse_account_file
+            account = parse_account_file(path)
+        self.set_account(steam_id, account)
+
+        # title 설정
+        title_name = persona_name.strip() or steam_id
+        self.setWindowTitle(f"V-Archive 동기화 - {title_name}")
+
         self.adjustSize()
         screen = QApplication.primaryScreen().geometry()
         x = (screen.width() - self.width()) // 2
@@ -609,7 +624,7 @@ class SyncWindow(QWidget):
         if button is None:
             return
 
-        steam_id = self._record_manager.get_steam_id()
+        steam_id = self._current_steam_id
         if steam_id == "__unknown__":
             return
 

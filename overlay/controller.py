@@ -287,15 +287,10 @@ class OverlayController:
 
         self._sync_window = SyncWindow(self.db, self.record_db)
 
-        # 현재 steam_id의 account.txt 경로가 이미 저장돼 있으면 즉시 로드
-        steam_id = self.record_db.get_steam_id() if self.record_db else "__unknown__"
-        account_path = self._get_account_path_for_steam_id(steam_id)
-        if account_path:
-            account = parse_account_file(account_path)
-            self._sync_window.set_account(steam_id, account)
-
         # 시그널 연결
-        self._settings_window.sync_requested.connect(self._sync_window.show_window)
+        self._settings_window.sync_requested.connect(
+            lambda steam_id, persona_name, account_path: self._sync_window.show_window(steam_id, persona_name, account_path)
+        )
         self._settings_window.account_file_changed.connect(self._on_account_file_changed)
 
         self._roi_window = RoiOverlayWindow()

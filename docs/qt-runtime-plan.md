@@ -284,6 +284,25 @@ _internal\libffi-8.dll                                                          
 - 함수 50라인 이하 유지
 - 기존 창 동작 유지
 
+2026-05-11 결과:
+
+```text
+overlay/settings_window.py      365 lines
+overlay/settings_varchive.py    361 lines
+overlay/controller.py           351 lines
+overlay/sync_window.py          312 lines
+overlay/sync_candidate_row.py   191 lines
+overlay/sync_actions.py         189 lines
+overlay/tray_icon.py             47 lines
+```
+
+분리 경계:
+
+- `settings_varchive.py`: V-Archive 계정 목록, account.txt 선택, fetch/sync 요청
+- `sync_candidate_row.py`: 동기화 후보 행 위젯
+- `sync_actions.py`: 후보 scan/upload/delete 백그라운드 작업
+- `tray_icon.py`: 시스템 트레이 메뉴 구성과 더블클릭 처리
+
 ### Phase 3: UI boundary 정리
 
 - verified state → UI payload 변환 로직을 Qt 독립 계층으로 분리

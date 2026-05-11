@@ -44,15 +44,15 @@ Qt 정리 상세 계획은 `docs/qt-runtime-plan.md`를 따른다.
 - [x] 앱 import smoke test
 - [x] 실제 앱 실행 smoke test
 
-## 현재 단계: Qt 런타임 정리 Phase 0
+## 완료: Qt 런타임 정리 Phase 0
 
 - [x] PyQt6 사용 지점 조사
 - [x] Qt 런타임 정리 계획 문서 작성
 - [x] `dist/overmax.zip` 산출물 크기 기록
 - [x] 개별 DLL 크기 기록
 - [x] 현재 `overmax.spec`의 Qt include/exclude 조정 한계 확인
-- [ ] 앱 import smoke test
-- [ ] 실제 앱 실행 smoke test
+- [x] 앱 import smoke test
+- [x] 실제 앱 실행 smoke test
 
 ## 완료: Qt 런타임 정리 Phase 1
 
@@ -61,14 +61,14 @@ Qt 정리 상세 계획은 `docs/qt-runtime-plan.md`를 따른다.
 - [x] 추가 spec 조정은 보류
 - [x] 배포 산출물 크기 기준은 `dist/overmax.zip`으로 기록
 
-## 다음 단계: Qt UI 구조 정리 Phase 2
+## 완료: Qt UI 구조 정리 Phase 2
 
-- [ ] `overlay/settings_window.py` 기능 단위 분리
-- [ ] `overlay/sync_window.py` 기능 단위 분리
-- [ ] `overlay/controller.py` orchestration 경계 정리
-- [ ] 각 파일 500라인 이하 또는 초과 사유 명시
+- [x] `overlay/settings_window.py` 기능 단위 분리
+- [x] `overlay/sync_window.py` 기능 단위 분리
+- [x] `overlay/controller.py` orchestration 경계 정리
+- [x] 각 파일 500라인 이하 또는 초과 사유 명시
 
-## 예정: Qt 경계 정리 Phase 3
+## 다음 단계: Qt 경계 정리 Phase 3
 
 - [ ] verified state → UI payload 변환 로직을 Qt 독립 계층으로 분리
 - [ ] Qt signal bridge를 표시 계층 경계에만 유지

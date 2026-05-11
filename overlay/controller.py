@@ -9,8 +9,7 @@ from settings import SETTINGS
 import runtime_patch
 
 try:
-    from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QStyle
-    from PyQt6.QtGui import QAction
+    from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
     PYQT_AVAILABLE = True
 except ImportError:
     PYQT_AVAILABLE = False
@@ -24,11 +23,6 @@ from overlay.ui.navigation import RoiOverlayWindow
 from overlay.window import OverlaySignals, OverlayWindow
 from overlay.settings_window import SettingsWindow
 from overlay.sync_window import SyncWindow
-
-from constants import (
-    TOGGLE_HOTKEY,
-    TRAY_TOOLTIP,
-)
 
 
 class OverlayController:
@@ -347,37 +341,11 @@ class OverlayController:
         self._debug_toggle_cb = debug_ctrl.toggle_window
 
     def _setup_tray_icon(self):
-        if not QSystemTrayIcon.isSystemTrayAvailable():
-            print("[Overlay] 시스템 트레이를 사용할 수 없음")
-            return
+        from overlay.tray_icon import create_overlay_tray_icon
 
-        self._tray_icon = QSystemTrayIcon(self._app)
-        self._tray_icon.setIcon(self._app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
-        self._tray_icon.setToolTip(TRAY_TOOLTIP)
-
-        tray_menu = QMenu()
-        toggle_action = QAction(f"오버레이 표시/숨김 ({TOGGLE_HOTKEY})", self._app)
-        toggle_action.triggered.connect(self._window.toggle_visibility)
-        tray_menu.addAction(toggle_action)
-
-        if self._debug_toggle_cb is not None:
-            debug_action = QAction("디버그 창 표시/숨김", self._app)
-            debug_action.triggered.connect(self._debug_toggle_cb)
-            tray_menu.addAction(debug_action)
-
-        settings_action = QAction("설정", self._app)
-        settings_action.triggered.connect(self._settings_window.show_window)
-        tray_menu.addAction(settings_action)
-
-        tray_menu.addSeparator()
-        quit_action = QAction("종료", self._app)
-        quit_action.triggered.connect(self._app.quit)
-        tray_menu.addAction(quit_action)
-
-        self._tray_icon.setContextMenu(tray_menu)
-        self._tray_icon.show()
-        self._tray_icon.activated.connect(self._on_tray_activated)
-
-    def _on_tray_activated(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            self._window.toggle_visibility()
+        self._tray_icon = create_overlay_tray_icon(
+            app=self._app,
+            window=self._window,
+            settings_window=self._settings_window,
+            debug_toggle_cb=self._debug_toggle_cb,
+        )

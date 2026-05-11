@@ -258,6 +258,8 @@ class OverlayController:
             self.signals.scale_changed.connect(self._window.rebuild_ui)
         self._settings_window.fetch_varchive_requested.connect(self._on_fetch_varchive)
         self.signals.settings_requested.connect(self._settings_window.show_window)
+        if self._using_win32_overlay():
+            self._window.set_settings_callback(self.signals.settings_requested.emit)
 
         self._sync_window = SyncWindow(self.db, self.record_db)
 

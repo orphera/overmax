@@ -119,7 +119,7 @@ def pixel_diagnostics_ok(diagnostics: PixelDiagnostics) -> bool:
         and diagnostics.bright_text_pixels > 50
         and diagnostics.accent_pixels > 20
         and diagnostics.cyan_pixels > 10
-        and diagnostics.divider_pixels > 100
+        and diagnostics.divider_pixels <= 20
         and diagnostics.unique_colors >= 6
     )
 

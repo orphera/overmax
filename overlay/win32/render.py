@@ -8,7 +8,11 @@ import win32con
 import win32gui
 
 from overlay.win32 import style
-from overlay.win32.view_state import Win32OverlayViewState
+from overlay.win32.view_state import (
+    Win32OverlayViewState,
+    Win32PatternTab,
+    Win32Recommendation,
+)
 
 BADGE_BG = style.BADGE_BG
 PANEL_BG = style.PANEL_BG
@@ -62,7 +66,8 @@ class Win32OverlayRenderer:
     def draw_panel(self, hdc: int, view_state: Win32OverlayViewState) -> None:
         self._draw_background(hdc)
         self._draw_header(hdc, view_state)
-        for index, line in enumerate(view_state.recommendations[:2], start=1):
+        self._draw_tabs(hdc, view_state)
+        for index, line in enumerate(view_state.recommendations[:6], start=1):
             self._draw_recommendation(hdc, index, line)
         self._draw_footer(hdc, view_state.footer)
 
@@ -71,10 +76,11 @@ class Win32OverlayRenderer:
         hdc: int,
         size: int = style.BODY_FONT_SIZE,
         weight: int = win32con.FW_SEMIBOLD,
+        face: str = style.FONT_FACE,
     ) -> None:
-        key = (size, weight)
+        key = (face, size, weight)
         if key not in self._fonts:
-            self._fonts[key] = self._create_font(size, weight)
+            self._fonts[key] = self._create_font(size, weight, face)
         win32gui.SelectObject(hdc, self._fonts[key])
 
     def destroy(self) -> None:
@@ -86,39 +92,86 @@ class Win32OverlayRenderer:
     def font_created(self) -> bool:
         return bool(self._fonts)
 
-    def _s(self, value: int) -> int:
+    def _1s(self, value: int) -> int:
         return max(1, round(value * self._scale))
 
     def _draw_background(self, hdc: int) -> None:
-        self._draw_round_rect(hdc, (8, 8, 352, 162), 24, style.PANEL_BG)
+        self._draw_round_rect(hdc, (0, 0, 360, 324), 28, style.PANEL_BG)
 
     def _draw_header(self, hdc: int, view_state: Win32OverlayViewState) -> None:
-        self._draw_round_rect(hdc, (16, 16, 344, 74), 20, style.HEADER_BG)
+        self._draw_round_rect(hdc, (8, 8, 352, 74), 20, style.HEADER_BG)
         lamp_color = self._lamp_color(view_state.is_stable)
-        self._draw_lamp(hdc, self._s(28), self._s(32), lamp_color)
-        self._draw_badge(hdc, view_state.mode_diff, 44, 23, 108, 45)
+        self._draw_lamp(hdc, 20, 32, lamp_color)
+        self._draw_mode_badge(hdc, _mode_text(view_state.mode_diff), 36, 23, 64, 45)
         self._draw_text(
-            hdc, view_state.title, 116, 22, 304, 46,
+            hdc, view_state.title, 74, 20, 318, 44,
             style.TEXT_MAIN, style.HEADER_BG, style.TITLE_FONT_SIZE, win32con.FW_BOLD,
         )
         self._draw_text(
-            hdc, "ui_payload -> Win32 renderer", 28, 48, 330, 68,
+            hdc, "—", 24, 48, 336, 68,
             style.TEXT_ACCENT, style.HEADER_BG, style.META_FONT_SIZE,
+            align_center=True,
+        )
+        self._draw_text(
+            hdc, "⚙", 326, 22, 346, 44,
+            style.TEXT_MAIN, style.HEADER_BG, 15, win32con.FW_NORMAL,
+            align_center=True, face=style.EMOJI_FONT_FACE,
         )
 
-    def _draw_recommendation(self, hdc: int, index: int, line: str) -> None:
-        top = 78 + ((index - 1) * 32)
-        self._draw_round_rect(hdc, (16, top, 344, top + 28), 12, style.ROW_BG)
+    def _draw_tabs(self, hdc: int, view_state: Win32OverlayViewState) -> None:
+        tabs = view_state.tabs or _empty_tabs()
+        for index, tab in enumerate(tabs[:4]):
+            self._draw_tab(hdc, index, tab, view_state.active_diff)
+
+    def _draw_tab(
+        self, hdc: int, index: int, tab: Win32PatternTab, active_diff: str
+    ) -> None:
+        top = 80 + (index * 50)
+        bg = style.TAB_ACTIVE_BG if tab.difficulty == active_diff else style.TAB_BG
+        label_color = style.DIFF_COLORS.get(tab.difficulty, style.TEXT_MAIN)
+        floor_color = _tab_floor_color(tab, active_diff)
+        self._draw_round_rect(hdc, (8, top, 60, top + 46), 10, bg)
         self._draw_text(
-            hdc, f"{index:02d}  {line}", 24, top + 2, 334, top + 26,
+            hdc, tab.difficulty, 8, top + 7, 60, top + 23,
+            label_color, bg, style.BODY_FONT_SIZE, win32con.FW_BOLD,
+            align_center=True,
+        )
+        self._draw_text(
+            hdc, tab.label, 8, top + 24, 60, top + 40,
+            floor_color, bg, style.META_FONT_SIZE, win32con.FW_SEMIBOLD,
+            align_center=True,
+        )
+
+    def _draw_recommendation(
+        self, hdc: int, index: int, line: Win32Recommendation | str
+    ) -> None:
+        top = 81 + ((index - 1) * 31)
+        self._draw_round_rect(hdc, (73, top, 352, top + 28), 8, style.ROW_BG)
+        if isinstance(line, Win32Recommendation):
+            self._draw_recommendation_entry(hdc, top, line)
+            return
+        self._draw_text(
+            hdc, str(line), 80, top + 2, 342, top + 26,
             style.TEXT_BODY, style.ROW_BG, style.BODY_FONT_SIZE,
         )
+
+    def _draw_recommendation_entry(
+        self, hdc: int, top: int, entry: Win32Recommendation
+    ) -> None:
+        badge = f"{entry.difficulty} {entry.level}".strip()
+        self._draw_diff_badge(hdc, badge, entry.difficulty, 74, top + 3, 110, top + 25)
+        self._draw_text(
+            hdc, entry.song_name, 118, top + 2, 270, top + 26,
+            style.TEXT_BODY, style.ROW_BG, style.BODY_FONT_SIZE,
+        )
+        self._draw_status_badge(hdc, 272, top + 6, entry)
+        self._draw_rate(hdc, 294, top + 2, 344, top + 26, entry.rate)
 
     def _draw_lamp(self, hdc: int, x: int, y: int, color: int) -> None:
         brush = win32gui.CreateSolidBrush(color)
         old_brush = win32gui.SelectObject(hdc, brush)
         try:
-            win32gui.Ellipse(hdc, x, y, x + self._s(7), y + self._s(7))
+            win32gui.Ellipse(hdc, *self._rect(x, y, x + 7, y + 7))
         finally:
             win32gui.SelectObject(hdc, old_brush)
             win32gui.DeleteObject(brush)
@@ -136,13 +189,70 @@ class Win32OverlayRenderer:
         self._draw_text(
             hdc, text or "—", left + 3, top + 1, right - 3, bottom - 1,
             style.TEXT_MAIN, style.BADGE_BG, style.BODY_FONT_SIZE, win32con.FW_BOLD,
+            align_center=True,
+        )
+
+    def _draw_mode_badge(
+        self, hdc: int, text: str, left: int, top: int, right: int, bottom: int
+    ) -> None:
+        color = style.MODE_COLORS.get(text, style.BADGE_BG)
+        self._draw_round_rect(hdc, (left, top, right, bottom), 6, color)
+        self._draw_text(
+            hdc, text or "—", left + 3, top + 1, right - 3, bottom - 1,
+            style.TEXT_MAIN, color, style.BODY_FONT_SIZE, win32con.FW_BOLD,
+            align_center=True,
         )
 
     def _draw_footer(self, hdc: int, footer: str) -> None:
-        self._draw_round_rect(hdc, (16, 142, 344, 162), 8, style.FOOTER_BG)
+        self._draw_round_rect(hdc, (8, 290, 352, 316), 8, style.FOOTER_BG)
         self._draw_text(
-            hdc, footer, 26, 142, 334, 162,
+            hdc, "유사 구간 평균", 18, 292, 140, 314,
             style.TEXT_MUTED, style.FOOTER_BG, style.META_FONT_SIZE,
+        )
+        self._draw_text(
+            hdc, footer, 154, 292, 342, 314,
+            style.TEXT_MAIN, style.FOOTER_BG, style.BODY_FONT_SIZE, win32con.FW_BOLD,
+            align_right=True,
+        )
+
+    def _draw_diff_badge(
+        self, hdc: int, text: str, difficulty: str, left: int, top: int,
+        right: int, bottom: int,
+    ) -> None:
+        color = style.DIFF_COLORS.get(difficulty, style.BADGE_BG)
+        self._draw_round_rect(hdc, (left, top, right, bottom), 8, color)
+        self._draw_text(
+            hdc, text or "—", left + 2, top, right - 2, bottom,
+            style.TEXT_MAIN, color, style.META_FONT_SIZE, win32con.FW_BOLD,
+            align_center=True,
+        )
+
+    def _draw_status_badge(
+        self, hdc: int, left: int, top: int, entry: Win32Recommendation
+    ) -> None:
+        status = _status_badge(entry)
+        if status is None:
+            return
+        text, color = status
+        self._draw_round_rect(hdc, (left, top, left + 16, top + 16), 16, color)
+        self._draw_text(
+            hdc, text, left, top, left + 16, top + 16,
+            style.TEXT_MAIN, color, 9, win32con.FW_BOLD,
+            align_center=True,
+        )
+
+    def _draw_rate(
+        self, hdc: int, left: int, top: int, right: int, bottom: int,
+        rate: float | None,
+    ) -> None:
+        if rate is None:
+            text, color = "——", style.TEXT_MUTED
+        else:
+            text, color = f"{rate:.2f}%", _rate_color(rate)
+        self._draw_text(
+            hdc, text, left, top, right, bottom,
+            color, style.ROW_BG, style.BODY_FONT_SIZE, win32con.FW_BOLD,
+            align_right=True,
         )
 
     def _draw_round_rect(
@@ -152,8 +262,7 @@ class Win32OverlayRenderer:
         radius: int,
         color: int,
     ) -> None:
-        pen = win32gui.CreatePen(win32con.PS_SOLID, 1, style.BORDER)
-        old_pen = win32gui.SelectObject(hdc, pen)
+        old_pen = win32gui.SelectObject(hdc, win32gui.GetStockObject(win32con.NULL_PEN))
         brush = win32gui.CreateSolidBrush(color)
         old_brush = win32gui.SelectObject(hdc, brush)
         try:
@@ -162,7 +271,6 @@ class Win32OverlayRenderer:
             win32gui.SelectObject(hdc, old_brush)
             win32gui.SelectObject(hdc, old_pen)
             win32gui.DeleteObject(brush)
-            win32gui.DeleteObject(pen)
 
     def _draw_text(
         self,
@@ -176,12 +284,17 @@ class Win32OverlayRenderer:
         bg_color: int = style.PANEL_BG,
         size: int = style.BODY_FONT_SIZE,
         weight: int = win32con.FW_SEMIBOLD,
+        align_right: bool = False,
+        align_center: bool = False,
+        face: str = style.FONT_FACE,
     ) -> None:
-        self.select_font(hdc, size, weight)
+        self.select_font(hdc, size, weight, face)
         win32gui.SetBkMode(hdc, win32con.OPAQUE)
         win32gui.SetBkColor(hdc, bg_color)
         win32gui.SetTextColor(hdc, color)
-        win32gui.DrawText(hdc, text, -1, self._rect(left, top, right, bottom), style.TEXT_FLAGS)
+        align_flag = _text_align_flag(align_right, align_center)
+        flags = style.TEXT_FLAGS | align_flag
+        win32gui.DrawText(hdc, text, -1, self._rect(left, top, right, bottom), flags)
 
     def _rect(self, left: int, top: int, right: int, bottom: int) -> tuple[int, int, int, int]:
         return self._s(left), self._s(top), self._s(right), self._s(bottom)
@@ -191,9 +304,9 @@ class Win32OverlayRenderer:
             return style.STABLE
         return style.UNSTABLE
 
-    def _create_font(self, size: int, weight: int) -> int:
+    def _create_font(self, size: int, weight: int, face: str) -> int:
         logfont = win32gui.LOGFONT()
-        logfont.lfFaceName = style.FONT_FACE
+        logfont.lfFaceName = face
         logfont.lfHeight = -self._s(size)
         logfont.lfWeight = weight
         logfont.lfQuality = win32con.CLEARTYPE_QUALITY
@@ -206,10 +319,9 @@ def build_text_layout_diagnostics(
     scale: float = 1.0,
 ) -> TextLayoutDiagnostics:
     cases = [
-        _measure_case(hdc, "title", view_state.title, 188, 24, scale),
-        _measure_case(hdc, "mode_diff", view_state.mode_diff, 58, 20, scale),
-        _measure_case(hdc, "subtitle", "ui_payload -> Win32 renderer", 306, 28, scale),
-        _measure_case(hdc, "footer", view_state.footer, 308, 20, scale),
+        _measure_case(hdc, "title", view_state.title, 242, 24, scale),
+        _measure_case(hdc, "mode", _mode_text(view_state.mode_diff), 28, 20, scale),
+        _measure_case(hdc, "footer", view_state.footer, 174, 22, scale),
     ]
     cases.extend(_measure_recommendation_cases(hdc, view_state.recommendations, scale))
     return TextLayoutDiagnostics(cases)
@@ -232,12 +344,13 @@ def render_diagnostics_ok(diagnostics: RenderDiagnostics) -> bool:
 
 def _measure_recommendation_cases(
     hdc: int,
-    recommendations: list[str],
+    recommendations: list[Win32Recommendation | str],
     scale: float,
 ) -> list[TextLayoutCase]:
     cases: list[TextLayoutCase] = []
-    for index, line in enumerate(recommendations[:2], start=1):
-        cases.append(_measure_case(hdc, f"recommendation_{index}", line, 310, 24, scale))
+    for index, line in enumerate(recommendations[:6], start=1):
+        text = _recommendation_text(line)
+        cases.append(_measure_case(hdc, f"recommendation_{index}", text, 152, 24, scale))
     return cases
 
 
@@ -261,3 +374,58 @@ def _measure_case(
         fits_width=text_width <= scaled_width,
         fits_height=text_height <= scaled_height,
     )
+
+
+def _mode_text(mode_diff: str) -> str:
+    return mode_diff.split(" ", 1)[0] if mode_diff else "—"
+
+
+def _recommendation_text(line: Win32Recommendation | str) -> str:
+    if isinstance(line, Win32Recommendation):
+        return line.song_name
+    return str(line)
+
+
+def _empty_tabs() -> list[Win32PatternTab]:
+    return [
+        Win32PatternTab("NM", "—", False),
+        Win32PatternTab("HD", "—", False),
+        Win32PatternTab("MX", "—", False),
+        Win32PatternTab("SC", "—", False),
+    ]
+
+
+def _tab_floor_color(tab: Win32PatternTab, active_diff: str) -> int:
+    if tab.difficulty == active_diff:
+        return style.TEXT_TAB
+    if tab.exists:
+        return style.TEXT_TAB_MUTED
+    return style.TEXT_MUTED
+
+
+def _status_badge(entry: Win32Recommendation) -> tuple[str, int] | None:
+    if entry.rate is not None and entry.rate >= 100.0:
+        return "P", style.PERFECT_PLAY
+    if entry.is_max_combo:
+        return "M", style.MAX_COMBO
+    return None
+
+
+def _rate_color(rate: float) -> int:
+    if rate >= 100.0:
+        return style.PERFECT_PLAY
+    if rate >= 99.0:
+        return style.TEXT_RATE_HIGH
+    if rate >= 95.0:
+        return style.TEXT_RATE_MID
+    if rate >= 90.0:
+        return style.TEXT_RATE_SOFT
+    return style.TEXT_RATE_LOW
+
+
+def _text_align_flag(align_right: bool, align_center: bool) -> int:
+    if align_right:
+        return win32con.DT_RIGHT
+    if align_center:
+        return win32con.DT_CENTER
+    return 0

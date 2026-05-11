@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from overlay.utils import calculate_overlay_position
 
 BASE_WIDTH = 360
-BASE_HEIGHT = 170
+BASE_HEIGHT = 324
 BASE_MARGIN = 16
 BASE_DPI = 96
 

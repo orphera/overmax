@@ -176,6 +176,15 @@ recommendation, verified pipeline은 변경하지 않는다.
   `verified=False`, 긴 footer 대표 케이스를 확인할 수 있게 했다.
 - PyQt6 자동 스크린샷 비교는 아직 추가하지 않았고, 현재 검증은 Win32 layout,
   render, pixel, diagnostics, dpi check 기준이다.
+- PyQt6 샘플 화면 기준으로 Win32 논리 높이를 확장하고, 좌측 난이도 탭,
+  6개 추천 행, 난이도 배지, P/M 상태 배지, rate 색상, 한국어 footer 표현을
+  renderer에 맞췄다.
+- Win32 GDI round rect의 불필요한 외곽선을 제거하고, 탭/배지 라벨 중앙 정렬과
+  설정 버튼 클릭 콜백을 PyQt6 `settings_requested` 흐름에 맞췄다.
+- 1.25배 스크린샷 기준으로 header meta 중앙 정렬, footer 오른쪽 값 정렬,
+  설정 아이콘 `⚙` 위치와 body 시작 여백을 추가 보정했다.
+- Win32 캡처 비교 기준으로 추천 row 배경의 왼쪽 시작선을 배지 시작선에 맞추고,
+  `⚙`는 `Segoe UI Emoji` 전용 폰트로 렌더링하도록 분리했다.
 
 완료 기준:
 - [ ] 같은 payload에서 PyQt6와 Win32 오버레이가 한 화면 안에서 명확히 다른

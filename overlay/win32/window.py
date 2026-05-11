@@ -29,6 +29,7 @@ WDA_EXCLUDEFROMCAPTURE = 0x00000011
 CLASS_NAME = "OvermaxWin32Overlay"
 WINDOW_TITLE = "Overmax Win32 overlay"
 MIN_CONFIDENCE_OPACITY = 0.3
+SETTINGS_BUTTON_RECT = (326, 22, 346, 44)
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,7 @@ class Win32OverlayWindow:
         self._renderer = Win32OverlayRenderer(self._scale)
         self._manual_position = False
         self._user_move_cb: Optional[Callable[[int, int], None]] = None
+        self._settings_cb: Optional[Callable[[], None]] = None
         self._rounded_region_applied = False
         self._register_class()
 
@@ -135,6 +137,9 @@ class Win32OverlayWindow:
 
     def set_user_move_callback(self, callback: Callable[[int, int], None]) -> None:
         self._user_move_cb = callback
+
+    def set_settings_callback(self, callback: Callable[[], None]) -> None:
+        self._settings_cb = callback
 
     def update_base_opacity(self, base_opacity: float) -> None:
         self._base_opacity = _clamp_float(base_opacity, 0.1, 1.0, 0.8)
@@ -280,9 +285,19 @@ class Win32OverlayWindow:
             self._emit_user_move()
             return 0
         if msg == win32con.WM_NCHITTEST:
+            if self._settings_button_hit(hwnd, lparam):
+                return win32con.HTCLIENT
             return win32con.HTCAPTION
+        if msg == win32con.WM_LBUTTONUP:
+            self._emit_settings_request(lparam)
+            return 0
         if msg == win32con.WM_SETCURSOR:
-            win32gui.SetCursor(win32gui.LoadCursor(0, win32con.IDC_SIZEALL))
+            cursor = (
+                win32con.IDC_ARROW
+                if _hit_test_from_lparam(lparam) == win32con.HTCLIENT
+                else win32con.IDC_SIZEALL
+            )
+            win32gui.SetCursor(win32gui.LoadCursor(0, cursor))
             return 1
         if msg == win32con.WM_DESTROY:
             self.destroy()
@@ -295,6 +310,23 @@ class Win32OverlayWindow:
             return
         left, top, _, _ = win32gui.GetWindowRect(self.hwnd)
         self._user_move_cb(left, top)
+
+    def _emit_settings_request(self, lparam: int) -> None:
+        if self._settings_cb is None:
+            return
+        if self._client_point_in_rect(_point_from_lparam(lparam), SETTINGS_BUTTON_RECT):
+            self._settings_cb()
+
+    def _settings_button_hit(self, hwnd: int, lparam: int) -> bool:
+        point = win32gui.ScreenToClient(hwnd, _screen_point_from_lparam(lparam))
+        return self._client_point_in_rect(point, SETTINGS_BUTTON_RECT)
+
+    def _client_point_in_rect(
+        self, point: tuple[int, int], rect: tuple[int, int, int, int]
+    ) -> bool:
+        x, y = point
+        left, top, right, bottom = (round(v * self._scale) for v in rect)
+        return left <= x <= right and top <= y <= bottom
 
     def _apply_rounded_region(self, hwnd: int) -> bool:
         try:
@@ -387,3 +419,22 @@ def _clamp_float(value: object, low: float, high: float, fallback: float) -> flo
         return max(low, min(high, float(value)))
     except (TypeError, ValueError):
         return fallback
+
+
+def _point_from_lparam(lparam: int) -> tuple[int, int]:
+    return _signed_word(lparam), _signed_word(lparam >> 16)
+
+
+def _screen_point_from_lparam(lparam: int) -> tuple[int, int]:
+    return _point_from_lparam(lparam)
+
+
+def _signed_word(value: int) -> int:
+    value &= 0xFFFF
+    if value >= 0x8000:
+        return value - 0x10000
+    return value
+
+
+def _hit_test_from_lparam(lparam: int) -> int:
+    return lparam & 0xFFFF

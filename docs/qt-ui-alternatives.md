@@ -255,3 +255,68 @@ capture_excluded=True
 - DPI scaling과 멀티 모니터 좌표 처리
 - 사용자 이동, 위치 저장, 게임 포커스 복원
 - PyInstaller 산출물 크기 비교
+
+## 2026-05-11 Win32 2차 결과
+
+1차 smoke를 확장해 Win32 창 속성, DPI, 모니터 정보, 간단한 샘플 렌더링,
+PyInstaller 산출물 크기를 확인했다.
+
+검증:
+
+```text
+.\.venv_build\Scripts\python.exe -m py_compile test\win32_overlay_smoke.py
+
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --import-only
+Win32 import ok
+
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --diagnostics
+capture_excluded=True
+style_ok=True
+dpi=96
+rect=(120, 120, 480, 290)
+monitor=(0, 0, 1920, 1080)
+ex_style=0x08080088
+
+.\.venv_build\Scripts\python.exe test\win32_overlay_smoke.py --show --duration-ms 3000
+capture_excluded=True
+dpi=96
+```
+
+PyInstaller 최소 패키징:
+
+```text
+.\.venv_build\Scripts\pyinstaller.exe --noconfirm --clean --name win32_overlay_smoke \
+  --distpath scratch\win32_dist \
+  --workpath scratch\win32_build \
+  --specpath scratch\win32_spec \
+  test\win32_overlay_smoke.py
+
+scratch\win32_dist\win32_overlay_smoke = 19,361,810 bytes (18.46 MiB)
+scratch\win32_overlay_smoke.zip = 8,692,687 bytes (8.29 MiB)
+
+scratch\win32_dist\win32_overlay_smoke\win32_overlay_smoke.exe --diagnostics
+capture_excluded=True
+style_ok=True
+dpi=96
+rect=(120, 120, 480, 290)
+monitor=(0, 0, 1920, 1080)
+ex_style=0x08080088
+```
+
+2차 판단:
+
+- Win32 직접 오버레이는 메인 오버레이 한정으로 크기 절감 가능성이 크다.
+- `WS_EX_LAYERED`, `WS_EX_TOPMOST`, `WS_EX_TOOLWINDOW`, `WS_EX_NOACTIVATE` 조합은
+  현재 요구와 맞는다.
+- `WDA_EXCLUDEFROMCAPTURE`는 소스 실행과 PyInstaller 산출물 모두에서 성공했다.
+- DPI와 모니터 rect는 읽을 수 있으나, 실제 멀티 모니터/고DPI 배치 검증은 남아 있다.
+- GDI 렌더링은 최소 표시에는 충분하지만, 현재 PyQt6 UI 품질과 동일하게 맞추려면
+  별도 렌더링 계층 설계가 필요하다.
+
+다음 확인 항목:
+
+- 실제 `overlay/ui_payload.py` 샘플 데이터를 Win32 렌더링 입력으로 흘려보기
+- PyQt6 메인 오버레이와 동일한 위치 계산/사용자 이동 저장 확인
+- 멀티 모니터와 125% 이상 DPI에서 좌표 및 크기 확인
+- 텍스트 품질, rounded region, per-pixel alpha 적용 비용 검토
+- 트레이/설정/동기화/디버그 창은 계속 PyQt6에 남기는 혼합 전략 검토

@@ -44,7 +44,6 @@ from core.utils import (
 from constants import (
     WINDOW_TITLE,
     TOGGLE_HOTKEY,
-    CACHE_PATH,
     RECORD_DB_PATH,
 )
 
@@ -185,9 +184,8 @@ class OvermaxApp:
 
     def _init_databases(self):
         self.varchive_db = VArchiveDB()
-        local = str(CACHE_PATH) if CACHE_PATH.exists() else None
         try:
-            self.varchive_db.load(local_path=local)
+            self.varchive_db.load()
         except Exception as e:
             msg = f"DB 로드 실패: {e}\nsongs.json을 cache/ 폴더에 넣거나 인터넷 연결을 확인하세요."
             print(f"[Main] {msg}")

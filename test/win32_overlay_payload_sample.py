@@ -83,3 +83,16 @@ def long_payload_view_state() -> Win32OverlayViewState:
         ],
         footer="avg 100.00% / records 123/456 / long footer density sample",
     )
+
+
+def mixed_unstable_payload_view_state() -> Win32OverlayViewState:
+    return Win32OverlayViewState(
+        title="한글 English Mixed Title For Style Check",
+        mode_diff="5B HD",
+        is_stable=False,
+        recommendations=[
+            "HD 11  한글 Recommendation Mixed Candidate  97.31%",
+            "MX 13  English Candidate Without Local Record  --",
+        ],
+        footer="avg 97.31% / records 1/2 / opacity scale visual sample",
+    )

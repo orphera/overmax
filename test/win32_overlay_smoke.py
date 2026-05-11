@@ -24,6 +24,7 @@ from overlay.win32.window import (
 )
 from win32_overlay_payload_sample import (
     long_payload_view_state,
+    mixed_unstable_payload_view_state,
     sample_payload_view_state,
 )
 
@@ -41,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--show", action="store_true")
     parser.add_argument("--payload-sample", action="store_true")
     parser.add_argument("--long-payload-sample", action="store_true")
+    parser.add_argument("--mixed-unstable-sample", action="store_true")
     parser.add_argument("--duration-ms", type=int, default=DEFAULT_DURATION_MS)
     return parser.parse_args()
 
@@ -110,6 +112,8 @@ def print_text_layout_diagnostics(diagnostics: TextLayoutDiagnostics) -> None:
 
 
 def resolve_view_state(args: argparse.Namespace) -> Win32OverlayViewState:
+    if args.mixed_unstable_sample:
+        return mixed_unstable_payload_view_state()
     if args.long_payload_sample:
         return long_payload_view_state()
     if args.payload_sample:

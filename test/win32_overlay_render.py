@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import win32api
 import win32con
 import win32gui
 
 from win32_overlay_payload_sample import Win32OverlayViewState
 
+BADGE_BG = win32api.RGB(46, 68, 118)
+PANEL_BG = win32api.RGB(18, 24, 38)
 TEXT_FLAGS = (
     win32con.DT_SINGLELINE
     | win32con.DT_END_ELLIPSIS

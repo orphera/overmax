@@ -16,10 +16,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from win32_overlay_geometry import BASE_HEIGHT, BASE_WIDTH
 from win32_overlay_payload_sample import long_payload_view_state
+from win32_overlay_render import PANEL_BG
 from win32_overlay_smoke import Win32OverlaySmoke
 
 BLACK = win32api.RGB(0, 0, 0)
-PANEL_BG = win32api.RGB(18, 24, 38)
 
 
 @dataclass(frozen=True)

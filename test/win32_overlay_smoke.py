@@ -37,6 +37,8 @@ from win32_overlay_payload_sample import (
     sample_payload_view_state,
 )
 from win32_overlay_render import (
+    BADGE_BG,
+    PANEL_BG,
     TEXT_FLAGS,
     RenderDiagnostics,
     TextLayoutDiagnostics,
@@ -282,7 +284,7 @@ class Win32OverlaySmoke:
             win32gui.EndPaint(hwnd, paint_struct)
 
     def _draw_panel(self, hdc: int) -> None:
-        brush = win32gui.CreateSolidBrush(win32api.RGB(18, 24, 38))
+        brush = win32gui.CreateSolidBrush(PANEL_BG)
         old_brush = win32gui.SelectObject(hdc, brush)
         try:
             win32gui.RoundRect(hdc, 8, 8, 352, 162, 24, 24)
@@ -317,14 +319,14 @@ class Win32OverlaySmoke:
             win32gui.DeleteObject(brush)
 
     def _draw_badge(self, hdc: int, text: str, left: int, top: int, right: int, bottom: int) -> None:
-        brush = win32gui.CreateSolidBrush(win32api.RGB(46, 68, 118))
+        brush = win32gui.CreateSolidBrush(BADGE_BG)
         old_brush = win32gui.SelectObject(hdc, brush)
         try:
             win32gui.RoundRect(hdc, left, top, right, bottom, 12, 12)
         finally:
             win32gui.SelectObject(hdc, old_brush)
             win32gui.DeleteObject(brush)
-        self._draw_text(hdc, text, left + 8, top + 4, right, bottom)
+        self._draw_text(hdc, text, left + 8, top + 4, right, bottom, bg_color=BADGE_BG)
 
     def _draw_footer(self, hdc: int) -> None:
         pen = win32gui.CreatePen(win32con.PS_SOLID, 1, win32api.RGB(48, 58, 78))
@@ -346,9 +348,11 @@ class Win32OverlaySmoke:
         right: int,
         bottom: int,
         color: int = win32api.RGB(230, 236, 255),
+        bg_color: int = PANEL_BG,
     ) -> None:
         self._select_font(hdc)
-        win32gui.SetBkMode(hdc, win32con.TRANSPARENT)
+        win32gui.SetBkMode(hdc, win32con.OPAQUE)
+        win32gui.SetBkColor(hdc, bg_color)
         win32gui.SetTextColor(hdc, color)
         win32gui.DrawText(hdc, text, -1, (left, top, right, bottom), TEXT_FLAGS)
 

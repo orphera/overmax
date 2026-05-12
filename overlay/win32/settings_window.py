@@ -14,7 +14,7 @@ from constants import SCALE_PRESETS
 from core.version import APP_VERSION
 from data.steam_session import SteamSession, get_all_steam_sessions, get_most_recent_steam_id
 from infra.gui.windowing import WindowCreateSpec, create_window, register_window_class
-from overlay.win32 import settings_common as controls
+from infra.gui import controls, layout, placement, theme
 from settings import SETTINGS, save_settings
 
 CLASS_NAME = "OvermaxWin32SettingsWindow"
@@ -178,8 +178,8 @@ class Win32SettingsWindow:
         self.hwnd = create_window(self.hinst, self._create_spec())
         if not self.hwnd:
             return False
-        self._font = controls.create_font(height=-15)
-        self._bold_font = controls.create_font(height=-15, weight=win32con.FW_BOLD)
+        self._font = theme.create_font(height=-15)
+        self._bold_font = theme.create_font(height=-15, weight=win32con.FW_BOLD)
         self._create_controls()
         self._switch_tab("ui")
         return True
@@ -190,7 +190,7 @@ class Win32SettingsWindow:
             title="Overmax 설정",
             ex_style=win32con.WS_EX_TOOLWINDOW,
             style=win32con.WS_OVERLAPPED | win32con.WS_CAPTION | win32con.WS_SYSMENU,
-            position=controls.center_position(WINDOW_SIZE),
+            position=placement.center_position(WINDOW_SIZE),
             size=WINDOW_SIZE,
         )
 
@@ -209,7 +209,7 @@ class Win32SettingsWindow:
 
     def _create_ui_controls(self) -> None:
         # Fixed layout context: base_y=48 (bottom of tab header), plus internal padding
-        ctx = controls.LayoutContext((0, 48, WINDOW_SIZE[0], WINDOW_SIZE[1] - 48), controls.LayoutPadding(24, 12, 24, 12))
+        ctx = layout.LayoutContext((0, 48, WINDOW_SIZE[0], WINDOW_SIZE[1] - 48), layout.LayoutPadding(24, 12, 24, 12))
         ui_controls = self._ui_controls
         
         # Opacity Section
@@ -228,7 +228,7 @@ class Win32SettingsWindow:
         ui_controls.append(ctx.section_title(self.hwnd, self.hinst, "오버레이 크기", self._bold_font))
         self._create_scale_buttons(ctx)
 
-    def _create_scale_buttons(self, ctx: controls.LayoutContext) -> None:
+    def _create_scale_buttons(self, ctx: layout.LayoutContext) -> None:
         row_rect = ctx.next_rect(32)
         x = row_rect[0]
         current = float(SETTINGS.get("overlay", {}).get("scale", 1.0))
@@ -237,18 +237,18 @@ class Win32SettingsWindow:
             hwnd = controls.button(self.hwnd, self.hinst, text, SCALE_BASE_ID + index, (x, row_rect[1], width, 30))
             self._scale_buttons[scale] = hwnd
             self._ui_controls.append(hwnd)
-            self._set_button_checked(hwnd, abs(scale - current) < 0.01)
+            controls.set_button_checked(hwnd, abs(scale - current) < 0.01)
             x += width + CONTROL_GAP
 
     def _create_system_controls(self) -> None:
-        ctx = controls.LayoutContext((0, 48, WINDOW_SIZE[0], WINDOW_SIZE[1] - 48), controls.LayoutPadding(24, 12, 24, 12))
+        ctx = layout.LayoutContext((0, 48, WINDOW_SIZE[0], WINDOW_SIZE[1] - 48), layout.LayoutPadding(24, 12, 24, 12))
         self._system_controls.append(ctx.section_title(self.hwnd, self.hinst, "시스템 설정", self._bold_font))
         
         auto = bool(SETTINGS.get("app_update", {}).get("enabled", True))
         text = "자동 업데이트 활성화"
         width = self._check_width(text)
         self._auto_update = controls.check(self.hwnd, self.hinst, text, CONTROL_IDS["auto_update"], ctx.next_rect(24))
-        self._set_button_checked(self._auto_update, auto)
+        controls.set_button_checked(self._auto_update, auto)
         self._system_controls.append(self._auto_update)
         
         ctx.add_gap(8)
@@ -256,7 +256,7 @@ class Win32SettingsWindow:
         self._system_controls.append(version)
 
     def _create_varchive_controls(self) -> None:
-        ctx = controls.LayoutContext((0, 48, WINDOW_SIZE[0], WINDOW_SIZE[1] - 48), controls.LayoutPadding(24, 12, 24, 12))
+        ctx = layout.LayoutContext((0, 48, WINDOW_SIZE[0], WINDOW_SIZE[1] - 48), layout.LayoutPadding(24, 12, 24, 12))
         self._varchive_controls.append(ctx.section_title(self.hwnd, self.hinst, "동기화 설정", self._bold_font))
         self._create_auto_refresh_control(ctx)
         
@@ -277,16 +277,16 @@ class Win32SettingsWindow:
         auto = bool(SETTINGS.get("varchive", {}).get("auto_refresh", False))
         text = "시작 시 V-Archive 기록 자동 갱신"
         hwnd = controls.check(self.hwnd, self.hinst, text, VARCHIVE_AUTO_REFRESH_ID, ctx.next_rect(24))
-        self._set_button_checked(hwnd, auto)
+        controls.set_button_checked(hwnd, auto)
         self._varchive_controls.append(hwnd)
 
-    def _create_session_controls(self, session: SteamSession, ctx: controls.LayoutContext) -> None:
+    def _create_session_controls(self, session: SteamSession, ctx: layout.LayoutContext) -> None:
         self._varchive_controls.append(controls.static(self.hwnd, self.hinst, _session_label(session), ctx.next_rect(22)))
         self._create_v_id_row(session, ctx)
         self._create_account_row(session, ctx)
         ctx.add_gap(8)
 
-    def _create_other_sessions(self, sessions: list[SteamSession], ctx: controls.LayoutContext) -> None:
+    def _create_other_sessions(self, sessions: list[SteamSession], ctx: layout.LayoutContext) -> None:
         text = f"다른 계정 보기 ({len(sessions)})"
         self._toggle_others_hwnd = controls.button(
             self.hwnd, self.hinst, text, VARCHIVE_BASE_ID + 200, ctx.next_rect(28)
@@ -300,7 +300,7 @@ class Win32SettingsWindow:
             self._other_session_controls.extend(self._varchive_controls[before:])
         controls.show_many(self._other_session_controls, False)
 
-    def _create_v_id_row(self, session: SteamSession, ctx: controls.LayoutContext) -> None:
+    def _create_v_id_row(self, session: SteamSession, ctx: layout.LayoutContext) -> None:
         rect = ctx.next_rect(24)
         v_id = _varchive_entry(session.steam_id).get("v_id", "")
         edit = controls.edit(self.hwnd, self.hinst, v_id, (rect[0], rect[1], 120, 24))
@@ -317,7 +317,7 @@ class Win32SettingsWindow:
             self._varchive_controls.append(hwnd)
             x += width + 4
 
-    def _create_account_row(self, session: SteamSession, ctx: controls.LayoutContext) -> None:
+    def _create_account_row(self, session: SteamSession, ctx: layout.LayoutContext) -> None:
         rect = ctx.next_rect(24)
         entry = _varchive_entry(session.steam_id)
         edit = controls.edit(self.hwnd, self.hinst, entry.get("account_path", ""), (rect[0], rect[1], 200, 24))
@@ -400,26 +400,26 @@ class Win32SettingsWindow:
     def _apply_scale(self, scale: float) -> None:
         SETTINGS.setdefault("overlay", {})["scale"] = scale
         for value, hwnd in self._scale_buttons.items():
-            self._set_button_checked(hwnd, abs(value - scale) < 0.01)
+            controls.set_button_checked(hwnd, abs(value - scale) < 0.01)
         self._save_if_enabled()
         if self._scale_cb:
             self._scale_cb(scale)
 
     def _apply_auto_update(self) -> None:
-        checked = self._button_checked(self._auto_update)
+        checked = controls.get_button_checked(self._auto_update)
         SETTINGS.setdefault("app_update", {})["enabled"] = checked
         self._save_if_enabled()
 
     def _apply_auto_refresh(self) -> None:
         hwnd = self._find_control(VARCHIVE_AUTO_REFRESH_ID)
-        SETTINGS.setdefault("varchive", {})["auto_refresh"] = self._button_checked(hwnd)
+        SETTINGS.setdefault("varchive", {})["auto_refresh"] = controls.get_button_checked(hwnd)
         self._save_if_enabled()
 
     def _handle_varchive_action(self, control_id: int) -> None:
         action, steam_id, button = self._varchive_actions[control_id]
         if action == "fetch":
             self._apply_v_id(steam_id)
-            self._emit_fetch(steam_id, self._edit_text(self._v_id_edits[steam_id]), button)
+            self._emit_fetch(steam_id, controls.get_edit_text(self._v_id_edits[steam_id]), button)
         elif action == "sync":
             self._apply_account_path(steam_id)
             self._emit_sync(steam_id)
@@ -430,12 +430,12 @@ class Win32SettingsWindow:
 
     def _apply_v_id(self, steam_id: str) -> None:
         entry = _ensure_varchive_entry(steam_id)
-        entry["v_id"] = self._edit_text(self._v_id_edits[steam_id]).strip()
+        entry["v_id"] = controls.get_edit_text(self._v_id_edits[steam_id]).strip()
         self._save_if_enabled()
 
     def _apply_account_path(self, steam_id: str) -> None:
         entry = _ensure_varchive_entry(steam_id)
-        entry["account_path"] = self._edit_text(self._account_edits[steam_id]).strip()
+        entry["account_path"] = controls.get_edit_text(self._account_edits[steam_id]).strip()
         self._save_if_enabled()
         if self._account_file_cb:
             self._account_file_cb(steam_id, entry["account_path"])
@@ -447,13 +447,13 @@ class Win32SettingsWindow:
     def _emit_sync(self, steam_id: str) -> None:
         if self._sync_cb:
             session = self._session_by_id(steam_id)
-            self._sync_cb(steam_id, session.persona_name if session else "", self._edit_text(self._account_edits[steam_id]).strip())
+            self._sync_cb(steam_id, session.persona_name if session else "", controls.get_edit_text(self._account_edits[steam_id]).strip())
 
     def _browse_account_file(self, steam_id: str) -> None:
         path = _open_account_file_dialog()
         if not path:
             return
-        self._set_edit_text(self._account_edits[steam_id], path)
+        controls.set_edit_text(self._account_edits[steam_id], path)
         self._apply_account_path(steam_id)
 
     def _toggle_other_sessions(self) -> None:
@@ -488,24 +488,34 @@ class Win32SettingsWindow:
     def _session_by_id(self, steam_id: str) -> SteamSession | None:
         return next((session for session in self._settings_sessions() if session.steam_id == steam_id), None)
 
+    def _all_child_hwnds(self) -> list[int]:
+        return [
+            self._tab_control,
+            *self._ui_controls,
+            *self._system_controls,
+            *self._varchive_controls,
+        ]
+
+    def _button_width(self, text: str) -> int:
+        return max(72, theme.text_width(self.hwnd, self._font, text) + 28)
+
+    def _check_width(self, text: str) -> int:
+        return max(120, theme.text_width(self.hwnd, self._font, text) + 32)
+
     def _find_control(self, control_id: int) -> int:
+        """Find a child control by its ID."""
         for hwnd in self._all_child_hwnds():
             if win32gui.GetDlgCtrlID(hwnd) == control_id:
                 return hwnd
         return 0
 
-    def _edit_text(self, hwnd: int) -> str:
-        return win32gui.GetWindowText(hwnd)
-
-    def _set_edit_text(self, hwnd: int, text: str) -> None:
-        win32gui.SetWindowText(hwnd, text)
-
     def _reset_control_state(self) -> None:
+        """Reset internal HWND handles when the window is destroyed."""
         self.hwnd = 0
         self._opacity_track = 0
         self._opacity_value = 0
         self._auto_update = 0
-        self._tab_buttons.clear()
+        self._tab_control = 0
         self._scale_buttons.clear()
         self._v_id_edits.clear()
         self._account_edits.clear()
@@ -516,27 +526,6 @@ class Win32SettingsWindow:
         self._other_session_controls.clear()
         self._toggle_others_hwnd = 0
         self._other_sessions_visible = False
-
-    def _all_child_hwnds(self) -> list[int]:
-        return [
-            self._tab_control,
-            *self._ui_controls,
-            *self._system_controls,
-            *self._varchive_controls,
-        ]
-
-    def _button_width(self, text: str) -> int:
-        return max(72, controls.text_width(self.hwnd, self._font, text) + 28)
-
-    def _check_width(self, text: str) -> int:
-        return max(120, controls.text_width(self.hwnd, self._font, text) + 32)
-
-    def _button_checked(self, hwnd: int) -> bool:
-        return win32gui.SendMessage(hwnd, win32con.BM_GETCHECK, 0, 0) == win32con.BST_CHECKED
-
-    def _set_button_checked(self, hwnd: int, checked: bool) -> None:
-        state = win32con.BST_CHECKED if checked else win32con.BST_UNCHECKED
-        win32gui.SendMessage(hwnd, win32con.BM_SETCHECK, state, 0)
 
     def _register_class(self) -> None:
         register_window_class(self.hinst, CLASS_NAME, self._wnd_proc)

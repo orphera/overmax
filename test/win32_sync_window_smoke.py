@@ -28,7 +28,7 @@ def run_diagnostics() -> None:
     print(f"status_text={diagnostics.status_text}")
     if not diagnostics.hwnd_created or diagnostics.refresh_enabled:
         raise SystemExit(1)
-    if diagnostics.row_count != 2:
+    if diagnostics.row_count != 30:
         raise SystemExit(1)
 
 

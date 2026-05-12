@@ -25,7 +25,24 @@ def get_system_dpi() -> int:
 
 
 def get_window_dpi(hwnd: int) -> int:
+    """Get the current DPI for a specific window."""
     try:
-        return int(ctypes.windll.user32.GetDpiForWindow(hwnd))
-    except Exception:
-        return BASE_DPI
+        return ctypes.windll.user32.GetDpiForWindow(hwnd)
+    except (AttributeError, OSError):
+        # Fallback for older Windows or errors
+        return 96
+
+
+def scale_for_dpi(value: int, dpi: int) -> int:
+    """Scale a logical pixel value to the target DPI."""
+    return int(value * dpi / 96)
+
+
+def scaled_value(value: int, dpi: int) -> int:
+    """Alias for scale_for_dpi."""
+    return scale_for_dpi(value, dpi)
+
+
+def scaled_rect(rect: tuple[int, int, int, int], dpi: int) -> tuple[int, int, int, int]:
+    """Scale a (x, y, w, h) rectangle to the target DPI."""
+    return tuple(scaled_value(v, dpi) for v in rect)

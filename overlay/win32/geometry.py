@@ -12,6 +12,16 @@ BASE_MARGIN = 16
 BASE_DPI = 96
 
 
+def scale_for_dpi(dpi: int, ui_scale: float = 1.0) -> float:
+    """Calculate combined scale factor from DPI and user-defined UI scale."""
+    return max(1.0, dpi / BASE_DPI) * max(0.1, ui_scale)
+
+
+def scaled_value(value: int, dpi: int, ui_scale: float = 1.0) -> int:
+    """Scale a value based on DPI and user-defined UI scale."""
+    return max(1, round(value * scale_for_dpi(dpi, ui_scale)))
+
+
 @dataclass(frozen=True)
 class DpiCase:
     dpi: int
@@ -29,14 +39,6 @@ class PositionDiagnostics:
     moved: tuple[int, int]
     callback_position: tuple[int, int]
     monitor: tuple[int, int, int, int]
-
-
-def scale_for_dpi(dpi: int, ui_scale: float = 1.0) -> float:
-    return max(1.0, dpi / BASE_DPI) * max(0.1, ui_scale)
-
-
-def scaled_value(value: int, dpi: int, ui_scale: float = 1.0) -> int:
-    return max(1, round(value * scale_for_dpi(dpi, ui_scale)))
 
 
 def scaled_window_size(dpi: int, ui_scale: float = 1.0) -> tuple[int, int]:

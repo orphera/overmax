@@ -41,3 +41,12 @@ def move_resize_window(hwnd: int, x: int, y: int, width: int, height: int) -> No
 
 def window_position(hwnd: int) -> tuple[int, int]:
     return win32gui.GetWindowRect(hwnd)[:2]
+
+
+def center_position(size: tuple[int, int]) -> tuple[int, int]:
+    """Calculate the (x, y) to center a window of given size on the primary screen."""
+    w, h = size
+    import win32api
+    sw = win32api.GetSystemMetrics(win32con.SM_CXSCREEN)
+    sh = win32api.GetSystemMetrics(win32con.SM_CYSCREEN)
+    return ((sw - w) // 2, (sh - h) // 2)

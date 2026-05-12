@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import win32con
 import win32gui
 from data.sync_manager import SyncCandidate
-from overlay.win32 import settings_common as controls
+from infra.gui import controls, theme
 
 # Column Layout Configuration
 COL_X = [16, 60, 104, 310, 396, 420, 506, 582]

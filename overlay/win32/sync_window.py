@@ -16,7 +16,7 @@ from data.varchive import VArchiveDB
 from data.varchive_uploader import AccountInfo, parse_account_file
 from data.record_manager import RecordManager
 from infra.gui.windowing import WindowCreateSpec, create_window, register_window_class
-from overlay.win32 import settings_common as controls
+from infra.gui import controls, layout, placement, theme
 from overlay.win32.sync_bridge import (
     Win32SyncSignals, WM_SYNC_SCAN_FINISHED, WM_SYNC_ROW_STATUS, WM_SYNC_ACTION_FINISHED
 )
@@ -119,10 +119,12 @@ class Win32SyncWindow:
         if not self.hwnd:
             return False
         self._signals = Win32SyncSignals(self.hwnd)
-        self._font = controls.create_font()
+        self._font = theme.create_font()
         self._create_controls()
         self._set_status("account.txt를 설정하고 불러오기를 눌러주세요.")
         self._update_ui_states()
+        if self._sample_candidates:
+            self._on_scan_finished(self._sample_candidates)
         return True
 
     def _create_spec(self) -> WindowCreateSpec:
@@ -131,13 +133,13 @@ class Win32SyncWindow:
             title="V-Archive 동기화",
             ex_style=win32con.WS_EX_TOOLWINDOW,
             style=win32con.WS_OVERLAPPED | win32con.WS_CAPTION | win32con.WS_SYSMENU | win32con.WS_VSCROLL,
-            position=controls.center_position(WINDOW_SIZE),
+            position=placement.center_position(WINDOW_SIZE),
             size=WINDOW_SIZE,
         )
 
     def _create_controls(self) -> None:
         # Header Area
-        header_ctx = controls.LayoutContext((0, 0, WINDOW_SIZE[0], 90), controls.LayoutPadding(20, 16, 20, 8))
+        header_ctx = layout.LayoutContext((0, 0, WINDOW_SIZE[0], 90), layout.LayoutPadding(20, 16, 20, 8))
         self._title_label = controls.static(self.hwnd, self.hinst, "동기화 후보 목록", header_ctx.next_rect(26), win32con.SS_LEFT)
         self._count_label = controls.static(self.hwnd, self.hinst, "", (WINDOW_SIZE[0] - 180, 16, 160, 26), win32con.SS_RIGHT)
         
@@ -182,7 +184,7 @@ class Win32SyncWindow:
             self._status_label, self._refresh_btn, self._list_container
         ])
         
-        bold_font = controls.create_font(height=-18, weight=win32con.FW_BOLD)
+        bold_font = theme.create_font(height=-18, weight=win32con.FW_BOLD)
         win32gui.SendMessage(self._title_label, win32con.WM_SETFONT, bold_font, True)
         
         for hwnd in self._base_controls:

@@ -519,6 +519,303 @@ Win32DebugWindow
 - `ROI 표시 ON` 같은 한글 상태 텍스트가 잘리지 않도록 버튼/체크박스 폭을 현재
   Win32 font의 text extent 기준으로 계산하도록 바꿨다.
 
+## 예정: Win32 설정 창 전환 Phase 10
+
+목표는 사용자가 자주 보는 설정 창을 Win32로 옮기기 전에 기존 PyQt6 설정 창의
+동작 계약과 표시 기준을 먼저 고정하고, 작은 절편으로 검증하는 것이다. 설정 창은
+메인 오버레이보다 직접 조작이 많으므로 디버그 창보다 더 보수적으로 진행한다.
+
+Phase 10에서도 detection/capture/core, recommendation, verified pipeline은
+변경하지 않는다. `overlay.main_backend=win32`를 보조 창 전환 기준으로 쓰되,
+Win32 설정 창은 충분히 검증되기 전까지 실제 앱 기본 경로에 연결하지 않는다.
+
+1. 문제 정의
+
+- 기존 `SettingsWindow`는 UI, V-Archive, System 탭을 한 창에서 제공한다.
+- 사용자가 설정 창에서 주로 보는 항목은 오버레이 투명도/크기, 자동 업데이트,
+  V-Archive 계정/ID/동기화 진입이다.
+- 설정 창은 자주 보는 보조 창이므로 어두운 overlay palette나 임시 native control
+  배치가 그대로 노출되면 완성도가 낮게 보인다.
+
+2. 원인 분석
+
+- 기존 PyQt 설정 창은 다음 signal/callback 계약을 가진다.
+  - `opacity_changed(float)`
+  - `scale_changed(float)`
+  - `fetch_varchive_requested(steam_id, v_id, button)`
+  - `sync_requested(steam_id, persona_name, account_path)`
+  - `account_file_changed(steam_id, account_path)`
+  - `refresh_current_steam_indicator()`
+- V-Archive 탭은 Steam 세션 목록, 현재 계정 강조, 다른 계정 펼침, account.txt
+  경로 선택, 동기화 후보 창 진입까지 포함해 UI/System 탭보다 리스크가 크다.
+- Win32 native control은 font metrics, DPI, 한글 폭, 버튼/check 상태 텍스트에 따라
+  layout이 쉽게 깨질 수 있다.
+
+3. 해결 방법
+
+- 옵션 A: UI/System 탭만 먼저 Win32 후보로 구현하고 실제 연결은 보류한다.
+- 옵션 B: UI/System/V-Archive 전체를 한 번에 Win32로 구현한 뒤 opt-in 연결한다.
+- 옵션 C: 기존 PyQt 설정 창을 유지하고 설정 창 전환은 뒤로 미룬다.
+
+4. 트레이드오프
+
+- 옵션 A는 사용자가 가장 자주 보는 기본 설정 흐름을 먼저 다듬을 수 있지만,
+  V-Archive 전환은 다음 절편으로 남는다.
+- 옵션 B는 한 번에 완성도가 높아 보일 수 있으나, account file picker와 sync
+  진입까지 같이 검증해야 해 실패 범위가 크다.
+- 옵션 C는 안정적이지만 Win32 보조 창 전환 진도가 멈춘다.
+
+5. 추천안
+
+- Phase 10은 옵션 A로 시작한다.
+- 첫 절편은 Win32 설정 창 후보의 UI/System 탭, 밝은 보조창 palette, font metrics
+  기반 adaptive layout, 저장/callback 계약 smoke까지로 제한한다.
+- V-Archive 탭은 현재 PyQt 동작을 더 자세히 대조한 뒤 다음 절편에서 구현한다.
+- 실제 `OverlayController` 연결은 Win32 설정 창이 UI/System/V-Archive 계약을 모두
+  만족한 뒤 진행한다.
+
+- [x] 기존 PyQt `settings_window.py` / `settings_varchive.py`의 표시 항목과
+  signal 계약 목록화
+- [x] Win32 설정 창 후보는 밝은 system dialog 톤으로 설계
+- [x] slider, preset button, checkbox, tab/button width는 font metrics와 DPI 기준으로
+  adaptive하게 배치
+- [x] UI 탭: 오버레이 투명도 저장, `opacity_changed` callback smoke
+- [x] UI 탭: 오버레이 크기 preset 저장, `scale_changed` callback smoke
+- [x] System 탭: 자동 업데이트 checkbox 저장, 현재 버전 표시
+- [x] V-Archive 탭 구현 전에는 실제 앱 설정 경로에 연결하지 않음
+- [x] Win32 settings smoke와 육안 `--show` 체크 통과 후 연결 여부 판단
+
+2026-05-12 진행:
+- `overlay/win32/settings_window.py`에 Win32 설정 창 후보를 추가했다.
+  첫 절편은 UI/System 탭에 한정하고, V-Archive 탭은 placeholder만 둔다.
+- 보조 창 기준에 맞춰 밝은 system dialog 톤을 사용하고, tab/button/checkbox 폭은
+  현재 Win32 font의 `GetTextExtentPoint32` 결과를 바탕으로 계산한다.
+- `persist=False` smoke 모드를 두어 자동 검증이 `settings.user.json`을 쓰지 않게
+  했다. 실제 연결 시에는 기본 `persist=True`로 `save_settings()` 경로를 사용한다.
+- `set_opacity_callback()` / `set_scale_callback()`으로 PyQt signal 계약의 첫 부분을
+  Win32 후보에서도 검증할 수 있게 했다.
+
+검증:
+
+```text
+.\.venv_build\Scripts\python.exe -m py_compile overlay\win32\settings_window.py test\win32_settings_window_smoke.py
+.\.venv_build\Scripts\python.exe test\win32_settings_window_smoke.py --import-only
+.\.venv_build\Scripts\python.exe test\win32_settings_window_smoke.py --diagnostics
+.\.venv_build\Scripts\python.exe test\win32_settings_window_smoke.py --callback-check
+.\.venv_build\Scripts\python.exe test\win32_settings_window_smoke.py --show --duration-ms 4000
+```
+
+결과:
+
+```text
+Win32 settings window import ok
+hwnd_created=True
+trackbar_created=True
+scale_button_count=4
+system_checkbox_created=True
+current_tab=ui
+opacity=0.7
+scale=1.25
+opacity_callback=0.7
+scale_callback=1.25
+show_ok=True
+```
+
+주의:
+- `OverlayController` 연결은 `overlay.main_backend=win32` opt-in 경로에만 적용한다.
+- V-Archive 탭은 현재 Steam 계정 1개 기준으로 구현했다. 여러 계정 펼침과
+  account.txt 파일 선택 dialog는 다음 절편으로 남긴다.
+- `--show` 확인 중 제목/닫기 버튼이 탭별 control list에 섞일 수 있는 구조를
+  발견해, header control은 공통 list로 분리했다.
+- native title bar가 이미 있으므로 body 내부의 별도 제목/닫기 header는 제거했다.
+  설정 창 body는 탭과 설정 항목만 담는다.
+
+2026-05-12 V-Archive 절편:
+- Win32 설정 창 후보에 현재 Steam 계정 1개 기준 V-Archive 탭을 추가했다.
+- 지원 범위는 시작 시 자동 갱신 checkbox, V-Archive ID 입력, 4B/5B/6B/8B/All
+  fetch callback, account path 입력, 동기화 후보 callback이다.
+- smoke에서는 가짜 `SteamSession`을 주입하고 `persist=False`를 사용해 실제
+  Steam 파일이나 `settings.user.json`에 의존하지 않는다.
+- 여러 Steam 계정 펼침과 account.txt 파일 선택 dialog는 아직 다음 절편으로
+  남긴다.
+
+추가 검증:
+
+```text
+.\.venv_build\Scripts\python.exe test\win32_settings_window_smoke.py --varchive-check
+.\.venv_build\Scripts\python.exe test\win32_settings_window_smoke.py --show --tab varchive --duration-ms 4000
+```
+
+결과:
+
+```text
+fetch=('76561198000000000', 'test-v-id', 4)
+sync=('76561198000000000', 'Smoke User', 'C:\tmp\account.txt')
+account=('76561198000000000', 'C:\tmp\account.txt')
+show_ok=True
+```
+
+2026-05-12 연결 절편:
+- `overlay.main_backend=win32`일 때 `OverlayController`가 `Win32SettingsWindow`를
+  생성하도록 연결했다.
+- PyQt6 경로는 기존 `SettingsWindow`와 Qt signal 연결을 유지한다.
+- Win32 경로는 `set_opacity_callback`, `set_scale_callback`,
+  `set_fetch_varchive_callback`, `set_sync_callback`,
+  `set_account_file_callback`으로 기존 설정창 계약을 연결한다.
+- Win32 설정창의 `refresh_current_steam_indicator()`는 현재 no-op으로 둔다.
+  전체 세션 목록 refresh는 여러 계정 절편에서 다시 구현한다.
+
+추가 검증:
+
+```text
+.\.venv_build\Scripts\python.exe -m py_compile overlay\controller.py overlay\win32\settings_window.py test\win32_settings_window_smoke.py
+.\.venv_build\Scripts\python.exe -c "from settings import SETTINGS; SETTINGS['overlay']['main_backend']='win32'; from overlay.controller import OverlayController; c=OverlayController(None, None); print(type(c._create_settings_window()).__name__)"
+```
+
+결과:
+
+```text
+[Overlay] 설정 창 backend: win32
+Win32SettingsWindow
+```
+
+현재 판단:
+- 사용자가 `overlay.main_backend=win32` 설정창 경로를 실제로 확인했고, 기본 동작은
+  잘 된다고 판단했다.
+- Phase 10은 완전 종료가 아니라, 설정창 후속 절편을 남긴 상태로 다음 작업을
+  이어간다.
+
+다음 작업:
+- [x] 여러 Steam 계정 표시와 다른 계정 펼침/접기 구현
+- [x] 현재 Steam 계정 변경 시 Win32 설정창의 V-Archive 탭 refresh 구현
+- [x] `account.txt` 파일 선택 dialog 구현
+- [x] V-Archive account path 변경 후 `account_file_changed` 계약을 실제 앱 경로에서
+  재확인
+- [ ] Win32 설정창을 실제 앱에서 트레이 설정 메뉴, overlay 설정 버튼, scale 변경,
+  opacity 변경, V-Archive fetch/sync 진입까지 end-to-end로 확인
+- [x] 설정창 파일이 500라인에 가까워지면 V-Archive 탭 구현을 별도 module로 분리
+
+2026-05-12 마무리 절편:
+- Win32 설정창 공용 native control helper를 `overlay/win32/settings_common.py`로
+  분리해 설정창 본문 파일을 500라인 이하로 유지했다.
+- V-Archive 탭에서 현재 계정과 다른 계정을 함께 만들고, 다른 계정 영역은
+  "다른 계정 보기/숨기기" 버튼으로 접고 펼치게 했다.
+- account path 행에 `찾기` 버튼을 추가해 `GetOpenFileNameW` 기반 account.txt
+  선택 dialog를 열 수 있게 했다.
+- `refresh_current_steam_indicator()`는 현재 창을 재생성해 Steam session 순서와
+  V-Archive 탭 내용을 다시 구성한다.
+- smoke에서는 두 개의 가짜 Steam session을 주입해 여러 계정 표시와 펼침 상태를
+  실제 Steam 설치 없이 검증한다.
+
+추가 검증:
+
+```text
+.\.venv_build\Scripts\python.exe -m py_compile overlay\win32\settings_common.py overlay\win32\settings_window.py test\win32_settings_window_smoke.py
+.\.venv_build\Scripts\python.exe test\win32_settings_window_smoke.py --diagnostics
+.\.venv_build\Scripts\python.exe test\win32_settings_window_smoke.py --callback-check
+.\.venv_build\Scripts\python.exe test\win32_settings_window_smoke.py --varchive-check
+.\.venv_build\Scripts\python.exe test\win32_settings_window_smoke.py --multi-account-check
+.\.venv_build\Scripts\python.exe test\win32_settings_window_smoke.py --show --tab varchive --duration-ms 4000
+```
+
+결과:
+
+```text
+varchive_session_count=2
+other_session_count=10
+others_visible=False
+opacity_callback=0.7
+scale_callback=1.25
+fetch=('76561198000000000', 'test-v-id', 4)
+sync=('76561198000000000', 'Smoke User', 'C:\tmp\account.txt')
+account=('76561198000000000', 'C:\tmp\account.txt')
+before_visible=False
+after_visible=True
+show_ok=True
+```
+
+완료 기준:
+- [x] `overlay.main_backend=win32`에서 설정 창이 Win32 후보로 열린다.
+- [x] UI/System/V-Archive 기본 계약이 smoke에서 통과한다.
+- [x] 보조 창 밝은 palette와 font metrics 기반 width 계산 원칙을 따른다.
+- [x] 설정창 관련 파일은 500라인 제한 안에 남아 있다.
+
+## 예정: Win32 동기화 창 전환 Phase 11
+
+목표는 PyQt6 `SyncWindow`를 Win32 후보로 옮기되, 긴 작업 중 UI 멈춤 방지와
+결과 목록의 조작성/가독성을 먼저 보장하는 것이다. 동기화 창은 V-Archive API
+등록/삭제와 local record 삭제를 실행하므로, 설정창보다 검증 범위를 더 엄격하게
+나눈다.
+
+Phase 11에서도 detection/capture/core, recommendation, verified pipeline은
+변경하지 않는다. `overlay.main_backend=win32`를 기준으로 하되, 실제 API 등록/삭제
+경로는 smoke와 no-op callback 확인 후에만 연결한다.
+
+1. 문제 정의
+
+- 기존 PyQt `SyncWindow`는 후보 스캔 worker, 결과 row list, 등록/삭제 action,
+  재스캔 queue, 계정 유무에 따른 버튼 활성화를 한 창에서 처리한다.
+- Win32 native control로 옮기면 긴 작업 중 message pump, row 갱신, 버튼 상태,
+  scroll/list 표현을 직접 책임져야 한다.
+- 동기화 창은 실수로 실제 V-Archive 업로드나 local record 삭제를 실행할 수 있어
+  테스트와 실제 연결을 분리해야 한다.
+
+2. 원인 분석
+
+- 현재 계약은 다음 요소로 구성된다.
+  - `show_window(steam_id, persona_name, account_path)`
+  - `set_account(steam_id, account)`
+  - account가 있을 때만 scan/upload 버튼 활성화
+  - `_start_scan()`이 worker thread에서 `build_candidates()` 실행
+  - scan 결과를 row list로 렌더링
+  - row별 `등록`, `삭제`, 상태 표시
+  - action 완료 후 재스캔
+- UI는 밝은 보조창 기준으로 재설계해야 하며, 기존 어두운 overlay palette를
+  그대로 쓰지 않는다.
+- 후보 row는 곡명, 난이도, 모드, Overmax/V-Archive 값, 차이 사유, action 버튼이
+  한 줄에 들어가므로 font metrics 기반 column width와 elide가 필요하다.
+
+3. 해결 방법
+
+- 옵션 A: scan/action 로직은 기존 `SyncActionsMixin` 흐름을 유지하고, Win32 창은
+  표시/버튼/상태 갱신만 담당한다.
+- 옵션 B: scan/action까지 Win32 전용 controller로 재작성한다.
+- 옵션 C: PyQt 동기화 창을 유지하고 다른 보조 창 전환을 먼저 진행한다.
+
+4. 트레이드오프
+
+- 옵션 A는 기존 검증된 business/action 흐름을 유지하지만, PyQt signal bridge와
+  같은 thread-safe event 전달 방식을 Win32 message/post 방식으로 별도 구현해야
+  한다.
+- 옵션 B는 장기적으로 더 깔끔할 수 있으나 업로드/삭제/재스캔 경로를 한 번에
+  건드려 위험하다.
+- 옵션 C는 안정적이지만 PyQt6 보조 창 제거 진도가 멈춘다.
+
+5. 추천안
+
+- Phase 11은 옵션 A로 시작한다.
+- 첫 절편은 실제 API/DB mutation 없이 Win32 동기화 창 shell, account 상태,
+  refresh 버튼, empty/loading/status text, sample candidate rows까지 구현한다.
+- 두 번째 절편에서 worker 결과를 Win32 UI thread로 전달하는 post-message bridge를
+  추가한다.
+- 세 번째 절편에서 실제 `build_candidates()`, upload/delete callback, action 후
+  재스캔을 연결한다.
+- 실제 앱 연결은 sample row smoke, no-account smoke, account-present smoke,
+  worker completion smoke가 모두 통과한 뒤에만 진행한다.
+
+다음 작업:
+- [ ] Win32 동기화 창 후보 파일을 500라인 이하로 설계하고 row rendering은 별도
+  module로 분리
+- [ ] 밝은 보조창 palette와 font metrics 기반 column layout 적용
+- [ ] `show_window(steam_id, persona_name, account_path)` / `set_account()` 계약 구현
+- [ ] no-account 상태: refresh 버튼 비활성화, 안내 문구 표시
+- [ ] account-present 상태: refresh 버튼 활성화, sample candidate rows 렌더링
+- [ ] row별 등록/삭제 버튼은 첫 절편에서 no-op callback smoke만 수행
+- [ ] worker thread 결과를 Win32 UI thread로 넘기는 post-message bridge 설계
+- [ ] 실제 `build_candidates()` 연결 전 sample fixture smoke 추가
+- [ ] 실제 upload/delete 연결 전 API mutation이 일어나지 않는 dry-run smoke 추가
+- [ ] `OverlayController`는 Win32 동기화 창 전체 계약이 통과한 뒤 opt-in 연결
+
 ## 검증 기준
 
 실제 이미지셋이 준비되면 다음 기준을 통과해야 한다.

@@ -24,6 +24,7 @@ from overlay.ui_payload import OverlayPayloadBuilder, OverlayUpdatePayload
 from overlay.window import OverlaySignals, OverlayWindow
 from overlay.settings_window import SettingsWindow
 from overlay.sync_window import SyncWindow
+from overlay.win32.settings_window import Win32SettingsWindow
 from overlay.win32.view_state import apply_payload_to_view_state, default_view_state
 from overlay.win32.window import Win32OverlayWindow, set_process_dpi_awareness
 
@@ -75,7 +76,7 @@ class OverlayController:
         self._win32_view_state = default_view_state()
         self._roi_window: Optional[RoiOverlayWindow] = None
         self._sync_window: Optional[SyncWindow] = None
-        self._settings_window: Optional[SettingsWindow] = None
+        self._settings_window = None
         self._tray_icon: Optional[QSystemTrayIcon] = None
         self._debug_log_cb = None
         self._debug_toggle_cb = None
@@ -250,13 +251,11 @@ class OverlayController:
         self._window.hide()
         self._window.set_user_move_callback(self._on_overlay_user_moved)
 
-        self._settings_window = SettingsWindow()
+        self._settings_window = self._create_settings_window()
         self._settings_window.hide()
-        self._settings_window.opacity_changed.connect(self._window.update_base_opacity)
-        self._settings_window.scale_changed.connect(self.signals.scale_changed)
+        self._connect_settings_window()
         if self._using_win32_overlay():
             self.signals.scale_changed.connect(self._window.rebuild_ui)
-        self._settings_window.fetch_varchive_requested.connect(self._on_fetch_varchive)
         self.signals.settings_requested.connect(self._settings_window.show_window)
         if self._using_win32_overlay():
             self._window.set_settings_callback(self.signals.settings_requested.emit)
@@ -264,10 +263,7 @@ class OverlayController:
         self._sync_window = SyncWindow(self.db, self.record_db)
 
         # 시그널 연결
-        self._settings_window.sync_requested.connect(
-            lambda steam_id, persona_name, account_path: self._sync_window.show_window(steam_id, persona_name, account_path)
-        )
-        self._settings_window.account_file_changed.connect(self._on_account_file_changed)
+        self._connect_settings_sync_callbacks()
 
         self._roi_window = RoiOverlayWindow()
         self._roi_window.hide()
@@ -291,6 +287,32 @@ class OverlayController:
             return Win32OverlayWindow(self._win32_view_state)
         self.log("메인 오버레이 backend: pyqt6")
         return OverlayWindow(self.signals)
+
+    def _create_settings_window(self):
+        if self._overlay_backend == OVERLAY_BACKEND_WIN32:
+            self.log("설정 창 backend: win32")
+            return Win32SettingsWindow()
+        return SettingsWindow()
+
+    def _connect_settings_window(self) -> None:
+        if isinstance(self._settings_window, Win32SettingsWindow):
+            self._settings_window.set_opacity_callback(self._window.update_base_opacity)
+            self._settings_window.set_scale_callback(self.signals.scale_changed.emit)
+            self._settings_window.set_fetch_varchive_callback(self._on_fetch_varchive)
+            return
+        self._settings_window.opacity_changed.connect(self._window.update_base_opacity)
+        self._settings_window.scale_changed.connect(self.signals.scale_changed)
+        self._settings_window.fetch_varchive_requested.connect(self._on_fetch_varchive)
+
+    def _connect_settings_sync_callbacks(self) -> None:
+        if isinstance(self._settings_window, Win32SettingsWindow):
+            self._settings_window.set_sync_callback(self._sync_window.show_window)
+            self._settings_window.set_account_file_callback(self._on_account_file_changed)
+            return
+        self._settings_window.sync_requested.connect(
+            lambda steam_id, persona_name, account_path: self._sync_window.show_window(steam_id, persona_name, account_path)
+        )
+        self._settings_window.account_file_changed.connect(self._on_account_file_changed)
 
     def _using_win32_overlay(self) -> bool:
         return isinstance(self._window, Win32OverlayWindow)

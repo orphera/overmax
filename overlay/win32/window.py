@@ -18,6 +18,9 @@ from infra.gui.dpi import get_system_dpi, get_window_dpi, set_process_dpi_awaren
 from infra.gui.input import client_point_in_rect, hit_test_from_lparam
 from infra.gui.input import point_from_lparam, rect_from_lparam
 from infra.gui.input import screen_point_from_lparam
+from infra.gui.placement import ManualPlacement, move_resize_window, move_window
+from infra.gui.placement import resize_window
+from infra.gui.placement import window_position
 from infra.gui.windowing import foreground_preserved_by_show
 from infra.gui.windowing import create_window
 from infra.gui.windowing import get_monitor_rect, has_ex_style, register_window_class
@@ -63,7 +66,7 @@ class Win32OverlayWindow:
         self._base_opacity = _read_base_opacity()
         self._last_confidence = 1.0
         self._renderer = Win32OverlayRenderer(self._render_scale())
-        self._manual_position = False
+        self._placement = ManualPlacement()
         self._user_move_cb: Optional[Callable[[int, int], None]] = None
         self._settings_cb: Optional[Callable[[], None]] = None
         self._rounded_region_applied = False
@@ -138,44 +141,28 @@ class Win32OverlayWindow:
         if not self.hwnd:
             return
         self._refresh_dpi_metrics(self.hwnd)
-        x, y, _, _ = win32gui.GetWindowRect(self.hwnd)
         width, height = self._window_size()
-        win32gui.SetWindowPos(
-            self.hwnd, 0, x, y, width, height,
-            win32con.SWP_NOACTIVATE | win32con.SWP_NOZORDER,
-        )
+        resize_window(self.hwnd, width, height)
         self._rounded_region_applied = self._apply_rounded_region(self.hwnd)
         win32gui.InvalidateRect(self.hwnd, None, False)
 
     def apply_saved_position(self, x: int, y: int) -> tuple[int, int]:
         self.create()
-        self._manual_position = True
-        win32gui.SetWindowPos(
-            self.hwnd, 0, x, y, 0, 0,
-            win32con.SWP_NOACTIVATE | win32con.SWP_NOSIZE | win32con.SWP_NOZORDER,
-        )
-        return win32gui.GetWindowRect(self.hwnd)[:2]
+        return self._placement.apply(self.hwnd, x, y)
 
     def move_to_game_rect(self, left: int, top: int, width: int, height: int) -> None:
-        if self._manual_position:
+        if not self._placement.should_follow_anchor():
             return
         hwnd = self.create()
         monitor = get_monitor_rect(hwnd)
         dpi = self._refresh_dpi_metrics(hwnd)
         x, y = calculate_game_position((left, top, width, height), monitor, dpi, self._scale)
-        win32gui.SetWindowPos(
-            hwnd, 0, x, y, 0, 0,
-            win32con.SWP_NOACTIVATE | win32con.SWP_NOSIZE | win32con.SWP_NOZORDER,
-        )
+        move_window(hwnd, x, y)
 
     def simulate_user_move(self, x: int, y: int) -> tuple[int, int]:
-        self._manual_position = True
-        win32gui.SetWindowPos(
-            self.hwnd, 0, x, y, 0, 0,
-            win32con.SWP_NOACTIVATE | win32con.SWP_NOSIZE | win32con.SWP_NOZORDER,
-        )
+        moved = self._placement.apply(self.hwnd, x, y)
         self._emit_user_move()
-        return win32gui.GetWindowRect(self.hwnd)[:2]
+        return moved
 
     def draw(self, hdc: int) -> None:
         self._renderer.draw_panel(hdc, self._view_state)
@@ -285,7 +272,7 @@ class Win32OverlayWindow:
     def _emit_user_move(self) -> None:
         if self._user_move_cb is None:
             return
-        left, top, _, _ = win32gui.GetWindowRect(self.hwnd)
+        left, top = window_position(self.hwnd)
         self._user_move_cb(left, top)
 
     def _emit_settings_request(self, lparam: int) -> None:
@@ -335,19 +322,12 @@ class Win32OverlayWindow:
         self._dpi = max(1, wparam & 0xFFFF)
         self._renderer.set_scale(self._render_scale())
         left, top, right, bottom = rect_from_lparam(lparam)
-        win32gui.SetWindowPos(
-            hwnd, 0, left, top, right - left, bottom - top,
-            win32con.SWP_NOACTIVATE | win32con.SWP_NOZORDER,
-        )
+        move_resize_window(hwnd, left, top, right - left, bottom - top)
         self._rounded_region_applied = self._apply_rounded_region(hwnd)
 
     def _resize_to_current_metrics(self, hwnd: int) -> None:
-        left, top, _, _ = win32gui.GetWindowRect(hwnd)
         width, height = self._window_size()
-        win32gui.SetWindowPos(
-            hwnd, 0, left, top, width, height,
-            win32con.SWP_NOACTIVATE | win32con.SWP_NOZORDER,
-        )
+        resize_window(hwnd, width, height)
 
     def _can_show_overlay(self) -> bool:
         return self.capture_excluded

@@ -420,6 +420,105 @@ close_disabled=True
   Win32 상태창의 `WM_ERASEBKGND`와 `WM_CTLCOLORSTATIC`에서 창/label 배경을 같은
   system face 색으로 칠하도록 보정했다.
 
+## 진행 중: Win32 디버그 창 전환 Phase 9
+
+목표는 PyQt6 디버그 창을 즉시 제거하지 않고, Phase 7 Infra 위에 Win32 디버그
+창 후보를 opt-in으로 연결해 append log, pause/clear, tag filter, ROI toggle의
+최소 동작을 확인하는 것이다. 이 단계에서도 detection/capture/core,
+recommendation, verified pipeline은 변경하지 않는다.
+
+1. 문제 정의
+
+- 기존 `overlay/debug_window.py`는 PyQt6 `QTextEdit`, `QPushButton`,
+  `QCheckBox`, Qt signal bridge에 의존한다.
+- 디버그 창은 runtime log와 ROI overlay toggle을 다루므로, 단순 상태창보다
+  입력과 상태 관리가 많다.
+
+2. 원인 분석
+
+- 다른 thread에서 들어오는 로그는 UI thread로 넘겨야 하며, 현재는 PyQt signal
+  bridge가 이 역할을 한다.
+- Win32 창을 바로 기본값으로 바꾸면 로그 표시, 필터, ROI toggle 사용성이 한 번에
+  흔들릴 수 있다.
+
+3. 해결 방법
+
+- 옵션 A: Qt signal bridge는 유지하고, 표시 창만 Win32로 opt-in 연결한다.
+- 옵션 B: thread-safe bridge까지 Win32 message post 기반으로 전환한다.
+- 옵션 C: 기존 PyQt6 디버그 창을 유지하고 다음 보조 창으로 넘어간다.
+
+4. 트레이드오프
+
+- 옵션 A는 PyQt6 의존을 완전히 제거하지는 못하지만, 디버그 창의 native window
+  동작을 가장 작게 검증할 수 있다.
+- 옵션 B는 더 완전한 전환이지만 message ownership과 thread safety 검증 범위가
+  커진다.
+- 옵션 C는 안정적이지만 Phase 7 Infra를 실제 입력 창에 적용하지 못한다.
+
+5. 추천안
+
+- Phase 9의 첫 조각은 옵션 A로 진행한다.
+- `overlay.main_backend = "win32"`일 때만 Win32 디버그 창을 사용한다.
+- 별도 `debug_window.backend` 설정은 두지 않고, 메인 오버레이 backend 값을
+  모든 Win32 보조 창 전환 기준으로 재사용한다.
+
+- [x] `overlay/win32/debug_window.py`에 Win32 디버그 창 후보 추가
+- [x] append log, 최대 줄 수 trim, pause, clear, tag filter, ROI toggle callback
+  경계 추가
+- [x] `overlay/debug_window.py`의 `DebugController`에서 Win32 opt-in backend 연결
+- [x] `overlay.main_backend` 기준으로 Win32 디버그 창 opt-in 여부 결정
+- [x] import/py_compile 및 Win32 debug smoke 통과
+- [ ] 실제 앱에서 `overlay.main_backend=win32` 기준 트레이 디버그 토글 육안 확인
+
+검증:
+
+```text
+.\.venv_build\Scripts\python.exe -m py_compile overlay\debug_window.py overlay\win32\debug_window.py test\win32_debug_window_smoke.py settings.py
+.\.venv_build\Scripts\python.exe test\win32_debug_window_smoke.py --import-only
+.\.venv_build\Scripts\python.exe test\win32_debug_window_smoke.py --diagnostics
+.\.venv_build\Scripts\python.exe test\win32_debug_window_smoke.py --append-check
+.\.venv_build\Scripts\python.exe -c "from settings import SETTINGS; SETTINGS['overlay']['main_backend']='win32'; from overlay.debug_window import DebugController; c=DebugController(); w=c.create_window(); c.log('[Overlay] controller smoke'); print(type(w).__name__)"
+```
+
+결과:
+
+```text
+Win32 debug window import ok
+hwnd_created=True
+edit_created=True
+capture_excluded=True
+filter_count=5
+max_lines=500
+append_ok=True
+Win32DebugWindow
+```
+
+주의:
+- 이번 단계의 Win32 디버그 창은 native control 기반이라 PyQt6의 tag별 inline
+  색상 표현은 아직 복제하지 않는다.
+- thread-safe log bridge는 기존 PyQt signal을 재사용한다. PyQt6 전체 제거를
+  위한 bridge 교체는 별도 단계에서 판단한다.
+- Win32 native control은 기본 배경/텍스트 영역이 흰색 또는 system 기본색으로
+  따로 칠해질 수 있다. 새 보조 창을 만들 때는 `WM_ERASEBKGND`,
+  `WM_CTLCOLORSTATIC`, `WM_CTLCOLOREDIT`, 필요 시 `WM_CTLCOLORBTN`까지 확인해
+  창 배경과 텍스트 control 배경이 따로 튀지 않도록 먼저 맞춘다.
+- 보조 창은 게임 화면 위에 직접 얹히는 오버레이가 아니므로 어두운 overlay
+  palette를 그대로 쓰지 않는다. 설정/동기화/디버그/업데이트 같은 보조 창은
+  밝은 system dialog 톤을 기본으로 삼고, 로그/입력 영역만 필요한 만큼 구분한다.
+- Win32 native control은 font face, weight, DPI, 한글 렌더링에 따라 실제 text
+  extent가 달라진다. 버튼, 체크박스, label 폭은 고정 숫자만 믿지 말고
+  `GetTextExtentPoint32` 같은 font metrics 기반으로 최소 폭을 계산해 짤림을
+  먼저 막는다.
+
+2026-05-12 follow-up:
+- `--show` 육안 확인에서 디버그 창 배경과 로그 텍스트 영역이 서로 튀는 문제가
+  있어, Win32 디버그 창의 window/static/button/edit control 배경과 글자색을
+  명시적으로 칠하도록 보정했다.
+- 보조 창은 밝은 톤을 기본으로 한다는 기준에 맞춰 Win32 디버그 창 배경을 밝은
+  system dialog 계열로 바꾸고, 로그 영역만 흰색으로 분리했다.
+- `ROI 표시 ON` 같은 한글 상태 텍스트가 잘리지 않도록 버튼/체크박스 폭을 현재
+  Win32 font의 text extent 기준으로 계산하도록 바꿨다.
+
 ## 검증 기준
 
 실제 이미지셋이 준비되면 다음 기준을 통과해야 한다.

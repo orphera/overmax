@@ -224,13 +224,18 @@ class DebugController:
 
     def __init__(self):
         self.signals = DebugSignals()
-        self._window: Optional[DebugWindow] = None
+        self._backend = _resolve_debug_backend()
+        self._window = None
         self._roi_toggle_cb: Optional[Callable[[bool], None]] = None
+        if self._backend == "win32":
+            self.signals.log_received.connect(self._append_win32_log)
 
-    def create_window(self) -> Optional["DebugWindow"]:
+    def create_window(self):
         """Qt App 생성 후에 호출해야 함"""
         if not PYQT_AVAILABLE:
             return None
+        if self._backend == "win32":
+            return self._create_win32_window()
         if self._window is None:
             self._window = DebugWindow(self.signals)
             self._window.set_roi_toggle_callback(self._roi_toggle_cb)
@@ -240,8 +245,9 @@ class DebugController:
         window = self.create_window()
         if window is not None:
             window.show()
-            window.raise_()
-            window.activateWindow()
+            if self._backend != "win32":
+                window.raise_()
+                window.activateWindow()
 
     def hide_window(self):
         if self._window is not None:
@@ -253,12 +259,14 @@ class DebugController:
         window = self.create_window()
         if window is None:
             return
-        if window.isVisible():
+        is_visible = window.is_visible() if self._backend == "win32" else window.isVisible()
+        if is_visible:
             window.hide()
         else:
             window.show()
-            window.raise_()
-            window.activateWindow()
+            if self._backend != "win32":
+                window.raise_()
+                window.activateWindow()
 
     def log(self, msg: str):
         """스레드-안전 로그 emit"""
@@ -268,3 +276,21 @@ class DebugController:
         self._roi_toggle_cb = callback
         if self._window is not None:
             self._window.set_roi_toggle_callback(callback)
+
+    def _create_win32_window(self):
+        if self._window is None:
+            from overlay.win32.debug_window import Win32DebugWindow
+            self._window = Win32DebugWindow()
+            self._window.set_roi_toggle_callback(self._roi_toggle_cb)
+        return self._window
+
+    def _append_win32_log(self, msg: str):
+        window = self.create_window()
+        if window is not None:
+            window.append_log(msg)
+
+
+def _resolve_debug_backend() -> str:
+    raw_backend = SETTINGS.get("overlay", {}).get("main_backend", "pyqt6")
+    backend = str(raw_backend).strip().lower()
+    return "win32" if backend == "win32" else "pyqt6"

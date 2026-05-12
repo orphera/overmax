@@ -1,4 +1,4 @@
-"""GDI renderer for the Win32 main overlay candidate."""
+"""Renderer for the Win32 main overlay candidate."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import win32con
 import win32gui
 
 from overlay.win32 import style
+from overlay.win32.text_renderer import DirectWriteTextRenderer, TextDiagnostics
 from overlay.win32.view_state import (
     Win32OverlayViewState,
     Win32PatternTab,
@@ -26,6 +27,7 @@ class RenderDiagnostics:
     font_created: bool
     font_quality: int
     text_extent: tuple[int, int]
+    text: TextDiagnostics
 
 
 @dataclass(frozen=True)
@@ -56,12 +58,14 @@ class Win32OverlayRenderer:
     def __init__(self, scale: float = 1.0) -> None:
         self._fonts: dict[tuple[str, int, int], int] = {}
         self._scale = scale
+        self._text = DirectWriteTextRenderer(scale)
 
     def set_scale(self, scale: float) -> None:
         if abs(self._scale - scale) < 0.001:
             return
         self._scale = max(0.1, scale)
-        self.destroy()
+        self._destroy_fonts()
+        self._text.set_scale(self._scale)
 
     def draw_panel(self, hdc: int, view_state: Win32OverlayViewState) -> None:
         self._draw_background(hdc)
@@ -84,6 +88,10 @@ class Win32OverlayRenderer:
         win32gui.SelectObject(hdc, self._fonts[key])
 
     def destroy(self) -> None:
+        self._destroy_fonts()
+        self._text.close()
+
+    def _destroy_fonts(self) -> None:
         for font in self._fonts.values():
             win32gui.DeleteObject(font)
         self._fonts.clear()
@@ -91,6 +99,10 @@ class Win32OverlayRenderer:
     @property
     def font_created(self) -> bool:
         return bool(self._fonts)
+
+    @property
+    def text_diagnostics(self) -> TextDiagnostics:
+        return self._text.diagnostics()
 
     def _s(self, value: int) -> int:
         return max(1, round(value * self._scale))
@@ -188,23 +200,6 @@ class Win32OverlayRenderer:
             win32gui.SelectObject(hdc, old_brush)
             win32gui.DeleteObject(brush)
 
-    def _draw_badge(
-        self,
-        hdc: int,
-        text: str,
-        left: int,
-        top: int,
-        right: int,
-        bottom: int,
-    ) -> None:
-        self._draw_round_rect(hdc, (left, top, right, bottom), 6, style.BADGE_BG)
-        self._draw_text(
-            hdc, text or "—", left + 3, top + 1, right - 3, bottom - 1,
-            style.TEXT_MAIN, style.BADGE_BG, style.BODY_FONT_SIZE,
-            style.BODY_FONT_WEIGHT,
-            align_center=True,
-        )
-
     def _draw_mode_badge(
         self, hdc: int, text: str, left: int, top: int, right: int, bottom: int
     ) -> None:
@@ -274,33 +269,12 @@ class Win32OverlayRenderer:
 
     def _draw_settings_icon(self, hdc: int) -> None:
         left, top, right, bottom = style.SETTINGS_RECT
-        center_x = (left + right) // 2
-        center_y = (top + bottom) // 2
-        pen = win32gui.CreatePen(win32con.PS_SOLID, self._s(2), style.TEXT_MUTED)
-        old_pen = win32gui.SelectObject(hdc, pen)
-        old_brush = win32gui.SelectObject(hdc, win32gui.GetStockObject(win32con.NULL_BRUSH))
-        try:
-            self._draw_settings_teeth(hdc, center_x, center_y)
-            win32gui.Ellipse(hdc, *self._rect(center_x - 6, center_y - 6, center_x + 6, center_y + 6))
-            win32gui.Ellipse(hdc, *self._rect(center_x - 2, center_y - 2, center_x + 2, center_y + 2))
-        finally:
-            win32gui.SelectObject(hdc, old_brush)
-            win32gui.SelectObject(hdc, old_pen)
-            win32gui.DeleteObject(pen)
-
-    def _draw_settings_teeth(self, hdc: int, center_x: int, center_y: int) -> None:
-        for x1, y1, x2, y2 in (
-            (center_x, center_y - 10, center_x, center_y - 7),
-            (center_x, center_y + 7, center_x, center_y + 10),
-            (center_x - 10, center_y, center_x - 7, center_y),
-            (center_x + 7, center_y, center_x + 10, center_y),
-            (center_x - 7, center_y - 7, center_x - 5, center_y - 5),
-            (center_x + 5, center_y - 5, center_x + 7, center_y - 7),
-            (center_x - 7, center_y + 7, center_x - 5, center_y + 5),
-            (center_x + 5, center_y + 5, center_x + 7, center_y + 7),
-        ):
-            win32gui.MoveToEx(hdc, self._s(x1), self._s(y1))
-            win32gui.LineTo(hdc, self._s(x2), self._s(y2))
+        self._draw_text(
+            hdc, "⚙", left, top - 1, right, bottom + 1,
+            style.TEXT_MUTED, style.HEADER_BG,
+            17, style.BADGE_FONT_WEIGHT,
+            align_center=True, face=style.ICON_FONT_FACE,
+        )
 
     def _draw_round_rect(
         self,
@@ -334,14 +308,11 @@ class Win32OverlayRenderer:
         align_right: bool = False,
         align_center: bool = False,
         face: str = style.FONT_FACE,
-    ) -> None:
-        self.select_font(hdc, size, weight, face)
-        win32gui.SetBkMode(hdc, win32con.OPAQUE)
-        win32gui.SetBkColor(hdc, bg_color)
-        win32gui.SetTextColor(hdc, color)
-        align_flag = _text_align_flag(align_right, align_center)
-        flags = style.TEXT_FLAGS | align_flag
-        win32gui.DrawText(hdc, text, -1, self._rect(left, top, right, bottom), flags)
+    ) -> bool:
+        rect = self._rect(left, top, right, bottom)
+        return self._text.draw_text(
+            hdc, text, rect, color, size, weight, face, align_right, align_center
+        )
 
     def _rect(self, left: int, top: int, right: int, bottom: int) -> tuple[int, int, int, int]:
         return self._s(left), self._s(top), self._s(right), self._s(bottom)
@@ -387,6 +358,8 @@ def render_diagnostics_ok(diagnostics: RenderDiagnostics) -> bool:
         and diagnostics.font_quality == style.FONT_QUALITY
         and text_width > 0
         and text_height > 0
+        and diagnostics.text.directwrite_available
+        and diagnostics.text.directwrite_used
     )
 
 def _measure_recommendation_cases(
@@ -468,11 +441,3 @@ def _rate_color(rate: float) -> int:
     if rate >= 90.0:
         return style.TEXT_RATE_SOFT
     return style.TEXT_RATE_LOW
-
-
-def _text_align_flag(align_right: bool, align_center: bool) -> int:
-    if align_right:
-        return win32con.DT_RIGHT
-    if align_center:
-        return win32con.DT_CENTER
-    return 0

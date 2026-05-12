@@ -211,6 +211,20 @@ recommendation, verified pipeline은 변경하지 않는다.
 - Qt layout margin이 서로 맞닿는 구간은 합산값이 아니라 절반 기준으로 적용해야
   하므로, header-body/body-footer 간격과 body 내부 좌우 간격을 다시 줄였다.
   Win32 row/tab/footer 좌표를 이 기준으로 재조정했다.
+- Win32 텍스트 렌더링을 Direct2D DCRenderTarget + DirectWrite 기반 경로로
+  전환했다. 초기화 또는 draw 실패 시 기존 GDI 텍스트로 fallback하며, 설정
+  아이콘은 DirectWrite `Segoe UI Symbol` 글리프를 우선 사용하고 실패 시 기존
+  GDI primitive 아이콘으로 돌아간다.
+- `test/win32_overlay_smoke.py --render-check --payload-sample`에서
+  `directwrite_available=True`, `directwrite_used=True`를 확인했다. DirectWrite
+  안티앨리어싱으로 픽셀 스모크의 중간색 샘플 기준은 소폭 완화했다.
+- 실제 오버레이 캡처에서 center/right 텍스트 정렬이 서로 뒤바뀐 것을 확인해,
+  DirectWrite `DWRITE_TEXT_ALIGNMENT_TRAILING/CENTER` 상수값을 바로잡았다.
+- 실제 오버레이 캡처에서 텍스트가 아래쪽으로 붙어 보이는 것을 확인해,
+  DirectWrite `DWRITE_PARAGRAPH_ALIGNMENT_CENTER` 상수값을 바로잡았다.
+- 실제 오버레이 캡처에서 DirectWrite 정렬이 정상화된 것을 확인한 뒤, 텍스트
+  렌더링의 GDI `DrawText` fallback 경로를 제거했다. 설정 아이콘도 DirectWrite
+  글리프만 사용하며 GDI primitive fallback은 제거했다.
 
 완료 기준:
 - [ ] 같은 payload에서 PyQt6와 Win32 오버레이가 한 화면 안에서 명확히 다른

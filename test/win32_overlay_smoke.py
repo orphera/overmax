@@ -92,6 +92,8 @@ def print_render_diagnostics(diagnostics: RenderDiagnostics) -> None:
     print(f"font_created={diagnostics.font_created}")
     print(f"font_quality={diagnostics.font_quality}")
     print(f"text_extent={diagnostics.text_extent}")
+    print(f"directwrite_available={diagnostics.text.directwrite_available}")
+    print(f"directwrite_used={diagnostics.text.directwrite_used}")
 
 
 def print_text_layout_diagnostics(diagnostics: TextLayoutDiagnostics) -> None:

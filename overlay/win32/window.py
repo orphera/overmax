@@ -222,6 +222,7 @@ class Win32OverlayWindow:
         hwnd = self.create()
         hdc = win32gui.GetDC(hwnd)
         try:
+            self._renderer.draw_panel(hdc, self._view_state)
             self._renderer.select_font(hdc)
             text_extent = win32gui.GetTextExtentPoint32(hdc, self._view_state.title)
         finally:
@@ -232,6 +233,7 @@ class Win32OverlayWindow:
             self._renderer.font_created,
             style.FONT_QUALITY,
             text_extent,
+            self._renderer.text_diagnostics,
         )
 
     def text_layout_diagnostics(self) -> TextLayoutDiagnostics:

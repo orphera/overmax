@@ -186,7 +186,7 @@ class Win32SettingsWindow:
         return WindowCreateSpec(
             class_name=CLASS_NAME,
             title="Overmax 설정",
-            ex_style=win32con.WS_EX_TOPMOST | win32con.WS_EX_TOOLWINDOW,
+            ex_style=win32con.WS_EX_TOOLWINDOW,
             style=win32con.WS_OVERLAPPED | win32con.WS_CAPTION | win32con.WS_SYSMENU,
             position=controls.center_position(WINDOW_SIZE),
             size=WINDOW_SIZE,

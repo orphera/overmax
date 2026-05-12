@@ -123,7 +123,7 @@ class Win32DebugWindow:
         return WindowCreateSpec(
             class_name=CLASS_NAME,
             title=str(SETTINGS["debug_window"]["title"]),
-            ex_style=win32con.WS_EX_TOPMOST | win32con.WS_EX_TOOLWINDOW,
+            ex_style=win32con.WS_EX_TOOLWINDOW,
             style=win32con.WS_OVERLAPPED | win32con.WS_CAPTION | win32con.WS_SYSMENU,
             position=_center_position(WINDOW_SIZE),
             size=WINDOW_SIZE,

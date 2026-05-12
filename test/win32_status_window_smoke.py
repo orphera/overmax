@@ -25,7 +25,9 @@ def run_diagnostics() -> None:
         print(f"label_created={diagnostics.label_created}")
         print(f"topmost={diagnostics.topmost}")
         print(f"close_disabled={diagnostics.close_disabled}")
-        if not all(diagnostics.__dict__.values()):
+        if not diagnostics.hwnd_created or not diagnostics.label_created:
+            raise SystemExit(1)
+        if diagnostics.topmost or not diagnostics.close_disabled:
             raise SystemExit(1)
     finally:
         window.close()

@@ -42,15 +42,6 @@ class Win32StatusWindow:
             return False
         self.update(message)
         win32gui.ShowWindow(self.hwnd, win32con.SW_SHOWNORMAL)
-        win32gui.SetWindowPos(
-            self.hwnd,
-            win32con.HWND_TOPMOST,
-            0,
-            0,
-            0,
-            0,
-            win32con.SWP_NOMOVE | win32con.SWP_NOSIZE,
-        )
         self.pump(120)
         return True
 
@@ -106,7 +97,7 @@ class Win32StatusWindow:
         return WindowCreateSpec(
             class_name=CLASS_NAME,
             title=self.title,
-            ex_style=win32con.WS_EX_TOPMOST | win32con.WS_EX_TOOLWINDOW,
+            ex_style=win32con.WS_EX_TOOLWINDOW,
             style=win32con.WS_POPUP | win32con.WS_CAPTION,
             position=_center_position(WINDOW_SIZE),
             size=WINDOW_SIZE,

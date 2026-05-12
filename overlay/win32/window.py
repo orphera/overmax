@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ctypes
-import ctypes.wintypes
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -11,25 +10,27 @@ import win32api
 import win32con
 import win32gui
 
-from overlay.win32.geometry import (
-    BASE_DPI,
-    PositionDiagnostics,
-    calculate_game_position,
-    scale_for_dpi,
-    scaled_window_size,
-)
+from overlay.win32 import style
 from overlay.win32.back_buffer import draw_buffered
+from overlay.win32.geometry import PositionDiagnostics, calculate_game_position
+from overlay.win32.geometry import scale_for_dpi, scaled_window_size
+from infra.gui.dpi import get_system_dpi, get_window_dpi, set_process_dpi_awareness
+from infra.gui.input import client_point_in_rect, hit_test_from_lparam
+from infra.gui.input import point_from_lparam, rect_from_lparam
+from infra.gui.input import screen_point_from_lparam
+from infra.gui.windowing import foreground_preserved_by_show
+from infra.gui.windowing import get_monitor_rect, has_ex_style, register_window_class
+from infra.gui.windowing import required_styles_present, run_message_loop
+from infra.gui.windowing import set_capture_exclusion
 from overlay.win32.render import (
     RenderDiagnostics,
     TextLayoutDiagnostics,
     Win32OverlayRenderer,
     build_text_layout_diagnostics,
 )
-from overlay.win32 import style
 from overlay.win32.view_state import Win32OverlayViewState, default_view_state
 from settings import SETTINGS
 
-WDA_EXCLUDEFROMCAPTURE = 0x00000011
 WM_DPICHANGED = 0x02E0
 CLASS_NAME = "OvermaxWin32Overlay"
 WINDOW_TITLE = "Overmax Win32 overlay"
@@ -50,28 +51,6 @@ class WindowDiagnostics:
     ex_style: int
 
 
-def set_process_dpi_awareness() -> None:
-    try:
-        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
-    except Exception:
-        try:
-            ctypes.windll.shcore.SetProcessDpiAwareness(2)
-        except Exception:
-            pass
-
-
-def set_capture_exclusion(hwnd: int) -> bool:
-    try:
-        user32 = ctypes.WinDLL("user32", use_last_error=True)
-        if user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE):
-            return True
-        error = ctypes.get_last_error()
-        print(f"SetWindowDisplayAffinity failed: winerror={error}")
-    except Exception as exc:
-        print(f"SetWindowDisplayAffinity failed: {exc}")
-    return False
-
-
 class Win32OverlayWindow:
     def __init__(self, view_state: Optional[Win32OverlayViewState] = None) -> None:
         self.hinst = win32api.GetModuleHandle(None)
@@ -79,7 +58,7 @@ class Win32OverlayWindow:
         self.capture_excluded = False
         self._view_state = view_state or default_view_state()
         self._scale = _read_overlay_scale()
-        self._dpi = _get_system_dpi()
+        self._dpi = get_system_dpi()
         self._base_opacity = _read_base_opacity()
         self._last_confidence = 1.0
         self._renderer = Win32OverlayRenderer(self._render_scale())
@@ -139,7 +118,7 @@ class Win32OverlayWindow:
         win32gui.UpdateWindow(hwnd)
         ctypes.windll.user32.SetTimer(hwnd, 1, duration_ms, None)
         print(f"capture_excluded={self.capture_excluded}")
-        print(f"dpi={self._get_window_dpi(hwnd)}")
+        print(f"dpi={get_window_dpi(hwnd)}")
         return self._message_loop()
 
     def set_user_move_callback(self, callback: Callable[[int, int], None]) -> None:
@@ -184,7 +163,7 @@ class Win32OverlayWindow:
         if self._manual_position:
             return
         hwnd = self.create()
-        monitor = self._get_monitor_rect(hwnd)
+        monitor = get_monitor_rect(hwnd)
         dpi = self._refresh_dpi_metrics(hwnd)
         x, y = calculate_game_position((left, top, width, height), monitor, dpi, self._scale)
         win32gui.SetWindowPos(
@@ -209,7 +188,7 @@ class Win32OverlayWindow:
 
     def position_diagnostics(self) -> PositionDiagnostics:
         hwnd = self.create()
-        monitor = self._get_monitor_rect(hwnd)
+        monitor = get_monitor_rect(hwnd)
         calculated = calculate_game_position((200, 120, 1280, 720), monitor)
         saved = self.apply_saved_position(calculated[0] + 24, calculated[1] + 18)
         callback_positions: list[tuple[int, int]] = []
@@ -251,13 +230,13 @@ class Win32OverlayWindow:
         ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
         return WindowDiagnostics(
             capture_excluded=self.capture_excluded,
-            dpi=self._get_window_dpi(hwnd),
-            monitor=self._get_monitor_rect(hwnd),
+            dpi=get_window_dpi(hwnd),
+            monitor=get_monitor_rect(hwnd),
             rect=win32gui.GetWindowRect(hwnd),
-            style_ok=self._required_styles_present(hwnd),
-            noactivate=self._has_ex_style(ex_style, win32con.WS_EX_NOACTIVATE),
-            topmost=self._has_ex_style(ex_style, win32con.WS_EX_TOPMOST),
-            focus_preserved=self._foreground_preserved_by_show(hwnd),
+            style_ok=required_styles_present(hwnd, self._window_ex_style()),
+            noactivate=has_ex_style(ex_style, win32con.WS_EX_NOACTIVATE),
+            topmost=has_ex_style(ex_style, win32con.WS_EX_TOPMOST),
+            focus_preserved=foreground_preserved_by_show(hwnd, self._can_show_overlay()),
             ex_style=ex_style,
         )
 
@@ -265,24 +244,10 @@ class Win32OverlayWindow:
         self._renderer.destroy()
 
     def _register_class(self) -> None:
-        wc = win32gui.WNDCLASS()
-        wc.hInstance = self.hinst
-        wc.lpszClassName = CLASS_NAME
-        wc.lpfnWndProc = self._wnd_proc
-        wc.hCursor = win32gui.LoadCursor(0, win32con.IDC_ARROW)
-        wc.hbrBackground = 0
-        try:
-            win32gui.RegisterClass(wc)
-        except win32gui.error:
-            pass
+        register_window_class(self.hinst, CLASS_NAME, self._wnd_proc)
 
     def _message_loop(self) -> int:
-        msg = win32gui.GetMessage(None, 0, 0)
-        while msg[0] != 0:
-            win32gui.TranslateMessage(msg[1])
-            win32gui.DispatchMessage(msg[1])
-            msg = win32gui.GetMessage(None, 0, 0)
-        return 0
+        return run_message_loop()
 
     def _wnd_proc(self, hwnd: int, msg: int, wparam: int, lparam: int) -> int:
         if msg == win32con.WM_PAINT:
@@ -309,7 +274,7 @@ class Win32OverlayWindow:
         if msg == win32con.WM_SETCURSOR:
             cursor = (
                 win32con.IDC_ARROW
-                if _hit_test_from_lparam(lparam) == win32con.HTCLIENT
+                if hit_test_from_lparam(lparam) == win32con.HTCLIENT
                 else win32con.IDC_SIZEALL
             )
             win32gui.SetCursor(win32gui.LoadCursor(0, cursor))
@@ -329,19 +294,17 @@ class Win32OverlayWindow:
     def _emit_settings_request(self, lparam: int) -> None:
         if self._settings_cb is None:
             return
-        if self._client_point_in_rect(_point_from_lparam(lparam), SETTINGS_BUTTON_RECT):
+        if self._client_point_in_rect(point_from_lparam(lparam), SETTINGS_BUTTON_RECT):
             self._settings_cb()
 
     def _settings_button_hit(self, hwnd: int, lparam: int) -> bool:
-        point = win32gui.ScreenToClient(hwnd, _screen_point_from_lparam(lparam))
+        point = win32gui.ScreenToClient(hwnd, screen_point_from_lparam(lparam))
         return self._client_point_in_rect(point, SETTINGS_BUTTON_RECT)
 
     def _client_point_in_rect(
         self, point: tuple[int, int], rect: tuple[int, int, int, int]
     ) -> bool:
-        x, y = point
-        left, top, right, bottom = (round(v * self._render_scale()) for v in rect)
-        return left <= x <= right and top <= y <= bottom
+        return client_point_in_rect(point, rect, self._render_scale())
 
     def _apply_rounded_region(self, hwnd: int) -> bool:
         try:
@@ -362,14 +325,8 @@ class Win32OverlayWindow:
         finally:
             win32gui.EndPaint(hwnd, paint_struct)
 
-    def _get_window_dpi(self, hwnd: int) -> int:
-        try:
-            return int(ctypes.windll.user32.GetDpiForWindow(hwnd))
-        except Exception:
-            return 96
-
     def _refresh_dpi_metrics(self, hwnd: int) -> int:
-        dpi = self._get_window_dpi(hwnd)
+        dpi = get_window_dpi(hwnd)
         if dpi == self._dpi:
             return dpi
         self._dpi = dpi
@@ -380,7 +337,7 @@ class Win32OverlayWindow:
     def _handle_dpi_changed(self, hwnd: int, wparam: int, lparam: int) -> None:
         self._dpi = max(1, wparam & 0xFFFF)
         self._renderer.set_scale(self._render_scale())
-        left, top, right, bottom = _rect_from_lparam(lparam)
+        left, top, right, bottom = rect_from_lparam(lparam)
         win32gui.SetWindowPos(
             hwnd, 0, left, top, right - left, bottom - top,
             win32con.SWP_NOACTIVATE | win32con.SWP_NOZORDER,
@@ -394,29 +351,6 @@ class Win32OverlayWindow:
             hwnd, 0, left, top, width, height,
             win32con.SWP_NOACTIVATE | win32con.SWP_NOZORDER,
         )
-
-    def _get_monitor_rect(self, hwnd: int) -> tuple[int, int, int, int]:
-        monitor = win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONEAREST)
-        info = win32api.GetMonitorInfo(monitor)
-        return tuple(info["Monitor"])
-
-    def _required_styles_present(self, hwnd: int) -> bool:
-        ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
-        required = self._window_ex_style()
-        return (ex_style & required) == required
-
-    def _has_ex_style(self, ex_style: int, flag: int) -> bool:
-        return (ex_style & flag) == flag
-
-    def _foreground_preserved_by_show(self, hwnd: int) -> bool:
-        if not self._can_show_overlay():
-            return False
-        before = win32gui.GetForegroundWindow()
-        win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
-        win32gui.UpdateWindow(hwnd)
-        after = win32gui.GetForegroundWindow()
-        win32gui.ShowWindow(hwnd, win32con.SW_HIDE)
-        return before == after
 
     def _can_show_overlay(self) -> bool:
         return self.capture_excluded
@@ -457,39 +391,8 @@ def _read_base_opacity() -> float:
     return _clamp_float(value, 0.1, 1.0, 0.8)
 
 
-def _get_system_dpi() -> int:
-    try:
-        return int(ctypes.windll.user32.GetDpiForSystem())
-    except Exception:
-        return BASE_DPI
-
-
 def _clamp_float(value: object, low: float, high: float, fallback: float) -> float:
     try:
         return max(low, min(high, float(value)))
     except (TypeError, ValueError):
         return fallback
-
-
-def _point_from_lparam(lparam: int) -> tuple[int, int]:
-    return _signed_word(lparam), _signed_word(lparam >> 16)
-
-
-def _screen_point_from_lparam(lparam: int) -> tuple[int, int]:
-    return _point_from_lparam(lparam)
-
-
-def _signed_word(value: int) -> int:
-    value &= 0xFFFF
-    if value >= 0x8000:
-        return value - 0x10000
-    return value
-
-
-def _hit_test_from_lparam(lparam: int) -> int:
-    return lparam & 0xFFFF
-
-
-def _rect_from_lparam(lparam: int) -> tuple[int, int, int, int]:
-    rect = ctypes.cast(lparam, ctypes.POINTER(ctypes.wintypes.RECT)).contents
-    return rect.left, rect.top, rect.right, rect.bottom

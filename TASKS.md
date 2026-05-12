@@ -196,6 +196,22 @@ recommendation, verified pipeline은 변경하지 않는다.
 - GDI `DrawText`의 emoji font fallback 차이로 설정 아이콘 렌더링이 불안정해,
   Win32 설정 아이콘은 폰트 글리프 대신 GDI line/circle drawing으로 처리한다.
 
+2026-05-12 진행:
+- PyQt6 메인 오버레이의 font-size/font-weight 기준을 Win32 스타일 상수로 옮겼다.
+  제목 14/700, mode badge 12/900, meta 10/600, 추천 곡명 11/600,
+  난이도 badge 10/700, rate/footer 값 11/700, P/M badge 9/800 기준이다.
+- Win32 renderer가 텍스트별 PyQt6 기준 웨이트 상수를 사용하도록 바꿨고,
+  기존 ClearType font 생성 및 높이 fit 조건은 유지됨을 확인했다.
+- PyQt6 `QLabel`의 실제 font metrics를 확인해 Win32 GDI font cell height를
+  보정했다. 10px 텍스트는 13px line height, 11px 텍스트는 15px line height가
+  되도록 조정해 PyQt6 쪽 line spacing에 더 가깝게 맞췄다.
+- Header/body/footer 사이가 과하게 벌어져 보이지 않도록 Win32 body 시작과
+  footer 위치를 각각 2px 위로 조정했다. Qt 쪽 panel spacing/padding 기준은
+  유지하되 시각적 밀도만 소폭 맞춘다.
+- Qt layout margin이 서로 맞닿는 구간은 합산값이 아니라 절반 기준으로 적용해야
+  하므로, header-body/body-footer 간격과 body 내부 좌우 간격을 다시 줄였다.
+  Win32 row/tab/footer 좌표를 이 기준으로 재조정했다.
+
 완료 기준:
 - [ ] 같은 payload에서 PyQt6와 Win32 오버레이가 한 화면 안에서 명확히 다른
   제품처럼 보이지 않는다.

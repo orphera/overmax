@@ -54,7 +54,7 @@ class TextLayoutDiagnostics:
 
 class Win32OverlayRenderer:
     def __init__(self, scale: float = 1.0) -> None:
-        self._fonts: dict[tuple[int, int], int] = {}
+        self._fonts: dict[tuple[str, int, int], int] = {}
         self._scale = scale
 
     def set_scale(self, scale: float) -> None:
@@ -75,7 +75,7 @@ class Win32OverlayRenderer:
         self,
         hdc: int,
         size: int = style.BODY_FONT_SIZE,
-        weight: int = win32con.FW_SEMIBOLD,
+        weight: int = style.BODY_FONT_WEIGHT,
         face: str = style.FONT_FACE,
     ) -> None:
         key = (face, size, weight)
@@ -105,11 +105,13 @@ class Win32OverlayRenderer:
         self._draw_mode_badge(hdc, _mode_text(view_state.mode_diff), 36, 17, 64, 39)
         self._draw_text(
             hdc, view_state.title, 74, 16, 308, 40,
-            style.TEXT_MAIN, style.HEADER_BG, style.TITLE_FONT_SIZE, win32con.FW_BOLD,
+            style.TEXT_MAIN, style.HEADER_BG,
+            style.TITLE_FONT_SIZE, style.TITLE_FONT_WEIGHT,
         )
         self._draw_text(
             hdc, "—", 24, 48, 336, 68,
             style.TEXT_ACCENT, style.HEADER_BG, style.META_FONT_SIZE,
+            style.BODY_FONT_WEIGHT,
             align_center=True,
         )
         self._draw_settings_icon(hdc)
@@ -129,12 +131,12 @@ class Win32OverlayRenderer:
         self._draw_round_rect(hdc, (8, top, 60, top + style.TAB_HEIGHT), 10, bg)
         self._draw_text(
             hdc, tab.difficulty, 8, top + 7, 60, top + 23,
-            label_color, bg, style.BODY_FONT_SIZE, win32con.FW_SEMIBOLD,
+            label_color, bg, style.BODY_FONT_SIZE, style.BADGE_FONT_WEIGHT,
             align_center=True,
         )
         self._draw_text(
             hdc, tab.label, 8, top + 24, 60, top + 40,
-            floor_color, bg, style.META_FONT_SIZE, win32con.FW_SEMIBOLD,
+            floor_color, bg, style.META_FONT_SIZE, style.BODY_FONT_WEIGHT,
             align_center=True,
         )
 
@@ -142,27 +144,40 @@ class Win32OverlayRenderer:
         self, hdc: int, index: int, line: Win32Recommendation | str
     ) -> None:
         top = style.ROW_TOP + ((index - 1) * (style.ROW_HEIGHT + style.ROW_GAP))
-        self._draw_round_rect(hdc, (73, top, 352, top + style.ROW_HEIGHT), 8, style.ROW_BG)
+        self._draw_round_rect(
+            hdc,
+            (style.ROW_LEFT, top, style.ROW_RIGHT, top + style.ROW_HEIGHT),
+            8,
+            style.ROW_BG,
+        )
         if isinstance(line, Win32Recommendation):
             self._draw_recommendation_entry(hdc, top, line)
             return
         self._draw_text(
-            hdc, str(line), 80, top + 3, 342, top + 27,
-            style.TEXT_BODY, style.ROW_BG, style.BODY_FONT_SIZE, win32con.FW_SEMIBOLD
+            hdc, str(line), style.ROW_LEFT + 7, top + 3, style.ROW_RIGHT - 10, top + 27,
+            style.TEXT_BODY, style.ROW_BG, style.BODY_FONT_SIZE,
+            style.BODY_FONT_WEIGHT,
         )
 
     def _draw_recommendation_entry(
         self, hdc: int, top: int, entry: Win32Recommendation
     ) -> None:
         badge = f"{entry.difficulty} {entry.level}".strip()
-        self._draw_diff_badge(hdc, badge, entry.difficulty, 81, top + 4, 117, top + 26)
-        self._draw_text(
-            hdc, entry.song_name, 125, top + 3, 272, top + 27,
-            style.TEXT_BODY, style.ROW_BG, style.BODY_FONT_SIZE,
-            win32con.FW_SEMIBOLD
+        self._draw_diff_badge(
+            hdc, badge, entry.difficulty,
+            style.ROW_LEFT + 8, top + 4, style.ROW_LEFT + 44, top + 26,
         )
-        self._draw_status_badge(hdc, 276, top + 7, entry)
-        self._draw_rate(hdc, 298, top + 3, 344, top + 27, entry.rate)
+        self._draw_text(
+            hdc, entry.song_name,
+            style.ROW_LEFT + 52, top + 3, style.ROW_RIGHT - 80, top + 27,
+            style.TEXT_BODY, style.ROW_BG, style.BODY_FONT_SIZE,
+            style.BODY_FONT_WEIGHT,
+        )
+        self._draw_status_badge(hdc, style.ROW_RIGHT - 76, top + 7, entry)
+        self._draw_rate(
+            hdc, style.ROW_RIGHT - 54, top + 3, style.ROW_RIGHT - 8, top + 27,
+            entry.rate,
+        )
 
     def _draw_lamp(self, hdc: int, x: int, y: int, color: int) -> None:
         brush = win32gui.CreateSolidBrush(color)
@@ -185,7 +200,8 @@ class Win32OverlayRenderer:
         self._draw_round_rect(hdc, (left, top, right, bottom), 6, style.BADGE_BG)
         self._draw_text(
             hdc, text or "—", left + 3, top + 1, right - 3, bottom - 1,
-            style.TEXT_MAIN, style.BADGE_BG, style.BODY_FONT_SIZE, win32con.FW_SEMIBOLD,
+            style.TEXT_MAIN, style.BADGE_BG, style.BODY_FONT_SIZE,
+            style.BODY_FONT_WEIGHT,
             align_center=True,
         )
 
@@ -196,19 +212,22 @@ class Win32OverlayRenderer:
         self._draw_round_rect(hdc, (left, top, right, bottom), 6, color)
         self._draw_text(
             hdc, text or "—", left + 3, top + 1, right - 3, bottom - 1,
-            style.TEXT_MAIN, color, style.BODY_FONT_SIZE, win32con.FW_SEMIBOLD,
+            style.TEXT_MAIN, color,
+            style.MODE_BADGE_FONT_SIZE, style.MODE_BADGE_FONT_WEIGHT,
             align_center=True,
         )
 
     def _draw_footer(self, hdc: int, footer: str) -> None:
         self._draw_round_rect(hdc, style.FOOTER_RECT, 8, style.FOOTER_BG)
         self._draw_text(
-            hdc, "유사 구간 평균", 18, 301, 140, 323,
+            hdc, "유사 구간 평균", 18, 284, 140, 306,
             style.TEXT_MUTED, style.FOOTER_BG, style.META_FONT_SIZE,
+            style.FOOTER_LABEL_FONT_WEIGHT,
         )
         self._draw_text(
-            hdc, footer, 154, 301, 342, 323,
-            style.TEXT_MAIN, style.FOOTER_BG, style.BODY_FONT_SIZE, win32con.FW_NORMAL,
+            hdc, footer, 154, 284, 342, 306,
+            style.TEXT_MAIN, style.FOOTER_BG, style.BODY_FONT_SIZE,
+            style.BADGE_FONT_WEIGHT,
             align_right=True,
         )
 
@@ -220,7 +239,7 @@ class Win32OverlayRenderer:
         self._draw_round_rect(hdc, (left, top, right, bottom), 8, color)
         self._draw_text(
             hdc, text or "—", left + 2, top, right - 2, bottom,
-            style.TEXT_MAIN, color, style.META_FONT_SIZE, win32con.FW_SEMIBOLD,
+            style.TEXT_MAIN, color, style.META_FONT_SIZE, style.BADGE_FONT_WEIGHT,
             align_center=True,
         )
 
@@ -234,7 +253,8 @@ class Win32OverlayRenderer:
         self._draw_round_rect(hdc, (left, top, left + 16, top + 16), 16, color)
         self._draw_text(
             hdc, text, left, top, left + 16, top + 16,
-            style.TEXT_MAIN, color, 9, win32con.FW_SEMIBOLD,
+            style.TEXT_MAIN, color,
+            style.STATUS_BADGE_FONT_SIZE, style.STATUS_BADGE_FONT_WEIGHT,
             align_center=True,
         )
 
@@ -248,7 +268,7 @@ class Win32OverlayRenderer:
             text, color = f"{rate:.2f}%", _rate_color(rate)
         self._draw_text(
             hdc, text, left, top, right, bottom,
-            color, style.ROW_BG, style.BODY_FONT_SIZE, win32con.FW_SEMIBOLD,
+            color, style.ROW_BG, style.BODY_FONT_SIZE, style.BADGE_FONT_WEIGHT,
             align_right=True,
         )
 
@@ -334,7 +354,7 @@ class Win32OverlayRenderer:
     def _create_font(self, size: int, weight: int, face: str) -> int:
         logfont = win32gui.LOGFONT()
         logfont.lfFaceName = face
-        logfont.lfHeight = -self._s(size)
+        logfont.lfHeight = -self._s(style.font_cell_height(size))
         logfont.lfWeight = weight
         logfont.lfQuality = win32con.CLEARTYPE_QUALITY
         return win32gui.CreateFontIndirect(logfont)

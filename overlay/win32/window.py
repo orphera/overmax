@@ -11,7 +11,7 @@ import win32con
 import win32gui
 
 from overlay.win32 import style
-from overlay.win32.back_buffer import draw_buffered
+from infra.gui.back_buffer import draw_buffered
 from overlay.win32.geometry import PositionDiagnostics, calculate_game_position
 from overlay.win32.geometry import scale_for_dpi, scaled_window_size
 from infra.gui.dpi import get_system_dpi, get_window_dpi, set_process_dpi_awareness
@@ -321,7 +321,7 @@ class Win32OverlayWindow:
         hdc, paint_struct = win32gui.BeginPaint(hwnd)
         try:
             width, height = self._window_size()
-            draw_buffered(hdc, width, height, self.draw)
+            draw_buffered(hdc, width, height, self.draw, style.PANEL_BG)
         finally:
             win32gui.EndPaint(hwnd, paint_struct)
 

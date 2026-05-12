@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ctypes
 
-from overlay.win32.geometry import BASE_DPI
+BASE_DPI = 96
 
 
 def set_process_dpi_awareness() -> None:
@@ -29,4 +29,3 @@ def get_window_dpi(hwnd: int) -> int:
         return int(ctypes.windll.user32.GetDpiForWindow(hwnd))
     except Exception:
         return BASE_DPI
-

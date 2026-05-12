@@ -8,7 +8,7 @@ import win32con
 import win32gui
 
 from overlay.win32 import style
-from overlay.win32.text_renderer import DirectWriteTextRenderer, TextDiagnostics
+from infra.gui.text_renderer import DirectWriteTextRenderer, TextDiagnostics
 from overlay.win32.view_state import (
     Win32OverlayViewState,
     Win32PatternTab,
@@ -58,7 +58,14 @@ class Win32OverlayRenderer:
     def __init__(self, scale: float = 1.0) -> None:
         self._fonts: dict[tuple[str, int, int], int] = {}
         self._scale = scale
-        self._text = DirectWriteTextRenderer(scale)
+        width = style.PANEL_RECT[2] - style.PANEL_RECT[0]
+        height = style.PANEL_RECT[3] - style.PANEL_RECT[1]
+        self._text = DirectWriteTextRenderer(
+            scale,
+            (width, height),
+            style.font_cell_height,
+            style.font_weight,
+        )
 
     def set_scale(self, scale: float) -> None:
         if abs(self._scale - scale) < 0.001:

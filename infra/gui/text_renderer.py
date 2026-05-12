@@ -1,12 +1,11 @@
-"""DirectWrite-backed text drawing for the Win32 overlay renderer."""
+"""DirectWrite-backed text drawing for Win32 GUI surfaces."""
 
 from __future__ import annotations
 
 import ctypes
 from ctypes import wintypes
 from dataclasses import dataclass
-
-from overlay.win32 import style
+from typing import Callable
 
 HRESULT = ctypes.c_long
 UINT32 = ctypes.c_uint32
@@ -60,8 +59,17 @@ class TextDiagnostics:
 
 
 class DirectWriteTextRenderer:
-    def __init__(self, scale: float = 1.0) -> None:
+    def __init__(
+        self,
+        scale: float = 1.0,
+        target_size: tuple[int, int] = (1, 1),
+        font_cell_height: Callable[[int], int] | None = None,
+        font_weight: Callable[[int], int] | None = None,
+    ) -> None:
         self._scale = scale
+        self._target_size = target_size
+        self._font_cell_height = font_cell_height or _default_font_cell_height
+        self._font_weight = font_weight or _default_font_weight
         self._factory = 0
         self._d2d_factory = 0
         self._target = 0
@@ -83,6 +91,9 @@ class DirectWriteTextRenderer:
         self._scale = max(0.1, scale)
         self.destroy()
         self._target = _create_dc_render_target(self._d2d_factory)
+
+    def set_target_size(self, target_size: tuple[int, int]) -> None:
+        self._target_size = target_size
 
     def draw_text(
         self,
@@ -150,7 +161,7 @@ class DirectWriteTextRenderer:
         text_format = self._text_format(face, size, weight, align_right, align_center)
         brush = _create_solid_brush(self._target, color)
         try:
-            _bind_dc(self._target, hdc, _target_rect(self._scale))
+            _bind_dc(self._target, hdc, _target_rect(self._scale, self._target_size))
             _begin_draw(self._target)
             _draw_text(self._target, text, text_format, _rect_f(rect), brush)
             _end_draw(self._target)
@@ -168,8 +179,9 @@ class DirectWriteTextRenderer:
         align = _text_alignment(align_right, align_center)
         key = (face, size, weight, str(align))
         if key not in self._formats:
+            font_size = _font_size(size, self._scale, self._font_cell_height)
             self._formats[key] = _create_text_format(
-                self._factory, face, _font_size(size, self._scale), weight, align
+                self._factory, face, font_size, self._font_weight(weight), align
             )
         return self._formats[key]
 
@@ -217,16 +229,14 @@ def _create_dc_render_target(factory: int) -> int:
     return target.value or 0
 
 
-def _create_text_format(
-    factory: int, face: str, size: float, weight: int, align: int
-) -> int:
+def _create_text_format(factory: int, face: str, size: float, weight: int, align: int) -> int:
     text_format = ctypes.c_void_p()
     hr = _com_call(
         factory, 15, HRESULT, ctypes.c_void_p, wintypes.LPCWSTR, ctypes.c_void_p,
         UINT32, UINT32, UINT32, FLOAT, wintypes.LPCWSTR,
         ctypes.POINTER(ctypes.c_void_p),
     )(
-        factory, face, None, style.font_weight(weight), DWRITE_FONT_STYLE_NORMAL,
+        factory, face, None, weight, DWRITE_FONT_STYLE_NORMAL,
         DWRITE_FONT_STRETCH_NORMAL, FLOAT(size), "ko-kr", ctypes.byref(text_format),
     )
     _check_hr(hr)
@@ -320,9 +330,9 @@ def _rect_f(rect: tuple[int, int, int, int]) -> D2D1_RECT_F:
     return D2D1_RECT_F(float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3]))
 
 
-def _target_rect(scale: float) -> tuple[int, int, int, int]:
-    _, _, right, bottom = style.PANEL_RECT
-    return 0, 0, max(1, round(right * scale)), max(1, round(bottom * scale))
+def _target_rect(scale: float, target_size: tuple[int, int]) -> tuple[int, int, int, int]:
+    width, height = target_size
+    return 0, 0, max(1, round(width * scale)), max(1, round(height * scale))
 
 
 def _color_f(color: int) -> D2D1_COLOR_F:
@@ -332,8 +342,16 @@ def _color_f(color: int) -> D2D1_COLOR_F:
     return D2D1_COLOR_F(red, green, blue, 1.0)
 
 
-def _font_size(size: int, scale: float) -> float:
-    return max(1.0, float(style.font_cell_height(size)) * scale)
+def _font_size(size: int, scale: float, cell_height: Callable[[int], int]) -> float:
+    return max(1.0, float(cell_height(size)) * scale)
+
+
+def _default_font_cell_height(size: int) -> int:
+    return size
+
+
+def _default_font_weight(weight: int) -> int:
+    return weight
 
 
 def _text_alignment(align_right: bool, align_center: bool) -> int:
@@ -342,4 +360,3 @@ def _text_alignment(align_right: bool, align_center: bool) -> int:
     if align_center:
         return DWRITE_TEXT_ALIGNMENT_CENTER
     return DWRITE_TEXT_ALIGNMENT_LEADING
-

@@ -40,26 +40,19 @@ class AppUpdateError(RuntimeError):
 
 class _UpdateStatusReporter:
     def __init__(self):
-        self._app = None
         self._window = None
-        self._label = None
         self._available = False
 
     def start(self, message: str):
         if not self._ensure_window():
             return
-        self.update(message)
-        self._window.show()
-        self._window.raise_()
-        self._window.activateWindow()
-        self.pump(120)
+        self._window.show(message)
+        self._available = True
 
     def update(self, message: str):
         if not self._available:
             return
-        self._label.setText(message)
-        self._window.adjustSize()
-        self.pump(80)
+        self._window.update(message)
 
     def close(self):
         if not self._available:
@@ -69,14 +62,12 @@ class _UpdateStatusReporter:
             self.pump(80)
         except Exception:
             pass
+        self._available = False
 
     def pump(self, millis: int = 30):
         if not self._available:
             return
-        deadline = time.time() + max(0, millis) / 1000.0
-        while time.time() < deadline:
-            self._app.processEvents()
-            time.sleep(0.01)
+        self._window.pump(millis)
 
     def _ensure_window(self) -> bool:
         if self._available:
@@ -84,24 +75,12 @@ class _UpdateStatusReporter:
         if os.name != "nt":
             return False
         try:
-            from PyQt6.QtCore import Qt
-            from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
+            from infra.gui.status_window import Win32StatusWindow
         except Exception:
             return False
 
-        self._app = QApplication.instance() or QApplication([])
-        self._window = QWidget()
-        self._window.setWindowTitle("Overmax Update")
-        self._window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
-        self._window.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
-        layout = QVBoxLayout(self._window)
-        layout.setContentsMargins(18, 14, 18, 14)
-        self._label = QLabel("")
-        self._label.setWordWrap(True)
-        layout.addWidget(self._label)
-        self._window.setMinimumWidth(360)
-        self._available = True
-        return True
+        self._window = Win32StatusWindow("Overmax Update")
+        return bool(self._window)
 
 
 def check_and_apply_update(

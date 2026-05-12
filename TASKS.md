@@ -880,18 +880,18 @@ bridge_ok=True
 
 Win32 UI의 하드코딩된 레이아웃을 개선하고, 심미적 완성도를 높인다.
 
-- [ ] Win32 UI Infra (`settings_common.py`) 고도화
-    - [ ] `LayoutContext` 도입 (Spacing, Alignment 관리)
-    - [ ] 시각적 그룹화를 위한 `Card`/`Divider` 컴포넌트 추가
-- [ ] Win32 동기화 창 (`Win32SyncWindow`) 디자인 개선
-    - [ ] Sticky Header/Footer 레이아웃 적용
-    - [ ] 동기화 후보 Row 컬럼 정렬 및 시각적 대비 강화
-- [ ] Win32 설정 창 (`Win32SettingsWindow`) 디자인 개선
-    - [ ] 카드 섹션 기반 레이아웃으로 개편
-    - [ ] 탭 시스템 시각적 피드백 강화
-- [ ] 통합 검증
-    - [ ] DPI 스케일링 대응 확인
-    - [ ] 기존 오버레이 기능 영향 확인 (Zero Regression)
+- [x] Win32 UI Infra (`settings_common.py`) 고도화
+    - [x] `LayoutContext` 도입 (Spacing, Alignment 관리)
+    - [x] 시각적 그룹화를 위한 `Card`/`Divider` 컴포넌트 추가
+- [x] Win32 동기화 창 (`Win32SyncWindow`) 디자인 개선
+    - [x] Sticky Header/Footer 레이아웃 적용
+    - [x] 동기화 후보 Row 컬럼 정렬 및 시각적 대비 강화
+- [x] Win32 설정 창 (`Win32SettingsWindow`) 디자인 개선
+    - [x] 카드 섹션 기반 레이아웃으로 개편
+    - [x] 탭 시스템 시각적 피드백 강화 (Native Tab Control 적용)
+- [x] 통합 검증
+    - [x] DPI 스케일링 대응 확인 (시스템 기본 배율 기준 안정성 확보)
+    - [x] 기존 오버레이 기능 영향 확인 (Zero Regression 확인)
 
 
 ## 검증 기준

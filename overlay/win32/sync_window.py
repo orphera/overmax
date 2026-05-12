@@ -58,6 +58,7 @@ class Win32SyncWindow:
         self._refresh_btn = 0
         self._status_label = 0
         self._count_label = 0
+        self._empty_label = 0
         self._row_handles: list[SyncRowHandles] = []
         self._base_controls: list[int] = []
         self._signals = Win32SyncSignals(0)  # HWND set after creation
@@ -67,6 +68,7 @@ class Win32SyncWindow:
         self._scroll_pos = 0
         self._max_scroll = 0
         self._list_container = 0
+        self._content_window = 0
         self._register_class()
 
     def set_account(self, steam_id: str, account: AccountInfo | None) -> None:
@@ -119,7 +121,7 @@ class Win32SyncWindow:
         self._signals = Win32SyncSignals(self.hwnd)
         self._font = controls.create_font()
         self._create_controls()
-        self._set_status("account.txt를 설정하고 동기화 후보를 확인하세요.")
+        self._set_status("account.txt를 설정하고 불러오기를 눌러주세요.")
         self._update_ui_states()
         return True
 
@@ -134,37 +136,77 @@ class Win32SyncWindow:
         )
 
     def _create_controls(self) -> None:
-        self._base_controls.extend([
-            controls.static(self.hwnd, self.hinst, "V-Archive 동기화", (18, 18, 180, 24)),
-            controls.static(self.hwnd, self.hinst, "난이도   모드   곡명                  Overmax     V-Archive   차이", (18, 62, 560, 22)),
-        ])
-        self._count_label = controls.static(self.hwnd, self.hinst, "", (202, 18, 160, 24))
-        self._status_label = controls.static(self.hwnd, self.hinst, "", (18, 442, 480, 24))
-        self._refresh_btn = controls.button(self.hwnd, self.hinst, "불러오기", REFRESH_ID, (584, 438, 86, 28))
+        # Header Area
+        header_ctx = controls.LayoutContext((0, 0, WINDOW_SIZE[0], 90), controls.LayoutPadding(20, 16, 20, 8))
+        self._title_label = controls.static(self.hwnd, self.hinst, "동기화 후보 목록", header_ctx.next_rect(26), win32con.SS_LEFT)
+        self._count_label = controls.static(self.hwnd, self.hinst, "", (WINDOW_SIZE[0] - 180, 16, 160, 26), win32con.SS_RIGHT)
+        
+        # Column Header (Perfectly aligned with sync_row.COL_X)
+        from overlay.win32.sync_row import COL_X, COL_WIDTH
+        header_y = 66
+        self._header_labels = [
+            controls.static(self.hwnd, self.hinst, "난이도", (COL_X[0], header_y, COL_WIDTH[0], 22)),
+            controls.static(self.hwnd, self.hinst, "모드", (COL_X[1], header_y, COL_WIDTH[1], 22)),
+            controls.static(self.hwnd, self.hinst, "곡 제목", (COL_X[2], header_y, COL_WIDTH[2], 22)),
+            controls.static(self.hwnd, self.hinst, "내 기록", (COL_X[3], header_y, COL_WIDTH[3], 22), win32con.SS_RIGHT),
+            controls.static(self.hwnd, self.hinst, "V-Archive", (COL_X[5], header_y, COL_WIDTH[5], 22), win32con.SS_RIGHT),
+            controls.static(self.hwnd, self.hinst, "사유", (COL_X[6], header_y, COL_WIDTH[6], 22)),
+            controls.static(self.hwnd, self.hinst, "상태", (COL_X[7], header_y, COL_WIDTH[7], 22)),
+        ]
+        
+        # List Area (Middle Viewport) - between 90 and 420
         self._list_container = create_window(self.hinst, WindowCreateSpec(
             class_name=CONTAINER_CLASS_NAME, title="", ex_style=0,
             style=win32con.WS_CHILD | win32con.WS_VISIBLE | win32con.WS_CLIPCHILDREN,
-            position=(0, 94), size=(680, 338), parent=self.hwnd
+            position=(0, 90), size=(WINDOW_SIZE[0], 330), parent=self.hwnd
         ))
-        self._base_controls.extend([self._count_label, self._status_label, self._refresh_btn, self._list_container])
+        
+        # Inner Content Window (The one that actually scrolls)
+        self._content_window = create_window(self.hinst, WindowCreateSpec(
+            class_name=CONTAINER_CLASS_NAME, title="", ex_style=0,
+            style=win32con.WS_CHILD | win32con.WS_VISIBLE,
+            position=(0, 0), size=(WINDOW_SIZE[0], 10000), parent=self._list_container
+        ))
+
+        # Empty Label (centered in list_container)
+        self._empty_label = controls.static(self._list_container, self.hinst, "", (0, 140, WINDOW_SIZE[0], 40), win32con.SS_CENTER)
+
+        # Footer Area
+        footer_y = 420
+        self._status_label = controls.static(self.hwnd, self.hinst, "", (20, footer_y + 8, 380, 24))
+        self._refresh_btn = controls.button(self.hwnd, self.hinst, "불러오기", REFRESH_ID, (WINDOW_SIZE[0] - 110, footer_y + 4, 90, 30))
+        
+        self._base_controls.extend([
+            self._title_label, self._count_label, 
+            *self._header_labels,
+            self._status_label, self._refresh_btn, self._list_container
+        ])
+        
+        bold_font = controls.create_font(height=-18, weight=win32con.FW_BOLD)
+        win32gui.SendMessage(self._title_label, win32con.WM_SETFONT, bold_font, True)
+        
         for hwnd in self._base_controls:
-            win32gui.SendMessage(hwnd, win32con.WM_SETFONT, self._font, True)
+            if hwnd != self._title_label:
+                win32gui.SendMessage(hwnd, win32con.WM_SETFONT, self._font, True)
 
     def _render_candidates(self, candidates: Sequence[SyncCandidate]) -> None:
         self._clear_rows()
         if not candidates:
+            self._set_empty_text("동기화 후보가 없습니다. V-Archive 기록이 이미 최신입니다.")
             self._set_count("")
-            self._set_status("동기화 창 골격 준비 완료. 실제 스캔은 다음 절편에서 연결합니다.")
+            self._set_status("최신 상태입니다.")
             return
+        
+        self._set_empty_text("")
         account_ready = self._get_current_account() is not None
         for index, candidate in enumerate(candidates):
             top = index * 34
-            row = create_candidate_row(self._list_container, self.hinst, self._font, candidate, index, top, account_ready)
+            row = create_candidate_row(self._content_window, self.hinst, self._font, candidate, index, top, account_ready)
             self._row_handles.append(row)
         
         self._update_scrollbar(len(candidates))
-        self._set_count(f"{len(candidates)}개 후보")
-        self._set_status("갱신 후보를 찾았습니다.")
+        self._set_count(f" — {len(candidates)}개 후보")
+        self._set_status(f"{len(candidates)}개의 갱신 후보를 찾았습니다.")
 
     def _clear_rows(self) -> None:
         for row in self._row_handles:
@@ -204,6 +246,12 @@ class Win32SyncWindow:
             return 1
         if msg in (win32con.WM_CTLCOLORSTATIC, win32con.WM_CTLCOLORBTN):
             return self._paint_control_background(wparam)
+        return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
+
+    def _container_wnd_proc(self, hwnd: int, msg: int, wparam: int, lparam: int) -> int:
+        """Forward commands and painting from container to parent window."""
+        if msg in (win32con.WM_COMMAND, win32con.WM_CTLCOLORSTATIC, win32con.WM_CTLCOLORBTN):
+            return win32gui.SendMessage(win32gui.GetParent(hwnd), msg, wparam, lparam)
         return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
 
     def _handle_command(self, control_id: int) -> None:
@@ -318,7 +366,7 @@ class Win32SyncWindow:
         self._update_ui_states()
         self._set_status("비교 중...")
         self._clear_rows()
-        self._set_count("분석 중...")
+        self._set_empty_text("분석 중...")
         threading.Thread(target=self._scan_worker, daemon=True).start()
 
     def _scan_worker(self) -> None:
@@ -376,7 +424,7 @@ class Win32SyncWindow:
         if not self.hwnd:
             return
         total_height = count * 34
-        page_height = 338
+        page_height = 330
         self._max_scroll = max(0, total_height - page_height)
         self._scroll_pos = min(self._scroll_pos, self._max_scroll)
         
@@ -390,9 +438,9 @@ class Win32SyncWindow:
         elif action == win32con.SB_LINEDOWN:
             self._scroll_pos += 34
         elif action == win32con.SB_PAGEUP:
-            self._scroll_pos -= 338
+            self._scroll_pos -= 330
         elif action == win32con.SB_PAGEDOWN:
-            self._scroll_pos += 338
+            self._scroll_pos += 330
         elif action == win32con.SB_THUMBTRACK:
             self._scroll_pos = pos
         
@@ -402,8 +450,8 @@ class Win32SyncWindow:
         self._apply_scroll()
 
     def _apply_scroll(self) -> None:
-        if self._list_container:
-            win32gui.MoveWindow(self._list_container, 0, 94 - self._scroll_pos, 680, 10000, True)
+        if self._content_window:
+            win32gui.MoveWindow(self._content_window, 0, -self._scroll_pos, WINDOW_SIZE[0], 10000, True)
 
     def _set_status(self, text: str) -> None:
         if self._status_label:
@@ -412,6 +460,11 @@ class Win32SyncWindow:
     def _set_count(self, text: str) -> None:
         if self._count_label:
             win32gui.SetWindowText(self._count_label, text)
+
+    def _set_empty_text(self, text: str) -> None:
+        if self._empty_label:
+            win32gui.SetWindowText(self._empty_label, text)
+            win32gui.ShowWindow(self._empty_label, win32con.SW_SHOW if text else win32con.SW_HIDE)
 
     def _paint_control_background(self, hdc: int) -> int:
         win32gui.SetBkColor(hdc, WINDOW_BG)

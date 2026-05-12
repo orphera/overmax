@@ -18,12 +18,13 @@ from overlay.win32 import settings_common as controls
 from settings import SETTINGS, save_settings
 
 CLASS_NAME = "OvermaxWin32SettingsWindow"
-WINDOW_SIZE = (520, 460)
+WINDOW_SIZE = (600, 500)
 TRACKBAR_CLASS = "msctls_trackbar32"
 TBM_GETPOS = win32con.WM_USER
 TBM_SETPOS = win32con.WM_USER + 5
 TBM_SETRANGE = win32con.WM_USER + 6
-TAB_IDS = {"ui": 2001, "system": 2002, "varchive": 2003}
+TAB_CONTROL_ID = 2000
+TAB_MAP = ["ui", "system", "varchive"]
 CONTROL_IDS = {"close": 2101, "auto_update": 2102}
 SCALE_BASE_ID = 2200
 VARCHIVE_BASE_ID = 2300
@@ -72,7 +73,7 @@ class Win32SettingsWindow:
         self._opacity_track = 0
         self._opacity_value = 0
         self._auto_update = 0
-        self._tab_buttons: dict[str, int] = {}
+        self._tab_control = 0
         self._scale_buttons: dict[float, int] = {}
         self._v_id_edits: dict[str, int] = {}
         self._account_edits: dict[str, int] = {}
@@ -177,7 +178,8 @@ class Win32SettingsWindow:
         self.hwnd = create_window(self.hinst, self._create_spec())
         if not self.hwnd:
             return False
-        self._font = controls.create_font()
+        self._font = controls.create_font(height=-15)
+        self._bold_font = controls.create_font(height=-15, weight=win32con.FW_BOLD)
         self._create_controls()
         self._switch_tab("ui")
         return True
@@ -201,113 +203,154 @@ class Win32SettingsWindow:
             win32gui.SendMessage(hwnd, win32con.WM_SETFONT, self._font, True)
 
     def _create_tabs(self) -> None:
-        x = 18
-        for key, text in (("ui", "UI"), ("system", "System"), ("varchive", "V-Archive")):
-            width = self._button_width(text)
-            hwnd = controls.button(self.hwnd, self.hinst, text, TAB_IDS[key], (x, 18, width, 28))
-            self._tab_buttons[key] = hwnd
-            x += width + CONTROL_GAP
+        items = ["UI", "System", "V-Archive"]
+        # Ensure clear margins from the window edges
+        self._tab_control = controls.tabs(self.hwnd, self.hinst, items, (16, 12, WINDOW_SIZE[0] - 32, WINDOW_SIZE[1] - 48), TAB_CONTROL_ID)
 
     def _create_ui_controls(self) -> None:
+        # Fixed layout context: base_y=48 (bottom of tab header), plus internal padding
+        ctx = controls.LayoutContext((0, 48, WINDOW_SIZE[0], WINDOW_SIZE[1] - 48), controls.LayoutPadding(24, 12, 24, 12))
         ui_controls = self._ui_controls
-        ui_controls.append(controls.static(self.hwnd, self.hinst, "오버레이 투명도", (28, 76, 180, 22)))
-        self._opacity_value = controls.static(self.hwnd, self.hinst, "", (212, 76, 60, 22))
+        
+        # Opacity Section
+        ui_controls.append(ctx.section_title(self.hwnd, self.hinst, "오버레이 투명도", self._bold_font))
+        row_rect = ctx.next_rect(24, gap=2)
+        ui_controls.append(controls.static(self.hwnd, self.hinst, "투명도 조절", (row_rect[0], row_rect[1], 120, 22)))
+        self._opacity_value = controls.static(self.hwnd, self.hinst, "", (row_rect[0] + 130, row_rect[1], 60, 22))
         ui_controls.append(self._opacity_value)
-        self._opacity_track = controls.trackbar(self.hwnd, self.hinst, TRACKBAR_CLASS, (28, 104, 380, 34))
+        
+        self._opacity_track = controls.trackbar(self.hwnd, self.hinst, TRACKBAR_CLASS, ctx.next_rect(34, gap=16))
         ui_controls.append(self._opacity_track)
         self._initialize_opacity_track()
-        ui_controls.append(controls.static(self.hwnd, self.hinst, "오버레이 크기", (28, 160, 160, 22)))
-        self._create_scale_buttons()
+        
+        # Scale Section
+        ctx.add_gap(8)
+        ui_controls.append(ctx.section_title(self.hwnd, self.hinst, "오버레이 크기", self._bold_font))
+        self._create_scale_buttons(ctx)
 
-    def _create_scale_buttons(self) -> None:
-        x = 28
+    def _create_scale_buttons(self, ctx: controls.LayoutContext) -> None:
+        row_rect = ctx.next_rect(32)
+        x = row_rect[0]
         current = float(SETTINGS.get("overlay", {}).get("scale", 1.0))
         for index, (text, scale) in enumerate(SCALE_PRESETS):
             width = self._button_width(text)
-            hwnd = controls.button(self.hwnd, self.hinst, text, SCALE_BASE_ID + index, (x, 192, width, 30))
+            hwnd = controls.button(self.hwnd, self.hinst, text, SCALE_BASE_ID + index, (x, row_rect[1], width, 30))
             self._scale_buttons[scale] = hwnd
             self._ui_controls.append(hwnd)
             self._set_button_checked(hwnd, abs(scale - current) < 0.01)
             x += width + CONTROL_GAP
 
     def _create_system_controls(self) -> None:
+        ctx = controls.LayoutContext((0, 48, WINDOW_SIZE[0], WINDOW_SIZE[1] - 48), controls.LayoutPadding(24, 12, 24, 12))
+        self._system_controls.append(ctx.section_title(self.hwnd, self.hinst, "시스템 설정", self._bold_font))
+        
         auto = bool(SETTINGS.get("app_update", {}).get("enabled", True))
-        text = "자동 업데이트"
+        text = "자동 업데이트 활성화"
         width = self._check_width(text)
-        self._auto_update = controls.check(self.hwnd, self.hinst, text, CONTROL_IDS["auto_update"], (28, 76, width, 24))
+        self._auto_update = controls.check(self.hwnd, self.hinst, text, CONTROL_IDS["auto_update"], ctx.next_rect(24))
         self._set_button_checked(self._auto_update, auto)
         self._system_controls.append(self._auto_update)
-        version = controls.static(self.hwnd, self.hinst, f"현재 버전: {APP_VERSION}", (28, 116, 220, 22))
+        
+        ctx.add_gap(8)
+        version = controls.static(self.hwnd, self.hinst, f"현재 버전: {APP_VERSION}", ctx.next_rect(22))
         self._system_controls.append(version)
 
     def _create_varchive_controls(self) -> None:
+        ctx = controls.LayoutContext((0, 48, WINDOW_SIZE[0], WINDOW_SIZE[1] - 48), controls.LayoutPadding(24, 12, 24, 12))
+        self._varchive_controls.append(ctx.section_title(self.hwnd, self.hinst, "동기화 설정", self._bold_font))
+        self._create_auto_refresh_control(ctx)
+        
+        ctx.add_gap(8)
+        self._varchive_controls.append(ctx.section_title(self.hwnd, self.hinst, "V-Archive 계정 관리", self._bold_font))
+        
         sessions = self._settings_sessions()
-        self._create_auto_refresh_control()
         if not sessions:
             text = "발견된 Steam 계정이 없습니다."
-            self._varchive_controls.append(controls.static(self.hwnd, self.hinst, text, (28, 112, 300, 24)))
+            self._varchive_controls.append(controls.static(self.hwnd, self.hinst, text, ctx.next_rect(24)))
             return
-        self._create_session_controls(sessions[0], 112)
+            
+        self._create_session_controls(sessions[0], ctx)
         if len(sessions) > 1:
-            self._create_other_sessions(sessions[1:], 238)
+            self._create_other_sessions(sessions[1:], ctx)
 
-    def _create_auto_refresh_control(self) -> None:
+    def _create_auto_refresh_control(self, ctx: controls.LayoutContext) -> None:
         auto = bool(SETTINGS.get("varchive", {}).get("auto_refresh", False))
-        text = "시작 시 자동 갱신"
-        hwnd = controls.check(self.hwnd, self.hinst, text, VARCHIVE_AUTO_REFRESH_ID, (28, 76, self._check_width(text), 24))
+        text = "시작 시 V-Archive 기록 자동 갱신"
+        hwnd = controls.check(self.hwnd, self.hinst, text, VARCHIVE_AUTO_REFRESH_ID, ctx.next_rect(24))
         self._set_button_checked(hwnd, auto)
         self._varchive_controls.append(hwnd)
 
-    def _create_session_controls(self, session: SteamSession, top: int) -> None:
-        self._varchive_controls.append(controls.static(self.hwnd, self.hinst, _session_label(session), (28, top, 360, 22)))
-        self._create_v_id_row(session, top + 32)
-        self._create_account_row(session, top + 72)
+    def _create_session_controls(self, session: SteamSession, ctx: controls.LayoutContext) -> None:
+        self._varchive_controls.append(controls.static(self.hwnd, self.hinst, _session_label(session), ctx.next_rect(22)))
+        self._create_v_id_row(session, ctx)
+        self._create_account_row(session, ctx)
+        ctx.add_gap(8)
 
-    def _create_other_sessions(self, sessions: list[SteamSession], top: int) -> None:
+    def _create_other_sessions(self, sessions: list[SteamSession], ctx: controls.LayoutContext) -> None:
         text = f"다른 계정 보기 ({len(sessions)})"
         self._toggle_others_hwnd = controls.button(
-            self.hwnd, self.hinst, text, VARCHIVE_BASE_ID + 200, (28, top, self._button_width(text), 24)
+            self.hwnd, self.hinst, text, VARCHIVE_BASE_ID + 200, ctx.next_rect(28)
         )
         self._varchive_actions[VARCHIVE_BASE_ID + 200] = ("toggle_others", "", 0)
         self._varchive_controls.append(self._toggle_others_hwnd)
-        y = top + 34
+        
         for session in sessions:
             before = len(self._varchive_controls)
-            self._create_session_controls(session, y)
+            self._create_session_controls(session, ctx)
             self._other_session_controls.extend(self._varchive_controls[before:])
-            y += 124
         controls.show_many(self._other_session_controls, False)
 
-    def _create_v_id_row(self, session: SteamSession, y: int) -> None:
+    def _create_v_id_row(self, session: SteamSession, ctx: controls.LayoutContext) -> None:
+        rect = ctx.next_rect(24)
         v_id = _varchive_entry(session.steam_id).get("v_id", "")
-        edit = controls.edit(self.hwnd, self.hinst, v_id, (28, y, 126, 24))
+        edit = controls.edit(self.hwnd, self.hinst, v_id, (rect[0], rect[1], 120, 24))
         self._v_id_edits[session.steam_id] = edit
         self._varchive_controls.append(edit)
-        x = 162
+        
+        x = rect[0] + 124
         for button in (4, 5, 6, 8, 0):
             text = "All" if button == 0 else f"{button}B"
             control_id = VARCHIVE_BASE_ID + len(self._varchive_actions)
-            hwnd = controls.button(self.hwnd, self.hinst, text, control_id, (x, y, self._button_width(text), 24))
+            width = self._button_width(text)
+            hwnd = controls.button(self.hwnd, self.hinst, text, control_id, (x, rect[1], width, 24))
             self._varchive_actions[control_id] = ("fetch", session.steam_id, button)
             self._varchive_controls.append(hwnd)
-            x += self._button_width(text) + 4
+            x += width + 4
 
-    def _create_account_row(self, session: SteamSession, y: int) -> None:
+    def _create_account_row(self, session: SteamSession, ctx: controls.LayoutContext) -> None:
+        rect = ctx.next_rect(24)
         entry = _varchive_entry(session.steam_id)
-        edit = controls.edit(self.hwnd, self.hinst, entry.get("account_path", ""), (28, y, 250, 24))
+        edit = controls.edit(self.hwnd, self.hinst, entry.get("account_path", ""), (rect[0], rect[1], 200, 24))
         self._account_edits[session.steam_id] = edit
         self._varchive_controls.append(edit)
-        control_id = VARCHIVE_BASE_ID + len(self._varchive_actions)
-        browse_id = control_id
-        browse = controls.button(self.hwnd, self.hinst, "찾기", browse_id, (286, y, self._button_width("찾기"), 24))
+        
+        x = rect[0] + 204
+        browse_id = VARCHIVE_BASE_ID + len(self._varchive_actions)
+        browse = controls.button(self.hwnd, self.hinst, "찾기", browse_id, (x, rect[1], 44, 24))
         self._varchive_actions[browse_id] = ("browse", session.steam_id, 0)
         self._varchive_controls.append(browse)
-        control_id = VARCHIVE_BASE_ID + len(self._varchive_actions)
-        button = controls.button(self.hwnd, self.hinst, "동기화 후보", control_id, (348, y, self._button_width("동기화 후보"), 24))
-        self._varchive_actions[control_id] = ("sync", session.steam_id, 0)
-        self._varchive_controls.append(button)
+        
+        sync_id = VARCHIVE_BASE_ID + len(self._varchive_actions)
+        sync_btn = controls.button(self.hwnd, self.hinst, "동기화 후보", sync_id, (x + 48, rect[1], 80, 24))
+        self._varchive_actions[sync_id] = ("sync", session.steam_id, 0)
+        self._varchive_controls.append(sync_btn)
 
     def _wnd_proc(self, hwnd: int, msg: int, wparam: int, lparam: int) -> int:
+        if msg == win32con.WM_NOTIFY:
+            import ctypes
+            from ctypes import wintypes
+            class NMHDR(ctypes.Structure):
+                _fields_ = [
+                    ("hwndFrom", wintypes.HWND),
+                    ("idFrom", wintypes.WPARAM),
+                    ("code", wintypes.UINT),
+                ]
+            nmhdr = ctypes.cast(lparam, ctypes.POINTER(NMHDR)).contents
+            if nmhdr.idFrom == TAB_CONTROL_ID and nmhdr.code == 4294966745: # TCN_SELCHANGE (-551 as UINT)
+                idx = win32gui.SendMessage(self._tab_control, 0x1300 + 11, 0, 0) # TCM_GETCURSEL
+                if 0 <= idx < len(TAB_MAP):
+                    self._switch_tab(TAB_MAP[idx])
+            return 0
         if msg == win32con.WM_COMMAND:
             self._handle_command(win32api.LOWORD(wparam))
             return 0
@@ -324,10 +367,7 @@ class Win32SettingsWindow:
         return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
 
     def _handle_command(self, control_id: int) -> None:
-        tab = next((key for key, value in TAB_IDS.items() if value == control_id), None)
-        if tab:
-            self._switch_tab(tab)
-        elif control_id == CONTROL_IDS["auto_update"]:
+        if control_id == CONTROL_IDS["auto_update"]:
             self._apply_auto_update()
         elif control_id == VARCHIVE_AUTO_REFRESH_ID:
             self._apply_auto_refresh()
@@ -479,7 +519,7 @@ class Win32SettingsWindow:
 
     def _all_child_hwnds(self) -> list[int]:
         return [
-            *self._tab_buttons.values(),
+            self._tab_control,
             *self._ui_controls,
             *self._system_controls,
             *self._varchive_controls,

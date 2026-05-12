@@ -1,49 +1,50 @@
-"""Shared visual constants for the Win32 overlay renderer."""
+"""Visual constants for the Win32 overlay renderer."""
 
 from __future__ import annotations
 
-import win32api
 import win32con
 
-PANEL_BG = win32api.RGB(18, 24, 38)
-HEADER_BG = win32api.RGB(30, 40, 62)
-ROW_BG = win32api.RGB(36, 46, 70)
-FOOTER_BG = win32api.RGB(22, 30, 48)
-BADGE_BG = win32api.RGB(46, 68, 118)
-BORDER = win32api.RGB(48, 58, 78)
+from infra.gui import theme
 
-TEXT_MAIN = win32api.RGB(240, 244, 255)
-TEXT_BODY = win32api.RGB(232, 238, 255)
-TEXT_MUTED = win32api.RGB(80, 88, 112)
-TEXT_TAB = win32api.RGB(180, 203, 255)
-TEXT_TAB_MUTED = win32api.RGB(136, 145, 167)
-TEXT_ACCENT = win32api.RGB(255, 209, 102)
-TEXT_RATE_HIGH = win32api.RGB(184, 220, 255)
-TEXT_RATE_MID = win32api.RGB(126, 200, 227)
-TEXT_RATE_SOFT = win32api.RGB(181, 234, 215)
-TEXT_RATE_LOW = win32api.RGB(255, 153, 153)
-STABLE = win32api.RGB(0, 212, 255)
-UNSTABLE = win32api.RGB(255, 75, 75)
-MAX_COMBO = win32api.RGB(74, 216, 184)
-PERFECT_PLAY = win32api.RGB(255, 215, 0)
+PANEL_BG = theme.hex_rgb("#121826")
+HEADER_BG = theme.hex_rgb("#1E283E")
+ROW_BG = theme.hex_rgb("#242E46")
+FOOTER_BG = theme.hex_rgb("#161E30")
+BADGE_BG = theme.hex_rgb("#2E4476")
+BORDER = theme.hex_rgb("#303A4E")
 
-TAB_BG = win32api.RGB(26, 36, 58)
-TAB_ACTIVE_BG = win32api.RGB(70, 91, 138)
+TEXT_MAIN = theme.hex_rgb("#F0F4FF")
+TEXT_BODY = theme.hex_rgb("#E8EEFF")
+TEXT_MUTED = theme.hex_rgb("#505870")
+TEXT_TAB = theme.hex_rgb("#B4CBFF")
+TEXT_TAB_MUTED = theme.hex_rgb("#8891A7")
+TEXT_ACCENT = theme.hex_rgb("#FFD166")
+TEXT_RATE_HIGH = theme.hex_rgb("#B8DCFF")
+TEXT_RATE_MID = theme.hex_rgb("#7EC8E3")
+TEXT_RATE_SOFT = theme.hex_rgb("#B5EAD7")
+TEXT_RATE_LOW = theme.hex_rgb("#FF9999")
+STABLE = theme.hex_rgb("#00D4FF")
+UNSTABLE = theme.hex_rgb("#FF4B4B")
+MAX_COMBO = theme.hex_rgb("#4AD8B8")
+PERFECT_PLAY = theme.hex_rgb("#FFD700")
+
+TAB_BG = theme.hex_rgb("#1A243A")
+TAB_ACTIVE_BG = theme.hex_rgb("#465B8A")
 DIFF_COLORS = {
-    "NM": win32api.RGB(74, 144, 217),
-    "HD": win32api.RGB(245, 166, 35),
-    "MX": win32api.RGB(208, 2, 27),
-    "SC": win32api.RGB(155, 89, 182),
+    "NM": theme.hex_rgb("#4A90D9"),
+    "HD": theme.hex_rgb("#F5A623"),
+    "MX": theme.hex_rgb("#D0021B"),
+    "SC": theme.hex_rgb("#9B59B6"),
 }
 MODE_COLORS = {
-    "4B": win32api.RGB(45, 79, 85),
-    "5B": win32api.RGB(68, 169, 198),
-    "6B": win32api.RGB(237, 148, 48),
-    "8B": win32api.RGB(29, 20, 49),
+    "4B": theme.hex_rgb("#2D4F55"),
+    "5B": theme.hex_rgb("#44A9C6"),
+    "6B": theme.hex_rgb("#ED9430"),
+    "8B": theme.hex_rgb("#1D1431"),
 }
 
-FONT_FACE = "Segoe UI"
-ICON_FONT_FACE = "Segoe UI Symbol"
+FONT_FACE = theme.DEFAULT_FONT_FACE
+ICON_FONT_FACE = theme.SYMBOL_FONT_FACE
 TITLE_FONT_SIZE = 14
 BODY_FONT_SIZE = 11
 META_FONT_SIZE = 10
@@ -57,7 +58,7 @@ STATUS_BADGE_FONT_WEIGHT = win32con.FW_EXTRABOLD
 MODE_BADGE_FONT_WEIGHT = win32con.FW_HEAVY
 FOOTER_LABEL_FONT_WEIGHT = win32con.FW_NORMAL
 FONT_WEIGHT_BIAS = 75
-FONT_QUALITY = win32con.CLEARTYPE_NATURAL_QUALITY
+FONT_QUALITY = theme.FONT_QUALITY
 
 FONT_CELL_HEIGHTS = {
     META_FONT_SIZE: 11,
@@ -66,13 +67,11 @@ FONT_CELL_HEIGHTS = {
 
 
 def font_cell_height(size: int) -> int:
-    return FONT_CELL_HEIGHTS.get(size, size)
+    return theme.font_cell_height(size, FONT_CELL_HEIGHTS)
 
 
 def font_weight(weight: int) -> int:
-    if weight <= win32con.FW_NORMAL:
-        return weight
-    return min(win32con.FW_HEAVY, weight + FONT_WEIGHT_BIAS)
+    return theme.font_weight(weight, FONT_WEIGHT_BIAS)
 
 PANEL_RECT = (0, 0, 360, 321)
 HEADER_RECT = (8, 8, 352, 74)
@@ -88,8 +87,4 @@ ROW_HEIGHT = 30
 ROW_GAP = 3
 FOOTER_RECT = (8, 280, 352, 310)
 
-TEXT_FLAGS = (
-    win32con.DT_SINGLELINE
-    | win32con.DT_NOPREFIX
-    | win32con.DT_VCENTER
-)
+TEXT_FLAGS = theme.TEXT_SINGLE_LINE_FLAGS

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+from dataclasses import dataclass
 from typing import Callable
 
 import win32api
@@ -10,6 +11,16 @@ import win32con
 import win32gui
 
 WDA_EXCLUDEFROMCAPTURE = 0x00000011
+
+
+@dataclass(frozen=True)
+class WindowCreateSpec:
+    class_name: str
+    title: str
+    ex_style: int
+    style: int
+    position: tuple[int, int]
+    size: tuple[int, int]
 
 
 def register_window_class(
@@ -27,6 +38,25 @@ def register_window_class(
         win32gui.RegisterClass(wc)
     except win32gui.error:
         pass
+
+
+def create_window(hinst: int, spec: WindowCreateSpec) -> int:
+    x, y = spec.position
+    width, height = spec.size
+    return win32gui.CreateWindowEx(
+        spec.ex_style,
+        spec.class_name,
+        spec.title,
+        spec.style,
+        x,
+        y,
+        width,
+        height,
+        0,
+        0,
+        hinst,
+        None,
+    )
 
 
 def run_message_loop() -> int:
@@ -74,4 +104,3 @@ def foreground_preserved_by_show(hwnd: int, can_show: bool) -> bool:
     after = win32gui.GetForegroundWindow()
     win32gui.ShowWindow(hwnd, win32con.SW_HIDE)
     return before == after
-

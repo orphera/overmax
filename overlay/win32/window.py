@@ -19,9 +19,10 @@ from infra.gui.input import client_point_in_rect, hit_test_from_lparam
 from infra.gui.input import point_from_lparam, rect_from_lparam
 from infra.gui.input import screen_point_from_lparam
 from infra.gui.windowing import foreground_preserved_by_show
+from infra.gui.windowing import create_window
 from infra.gui.windowing import get_monitor_rect, has_ex_style, register_window_class
 from infra.gui.windowing import required_styles_present, run_message_loop
-from infra.gui.windowing import set_capture_exclusion
+from infra.gui.windowing import set_capture_exclusion, WindowCreateSpec
 from overlay.win32.render import (
     RenderDiagnostics,
     TextLayoutDiagnostics,
@@ -71,11 +72,7 @@ class Win32OverlayWindow:
     def create(self) -> int:
         if self.hwnd:
             return self.hwnd
-        ex_style = self._window_ex_style()
-        self.hwnd = win32gui.CreateWindowEx(
-            ex_style, CLASS_NAME, WINDOW_TITLE, win32con.WS_POPUP,
-            120, 120, *self._window_size(), 0, 0, self.hinst, None,
-        )
+        self.hwnd = create_window(self.hinst, self._create_spec())
         self._apply_opacity()
         self._refresh_dpi_metrics(self.hwnd)
         self._rounded_region_applied = self._apply_rounded_region(self.hwnd)
@@ -361,6 +358,16 @@ class Win32OverlayWindow:
             | win32con.WS_EX_TOPMOST
             | win32con.WS_EX_TOOLWINDOW
             | win32con.WS_EX_NOACTIVATE
+        )
+
+    def _create_spec(self) -> WindowCreateSpec:
+        return WindowCreateSpec(
+            class_name=CLASS_NAME,
+            title=WINDOW_TITLE,
+            ex_style=self._window_ex_style(),
+            style=win32con.WS_POPUP,
+            position=(120, 120),
+            size=self._window_size(),
         )
 
     def _window_size(self) -> tuple[int, int]:

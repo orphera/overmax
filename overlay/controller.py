@@ -25,6 +25,7 @@ from overlay.window import OverlaySignals, OverlayWindow
 from overlay.settings_window import SettingsWindow
 from overlay.sync_window import SyncWindow
 from overlay.win32.settings_window import Win32SettingsWindow
+from overlay.win32.sync_window import Win32SyncWindow
 from overlay.win32.view_state import apply_payload_to_view_state, default_view_state
 from overlay.win32.window import Win32OverlayWindow, set_process_dpi_awareness
 
@@ -75,7 +76,7 @@ class OverlayController:
         self._overlay_backend = _resolve_overlay_backend()
         self._win32_view_state = default_view_state()
         self._roi_window: Optional[RoiOverlayWindow] = None
-        self._sync_window: Optional[SyncWindow] = None
+        self._sync_window: Optional[SyncWindow | Win32SyncWindow] = None
         self._settings_window = None
         self._tray_icon: Optional[QSystemTrayIcon] = None
         self._debug_log_cb = None
@@ -260,7 +261,7 @@ class OverlayController:
         if self._using_win32_overlay():
             self._window.set_settings_callback(self.signals.settings_requested.emit)
 
-        self._sync_window = SyncWindow(self.db, self.record_db)
+        self._sync_window = self._create_sync_window()
 
         # 시그널 연결
         self._connect_settings_sync_callbacks()
@@ -293,6 +294,12 @@ class OverlayController:
             self.log("설정 창 backend: win32")
             return Win32SettingsWindow()
         return SettingsWindow()
+
+    def _create_sync_window(self):
+        if self._overlay_backend == OVERLAY_BACKEND_WIN32:
+            self.log("동기화 창 backend: win32")
+            return Win32SyncWindow(self.db, self.record_db)
+        return SyncWindow(self.db, self.record_db)
 
     def _connect_settings_window(self) -> None:
         if isinstance(self._settings_window, Win32SettingsWindow):

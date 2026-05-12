@@ -804,17 +804,51 @@ Phase 11에서도 detection/capture/core, recommendation, verified pipeline은
   worker completion smoke가 모두 통과한 뒤에만 진행한다.
 
 다음 작업:
-- [ ] Win32 동기화 창 후보 파일을 500라인 이하로 설계하고 row rendering은 별도
+- [x] Win32 동기화 창 후보 파일을 500라인 이하로 설계하고 row rendering은 별도
   module로 분리
-- [ ] 밝은 보조창 palette와 font metrics 기반 column layout 적용
-- [ ] `show_window(steam_id, persona_name, account_path)` / `set_account()` 계약 구현
-- [ ] no-account 상태: refresh 버튼 비활성화, 안내 문구 표시
-- [ ] account-present 상태: refresh 버튼 활성화, sample candidate rows 렌더링
-- [ ] row별 등록/삭제 버튼은 첫 절편에서 no-op callback smoke만 수행
+- [x] 밝은 보조창 palette와 font metrics 기반 column layout 적용
+- [x] `show_window(steam_id, persona_name, account_path)` / `set_account()` 계약 구현
+- [x] no-account 상태: refresh 버튼 비활성화, 안내 문구 표시
+- [x] account-present 상태: refresh 버튼 활성화, sample candidate rows 렌더링
+- [x] row별 등록/삭제 버튼은 첫 절편에서 no-op callback smoke만 수행
 - [ ] worker thread 결과를 Win32 UI thread로 넘기는 post-message bridge 설계
 - [ ] 실제 `build_candidates()` 연결 전 sample fixture smoke 추가
 - [ ] 실제 upload/delete 연결 전 API mutation이 일어나지 않는 dry-run smoke 추가
-- [ ] `OverlayController`는 Win32 동기화 창 전체 계약이 통과한 뒤 opt-in 연결
+- [x] `OverlayController`는 Win32 opt-in 경로에서 동기화 창 골격으로 연결
+
+2026-05-12 골격/연결 절편:
+- `overlay/win32/sync_window.py`에 Win32 동기화 창 후보 shell을 추가했다.
+  지원 범위는 title/status/count, no-account refresh disabled, account-present
+  refresh enabled, sample 후보 표시, 등록/삭제 no-op 안내까지로 제한한다.
+- 후보 row native control 생성은 `overlay/win32/sync_row.py`로 분리해 동기화 창
+  본문 파일을 500라인 이하로 유지했다.
+- `overlay.main_backend=win32`일 때 `OverlayController`가 `Win32SyncWindow`를
+  생성하도록 연결했다. PyQt6 기본 경로는 기존 `SyncWindow`를 유지한다.
+- 실제 `build_candidates()`, upload/delete, action 후 rescan은 아직 연결하지 않는다.
+
+검증:
+
+```text
+.\.venv_build\Scripts\python.exe -m py_compile overlay\controller.py overlay\win32\sync_window.py overlay\win32\sync_row.py test\win32_sync_window_smoke.py
+.\.venv_build\Scripts\python.exe test\win32_sync_window_smoke.py --import-only
+.\.venv_build\Scripts\python.exe test\win32_sync_window_smoke.py --diagnostics
+.\.venv_build\Scripts\python.exe test\win32_sync_window_smoke.py --account-check
+.\.venv_build\Scripts\python.exe -c "from settings import SETTINGS; SETTINGS['overlay']['main_backend']='win32'; from overlay.controller import OverlayController; c=OverlayController(None, None); print(type(c._create_sync_window()).__name__)"
+```
+
+결과:
+
+```text
+Win32 sync window import ok
+hwnd_created=True
+refresh_enabled=False
+row_count=2
+status_text=sample 후보를 표시했습니다. 등록/삭제는 아직 no-op입니다.
+before_refresh_enabled=False
+after_refresh_enabled=True
+[Overlay] 동기화 창 backend: win32
+Win32SyncWindow
+```
 
 ## 검증 기준
 

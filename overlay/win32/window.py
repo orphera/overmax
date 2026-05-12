@@ -18,6 +18,7 @@ from overlay.win32.geometry import (
     scale_for_dpi,
     scaled_window_size,
 )
+from overlay.win32.back_buffer import draw_buffered
 from overlay.win32.render import (
     RenderDiagnostics,
     TextLayoutDiagnostics,
@@ -356,7 +357,8 @@ class Win32OverlayWindow:
     def _paint(self, hwnd: int) -> None:
         hdc, paint_struct = win32gui.BeginPaint(hwnd)
         try:
-            self.draw(hdc)
+            width, height = self._window_size()
+            draw_buffered(hdc, width, height, self.draw)
         finally:
             win32gui.EndPaint(hwnd, paint_struct)
 

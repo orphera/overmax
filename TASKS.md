@@ -225,6 +225,9 @@ recommendation, verified pipeline은 변경하지 않는다.
 - 실제 오버레이 캡처에서 DirectWrite 정렬이 정상화된 것을 확인한 뒤, 텍스트
   렌더링의 GDI `DrawText` fallback 경로를 제거했다. 설정 아이콘도 DirectWrite
   글리프만 사용하며 GDI primitive fallback은 제거했다.
+- Win32 `WM_PAINT` 경로가 창 DC에 직접 그리던 구조라 draw 단계가 노출될 수
+  있어, 메모리 DC/compatible bitmap에 한 프레임을 먼저 완성한 뒤 `BitBlt`로
+  복사하는 double buffering 경로를 추가했다.
 
 완료 기준:
 - [ ] 같은 payload에서 PyQt6와 Win32 오버레이가 한 화면 안에서 명확히 다른

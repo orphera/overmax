@@ -14,10 +14,6 @@ def get_data_dir() -> Path:
 
 def apply_all():
     # EasyOCR 모델 패치 제거됨
-    if getattr(sys, "frozen", False):
-        base = get_base_dir()
-        qt_plugins = base / "PyQt6" / "Qt6" / "plugins"
-        if qt_plugins.exists():
-            os.environ["QT_PLUGIN_PATH"] = str(qt_plugins)
+    pass
 
 apply_all()

@@ -1,66 +1,29 @@
-"""Overlay controller that bridges runtime events to Qt UI."""
+"""Overlay controller that bridges runtime events to Win32 UI."""
+
+from __future__ import annotations
 
 import os
 import sys
 import threading
+import win32api
+import win32con
+import win32gui
 from typing import Optional
 
 from settings import SETTINGS
-import runtime_patch
-
-try:
-    from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
-    PYQT_AVAILABLE = True
-except ImportError:
-    PYQT_AVAILABLE = False
-
 from data.varchive import VArchiveDB
 from data.recommend import Recommender
 from data.varchive_client import VArchiveRecordClient
 from data.varchive_uploader import parse_account_file
 from core.game_state import GameSessionState
-from overlay.ui.navigation import RoiOverlayWindow
 from overlay.ui_payload import OverlayPayloadBuilder, OverlayUpdatePayload
-from overlay.window import OverlaySignals, OverlayWindow
-from overlay.settings_window import SettingsWindow
-from overlay.sync_window import SyncWindow
+from overlay.signals import OverlaySignals
 from overlay.win32.settings_window import Win32SettingsWindow
 from overlay.win32.sync_window import Win32SyncWindow
 from overlay.win32.view_state import apply_payload_to_view_state, default_view_state
 from overlay.win32.window import Win32OverlayWindow, set_process_dpi_awareness
-
-OVERLAY_BACKEND_PYQT6 = "pyqt6"
-OVERLAY_BACKEND_WIN32 = "win32"
-OVERLAY_BACKENDS = {OVERLAY_BACKEND_PYQT6, OVERLAY_BACKEND_WIN32}
-
-
-def _resolve_overlay_backend() -> str:
-    cli_backend = _resolve_overlay_backend_from_argv(sys.argv[1:])
-    raw_backend = cli_backend or os.getenv("OVERMAX_OVERLAY_BACKEND")
-    if raw_backend is None:
-        raw_backend = SETTINGS.get("overlay", {}).get("main_backend", OVERLAY_BACKEND_PYQT6)
-
-    backend = str(raw_backend).strip().lower()
-    if backend in OVERLAY_BACKENDS:
-        return backend
-    print(f"[Overlay] 알 수 없는 main_backend={backend!r}, pyqt6로 실행")
-    return OVERLAY_BACKEND_PYQT6
-
-
-def _resolve_overlay_backend_from_argv(argv: list[str]) -> Optional[str]:
-    for arg in argv:
-        if arg == "--win32-overlay":
-            return OVERLAY_BACKEND_WIN32
-        if arg.startswith("--overlay-backend="):
-            return arg.split("=", 1)[1]
-    return None
-
-
-def _qt_argv() -> list[str]:
-    return [
-        arg for arg in sys.argv
-        if arg != "--win32-overlay" and not arg.startswith("--overlay-backend=")
-    ]
+from infra.gui.tray import Win32TrayIcon, TrayMenuItem
+from constants import TOGGLE_HOTKEY, TRAY_TOOLTIP
 
 
 class OverlayController:
@@ -71,17 +34,15 @@ class OverlayController:
         self.recommender = Recommender(db, record_db)
         self.payload_builder = OverlayPayloadBuilder(db, self.recommender, self.log)
         self.signals = OverlaySignals()
-        self._app: Optional[QApplication] = None
-        self._window: Optional[OverlayWindow | Win32OverlayWindow] = None
-        self._overlay_backend = _resolve_overlay_backend()
+        
+        self._window: Optional[Win32OverlayWindow] = None
         self._win32_view_state = default_view_state()
-        self._roi_window: Optional[RoiOverlayWindow] = None
-        self._sync_window: Optional[SyncWindow | Win32SyncWindow] = None
-        self._settings_window = None
-        self._tray_icon: Optional[QSystemTrayIcon] = None
+        self._settings_window: Optional[Win32SettingsWindow] = None
+        self._sync_window: Optional[Win32SyncWindow] = None
+        self._tray_icon: Optional[Win32TrayIcon] = None
+        
         self._debug_log_cb = None
         self._debug_toggle_cb = None
-
         self._last_window_rect: Optional[tuple[int, int, int, int]] = None
 
     def _get_account_path_for_steam_id(self, steam_id: str) -> str:
@@ -92,7 +53,6 @@ class OverlayController:
             path = entry.get("account_path", "")
             if path:
                 return str(path)
-        # 하위 호환: 구버전 단일 account_path
         legacy_path = varchive_cfg.get("account_path", "")
         return str(legacy_path) if legacy_path else ""
 
@@ -102,38 +62,44 @@ class OverlayController:
     def notify_screen(self, is_song_select: bool):
         self.log(f"화면 알림: {'선곡화면' if is_song_select else '기타화면'}")
         self.signals.screen_changed.emit(is_song_select)
-        if self._using_win32_overlay():
-            self._show_or_hide_win32_overlay(is_song_select)
+        if is_song_select:
+            self._window.show()
+        else:
+            self._window.hide()
 
     def notify_confidence(self, confidence: float):
         self.signals.confidence_changed.emit(confidence)
-        if self._using_win32_overlay():
+        if self._window:
             self._window.update_confidence(confidence)
 
     def notify_window_pos(self, left, top, width, height):
-        self.log(f"창 위치: ({left},{top}) {width}x{height}")
         self._last_window_rect = (left, top, width, height)
         self.signals.position_changed.emit(left, top, width, height)
-        if self._using_win32_overlay():
+        if self._window:
             self._window.move_to_game_rect(left, top, width, height)
 
     def notify_window_lost(self):
-        self.log("게임 창 소실 알림 수신: 오버레이 숨김 + ROI OFF")
+        self.log("게임 창 소실 알림 수신: 오버레이 숨김")
         self._last_window_rect = None
         self.signals.screen_changed.emit(False)
-        self.signals.roi_enabled_changed.emit(False)
         self.signals.position_changed.emit(0, 0, 0, 0)
-        if self._using_win32_overlay():
+        if self._window:
             self._window.hide()
 
     def notify_state(self, state: GameSessionState):
-        """인식된 게임 상태를 수신하여 UI 시그널 일괄 처리(Batch)."""
         payload = self.payload_builder.build_state_update(state)
         self._emit_payload(payload)
 
     def _emit_payload(self, payload: OverlayUpdatePayload):
-        if self._using_win32_overlay():
-            self._update_win32_payload(payload)
+        # Update view state
+        self._win32_view_state = apply_payload_to_view_state(
+            self._win32_view_state,
+            payload,
+        )
+        if self._window:
+            self._window.update_view_state(self._win32_view_state)
+
+        # Emit individual signals for windows that might need them
         if payload.status_changed is not None:
             self.signals.status_changed.emit(payload.status_changed)
         if payload.song is not None:
@@ -163,23 +129,6 @@ class OverlayController:
         payload = self.payload_builder.build_recommendation_refresh()
         self._emit_payload(OverlayUpdatePayload(recommendations=payload))
 
-    def set_roi_overlay_enabled(self, enabled: bool):
-        if self._roi_window is None:
-            return
-
-        self._roi_window.set_enabled(enabled)
-        self.log(f"ROI 영역 표시: {'ON' if enabled else 'OFF'}")
-        if enabled and self._last_window_rect is not None:
-            left, top, width, height = self._last_window_rect
-            self._roi_window.set_game_rect(left, top, width, height)
-
-    def toggle_roi_overlay(self):
-        if self._roi_window is None:
-            return False
-        new_state = not self._roi_window.is_enabled()
-        self.set_roi_overlay_enabled(new_state)
-        return new_state
-
     def log(self, msg: str):
         full = f"[Overlay] {msg}"
         print(full)
@@ -195,16 +144,13 @@ class OverlayController:
         self.log(f"오버레이 위치 저장 (user.json): ({x},{y})")
 
     def toggle_visibility(self):
-        if self._using_win32_overlay():
+        if self._window:
             self._window.toggle_visibility()
-            return
-        self.signals.visibility_toggle_requested.emit()
 
     def _on_fetch_varchive(self, steam_id: str, v_id: str, button: int):
         if not self.varchive_client:
             self.log("VArchiveClient가 초기화되지 않았습니다.")
             return
-
         if not v_id:
             self.log("V-Archive ID가 입력되지 않았습니다.")
             return
@@ -223,170 +169,98 @@ class OverlayController:
             
             if success_count > 0:
                 self.log(f"V-Archive 기록 {success_count}개 모드 갱신 완료")
-                # RecordManager에게 캐시 다시 읽으라고 알림
                 if hasattr(self.record_db, "refresh"):
                     self.record_db.refresh()
-                
                 self.notify_record_updated()
 
         threading.Thread(target=work, daemon=True).start()
 
     def _on_account_file_changed(self, steam_id: str, path: str):
-        from data.varchive_uploader import parse_account_file
         account = parse_account_file(path) if path else None
         if self._sync_window:
             self._sync_window.set_account(steam_id, account)
 
     def run(self, debug_ctrl=None):
-        if not PYQT_AVAILABLE:
-            print("[Overlay] PyQt6 없음, 콘솔 모드로 실행")
-            import time
-
-            while True:
-                time.sleep(1)
-            return
-
-        self._app = QApplication(_qt_argv())
-        self._app.setQuitOnLastWindowClosed(False)
-        self._window = self._create_main_overlay()
+        set_process_dpi_awareness()
+        
+        # Initialize windows
+        self._window = Win32OverlayWindow(self._win32_view_state)
         self._window.hide()
         self._window.set_user_move_callback(self._on_overlay_user_moved)
-
-        self._settings_window = self._create_settings_window()
+        self._window.set_settings_callback(lambda: self.signals.settings_requested.emit())
+        
+        self._settings_window = Win32SettingsWindow()
         self._settings_window.hide()
-        self._connect_settings_window()
-        if self._using_win32_overlay():
-            self.signals.scale_changed.connect(self._window.rebuild_ui)
+        
+        self._sync_window = Win32SyncWindow(self.db, self.record_db)
+        
+        # Connect callbacks
+        self._settings_window.set_opacity_callback(self._window.update_base_opacity)
+        self._settings_window.set_scale_callback(self.signals.scale_changed.emit)
+        self._settings_window.set_fetch_varchive_callback(self._on_fetch_varchive)
+        self._settings_window.set_sync_callback(self._sync_window.show_window)
+        self._settings_window.set_account_file_callback(self._on_account_file_changed)
+        
+        self.signals.scale_changed.connect(self._window.rebuild_ui)
         self.signals.settings_requested.connect(self._settings_window.show_window)
-        if self._using_win32_overlay():
-            self._window.set_settings_callback(self.signals.settings_requested.emit)
-
-        self._sync_window = self._create_sync_window()
-
-        # 시그널 연결
-        self._connect_settings_sync_callbacks()
-
-        self._roi_window = RoiOverlayWindow()
-        self._roi_window.hide()
-        self.signals.position_changed.connect(self._roi_window.set_game_rect)
-        self.signals.roi_enabled_changed.connect(self._roi_window.set_enabled)
-
+        
         self._emit_initial_state()
         self._restore_window_position()
         self._setup_debug(debug_ctrl)
         self._setup_tray_icon()
-        
-        # 시작 시 자동 갱신
         self._handle_auto_refresh()
         
-        self._app.exec()
-
-    def _create_main_overlay(self):
-        if self._overlay_backend == OVERLAY_BACKEND_WIN32:
-            set_process_dpi_awareness()
-            self.log("메인 오버레이 backend: win32")
-            return Win32OverlayWindow(self._win32_view_state)
-        self.log("메인 오버레이 backend: pyqt6")
-        return OverlayWindow(self.signals)
-
-    def _create_settings_window(self):
-        if self._overlay_backend == OVERLAY_BACKEND_WIN32:
-            self.log("설정 창 backend: win32")
-            return Win32SettingsWindow()
-        return SettingsWindow()
-
-    def _create_sync_window(self):
-        if self._overlay_backend == OVERLAY_BACKEND_WIN32:
-            self.log("동기화 창 backend: win32")
-            return Win32SyncWindow(self.db, self.record_db)
-        return SyncWindow(self.db, self.record_db)
-
-    def _connect_settings_window(self) -> None:
-        if isinstance(self._settings_window, Win32SettingsWindow):
-            self._settings_window.set_opacity_callback(self._window.update_base_opacity)
-            self._settings_window.set_scale_callback(self.signals.scale_changed.emit)
-            self._settings_window.set_fetch_varchive_callback(self._on_fetch_varchive)
-            return
-        self._settings_window.opacity_changed.connect(self._window.update_base_opacity)
-        self._settings_window.scale_changed.connect(self.signals.scale_changed)
-        self._settings_window.fetch_varchive_requested.connect(self._on_fetch_varchive)
-
-    def _connect_settings_sync_callbacks(self) -> None:
-        if isinstance(self._settings_window, Win32SettingsWindow):
-            self._settings_window.set_sync_callback(self._sync_window.show_window)
-            self._settings_window.set_account_file_callback(self._on_account_file_changed)
-            return
-        self._settings_window.sync_requested.connect(
-            lambda steam_id, persona_name, account_path: self._sync_window.show_window(steam_id, persona_name, account_path)
-        )
-        self._settings_window.account_file_changed.connect(self._on_account_file_changed)
-
-    def _using_win32_overlay(self) -> bool:
-        return isinstance(self._window, Win32OverlayWindow)
-
-    def _update_win32_payload(self, payload: OverlayUpdatePayload) -> None:
-        self._win32_view_state = apply_payload_to_view_state(
-            self._win32_view_state,
-            payload,
-        )
-        self._window.update_view_state(self._win32_view_state)
-
-    def _show_or_hide_win32_overlay(self, should_show: bool) -> None:
-        if should_show:
-            self._window.show()
-            return
-        self._window.hide()
+        # Start Win32 message pump (for tray icon and windows)
+        # Note: Win32OverlayWindow and others run in their own threads or use their own loops,
+        # but the tray icon and general message handling need a main pump.
+        win32gui.PumpMessages()
 
     def _handle_auto_refresh(self):
         if not SETTINGS.get("varchive", {}).get("auto_refresh", False):
             return
-        
         from data.steam_session import get_most_recent_steam_id
         sid = get_most_recent_steam_id()
         if not sid:
             return
-            
         entry = SETTINGS.get("varchive", {}).get("user_map", {}).get(sid, {})
         v_id = entry.get("v_id", "") if isinstance(entry, dict) else entry
         if v_id:
-            self.log(f"자동 갱신 시작 (SteamID: {sid}, V-ID: {v_id})")
-            self._on_fetch_varchive(sid, v_id, 0) # 0 for all buttons
+            self._on_fetch_varchive(sid, v_id, 0)
 
     def _restore_window_position(self):
-        if self._window is None or self._app is None:
+        if self._window is None:
             return
-
         overlay_cfg = SETTINGS.get("overlay", {})
         pos = overlay_cfg.get("position")
         if pos is None:
             return
-
-        sx, sy = int(pos["x"]), int(pos["y"])
-        if self._using_win32_overlay():
-            self._window.apply_saved_position(sx, sy)
-            self.log(f"오버레이 위치 복원: ({sx},{sy})")
-            return
-
-        screen = self._app.primaryScreen().geometry()
-        sx = max(0, min(sx, max(0, screen.width() - self._window.width())))
-        sy = max(0, min(sy, max(0, screen.height() - self._window.height())))
-        self._window.apply_saved_position(sx, sy)
-        self.log(f"오버레이 위치 복원: ({sx},{sy})")
+        self._window.apply_saved_position(int(pos["x"]), int(pos["y"]))
 
     def _setup_debug(self, debug_ctrl):
         if debug_ctrl is None:
-            self._debug_toggle_cb = None
             return
         debug_ctrl.create_window()
-        debug_ctrl.set_roi_toggle_callback(self.set_roi_overlay_enabled)
         self._debug_toggle_cb = debug_ctrl.toggle_window
 
     def _setup_tray_icon(self):
-        from overlay.tray_icon import create_overlay_tray_icon
-
-        self._tray_icon = create_overlay_tray_icon(
-            app=self._app,
-            window=self._window,
-            settings_window=self._settings_window,
-            debug_toggle_cb=self._debug_toggle_cb,
+        menu_items = [
+            TrayMenuItem(f"오버레이 표시/숨김 ({TOGGLE_HOTKEY})", self.toggle_visibility, True),
+            TrayMenuItem("설정", lambda: self.signals.settings_requested.emit()),
+        ]
+        if self._debug_toggle_cb:
+            menu_items.append(TrayMenuItem("디버그 창 표시/숨김", self._debug_toggle_cb))
+        
+        menu_items.append(TrayMenuItem("", lambda: None)) # Separator
+        menu_items.append(TrayMenuItem("종료", lambda: win32gui.PostQuitMessage(0)))
+        
+        self._tray_icon = Win32TrayIcon(
+            TRAY_TOOLTIP,
+            menu_items,
+            on_double_click=self.toggle_visibility
         )
+        self._tray_icon.start()
+
+    def stop(self):
+        if self._tray_icon:
+            self._tray_icon.stop()
+        win32gui.PostQuitMessage(0)

@@ -9,15 +9,12 @@ from pathlib import Path
 a = Analysis(
     ["main.py"],
     pathex=[str(Path(".").resolve())],
-    binaries=[], # torch_libs 제거 
+    binaries=[],
     datas=[
         ("settings.json", "."),
         ("version_info.txt", "."),
-    ],    # easyocr_datas 제거 
+    ],
     hiddenimports=[
-        "PyQt6.QtCore",
-        "PyQt6.QtGui",
-        "PyQt6.QtWidgets",
         "winrt.windows.media.ocr",
         "winrt.windows.graphics.imaging",
         "winrt.windows.storage.streams",
@@ -33,22 +30,16 @@ a = Analysis(
         "httpx",
         "numpy",
     ],
-    hookspath=[], # 커스텀 훅 불필요
+    hookspath=[],
     excludes=[
-        "torch",      # 절대 포함되지 않도록 명시 [cite: 30]
+        "PyQt6",
+        "PySide6",
+        "torch",
         "torchvision",
-        "easyocr",    # 제거 [cite: 30]
+        "easyocr",
         "matplotlib",
         "pandas",
-        # Qt 미사용 모듈들
-        "PyQt6.QtNetwork",
-        "PyQt6.QtSql",
-        "PyQt6.QtXml",
-        "PyQt6.QtBluetooth",
-        "PyQt6.QtMultimedia",
-        "PyQt6.QtWebEngine",
-        "PyQt6.QtTest",
-        "PyQt6.Qt3D",
+        "tkinter",
     ],
     noarchive=False,
 )
@@ -62,7 +53,7 @@ exe = EXE(
     exclude_binaries=True,
     name="overmax",
     debug=False,
-    console=False, # 실배포용 [cite: 34]
+    console=False,
     upx=True,
     version='version_info.txt',
 )

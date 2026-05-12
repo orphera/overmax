@@ -16,9 +16,6 @@ winrt-Windows.Foundation.Collections
 # Windows API (창 추적)
 pywin32>=306
 
-# UI
-PyQt6>=6.6.0
-
 # 퍼지 문자열 매칭 (OCR 오인식 보정)
 rapidfuzz>=3.6.1
 

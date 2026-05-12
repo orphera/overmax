@@ -55,6 +55,8 @@ BADGE_FONT_WEIGHT = win32con.FW_BOLD
 STATUS_BADGE_FONT_WEIGHT = win32con.FW_EXTRABOLD
 MODE_BADGE_FONT_WEIGHT = win32con.FW_HEAVY
 FOOTER_LABEL_FONT_WEIGHT = win32con.FW_NORMAL
+FONT_WEIGHT_BIAS = 75
+FONT_QUALITY = win32con.CLEARTYPE_NATURAL_QUALITY
 
 FONT_CELL_HEIGHTS = {
     META_FONT_SIZE: 11,
@@ -64,6 +66,12 @@ FONT_CELL_HEIGHTS = {
 
 def font_cell_height(size: int) -> int:
     return FONT_CELL_HEIGHTS.get(size, size)
+
+
+def font_weight(weight: int) -> int:
+    if weight <= win32con.FW_NORMAL:
+        return weight
+    return min(win32con.FW_HEAVY, weight + FONT_WEIGHT_BIAS)
 
 PANEL_RECT = (0, 0, 360, 321)
 HEADER_RECT = (8, 8, 352, 74)
@@ -81,7 +89,6 @@ FOOTER_RECT = (8, 280, 352, 310)
 
 TEXT_FLAGS = (
     win32con.DT_SINGLELINE
-    | win32con.DT_END_ELLIPSIS
     | win32con.DT_NOPREFIX
     | win32con.DT_VCENTER
 )

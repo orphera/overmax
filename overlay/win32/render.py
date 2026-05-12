@@ -165,11 +165,11 @@ class Win32OverlayRenderer:
         badge = f"{entry.difficulty} {entry.level}".strip()
         self._draw_diff_badge(
             hdc, badge, entry.difficulty,
-            style.ROW_LEFT + 8, top + 4, style.ROW_LEFT + 44, top + 26,
+            style.ROW_LEFT + 8, top + 4, style.ROW_LEFT + 48, top + 26,
         )
         self._draw_text(
             hdc, entry.song_name,
-            style.ROW_LEFT + 52, top + 3, style.ROW_RIGHT - 80, top + 27,
+            style.ROW_LEFT + 56, top + 3, style.ROW_RIGHT - 80, top + 27,
             style.TEXT_BODY, style.ROW_BG, style.BODY_FONT_SIZE,
             style.BODY_FONT_WEIGHT,
         )
@@ -355,8 +355,8 @@ class Win32OverlayRenderer:
         logfont = win32gui.LOGFONT()
         logfont.lfFaceName = face
         logfont.lfHeight = -self._s(style.font_cell_height(size))
-        logfont.lfWeight = weight
-        logfont.lfQuality = win32con.CLEARTYPE_QUALITY
+        logfont.lfWeight = style.font_weight(weight)
+        logfont.lfQuality = style.FONT_QUALITY
         return win32gui.CreateFontIndirect(logfont)
 
 
@@ -384,7 +384,7 @@ def render_diagnostics_ok(diagnostics: RenderDiagnostics) -> bool:
         1 <= diagnostics.alpha <= 255
         and diagnostics.rounded_region
         and diagnostics.font_created
-        and diagnostics.font_quality == win32con.CLEARTYPE_QUALITY
+        and diagnostics.font_quality == style.FONT_QUALITY
         and text_width > 0
         and text_height > 0
     )

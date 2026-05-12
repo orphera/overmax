@@ -24,6 +24,7 @@ from overlay.win32.render import (
     Win32OverlayRenderer,
     build_text_layout_diagnostics,
 )
+from overlay.win32 import style
 from overlay.win32.view_state import Win32OverlayViewState, default_view_state
 from settings import SETTINGS
 
@@ -104,7 +105,7 @@ class Win32OverlayWindow:
     def update_view_state(self, view_state: Win32OverlayViewState) -> None:
         self._view_state = view_state
         if self.hwnd:
-            win32gui.InvalidateRect(self.hwnd, None, True)
+            win32gui.InvalidateRect(self.hwnd, None, False)
 
     def show(self) -> None:
         hwnd = self.create()
@@ -167,7 +168,7 @@ class Win32OverlayWindow:
             win32con.SWP_NOACTIVATE | win32con.SWP_NOZORDER,
         )
         self._rounded_region_applied = self._apply_rounded_region(self.hwnd)
-        win32gui.InvalidateRect(self.hwnd, None, True)
+        win32gui.InvalidateRect(self.hwnd, None, False)
 
     def apply_saved_position(self, x: int, y: int) -> tuple[int, int]:
         self.create()
@@ -229,7 +230,7 @@ class Win32OverlayWindow:
             self._alpha(),
             self._rounded_region_applied,
             self._renderer.font_created,
-            win32con.CLEARTYPE_QUALITY,
+            style.FONT_QUALITY,
             text_extent,
         )
 
@@ -266,7 +267,7 @@ class Win32OverlayWindow:
         wc.lpszClassName = CLASS_NAME
         wc.lpfnWndProc = self._wnd_proc
         wc.hCursor = win32gui.LoadCursor(0, win32con.IDC_ARROW)
-        wc.hbrBackground = win32con.COLOR_WINDOW + 1
+        wc.hbrBackground = 0
         try:
             win32gui.RegisterClass(wc)
         except win32gui.error:
@@ -284,6 +285,8 @@ class Win32OverlayWindow:
         if msg == win32con.WM_PAINT:
             self._paint(hwnd)
             return 0
+        if msg == win32con.WM_ERASEBKGND:
+            return 1
         if msg == win32con.WM_TIMER:
             win32gui.DestroyWindow(hwnd)
             return 0

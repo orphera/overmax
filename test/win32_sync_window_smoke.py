@@ -44,6 +44,24 @@ def run_account_check() -> None:
         raise SystemExit(1)
 
 
+def run_bridge_check() -> None:
+    window = Win32SyncWindow(None, None, sample_candidates=[])
+    window.show_window("76561198000000000", "Smoke User", "")
+    
+    # Simulate worker emitting scan_finished
+    candidates = _sample_candidates()
+    window._signals.scan_finished.emit(candidates)
+    
+    # Process messages
+    window.pump(500)
+    
+    diagnostics = window.diagnostics()
+    print(f"bridge_row_count={diagnostics.row_count}")
+    if diagnostics.row_count != len(candidates):
+        raise SystemExit(1)
+    print("bridge_ok=True")
+
+
 def run_show(duration_ms: int) -> None:
     window = Win32SyncWindow(None, None, sample_candidates=_sample_candidates())
     window.show_window("76561198000000000", "Smoke User", "")
@@ -53,8 +71,8 @@ def run_show(duration_ms: int) -> None:
 
 def _sample_candidates() -> list[SyncCandidate]:
     return [
-        SyncCandidate(1, "너에게로 갈래", "Smoke", "base", "4B", "MX", 99.12, True, 97.0, False),
-        SyncCandidate(2, "Long Sample Song Title For Win32 Sync", "Smoke", "base", "6B", "SC", 98.4, False, None, None),
+        SyncCandidate(i, f"Song {i}", "Smoke", "base", "4B", "MX", 99.12, True, 97.0, False)
+        for i in range(30)
     ]
 
 
@@ -63,6 +81,7 @@ def main() -> int:
     parser.add_argument("--import-only", action="store_true")
     parser.add_argument("--diagnostics", action="store_true")
     parser.add_argument("--account-check", action="store_true")
+    parser.add_argument("--bridge-check", action="store_true")
     parser.add_argument("--show", action="store_true")
     parser.add_argument("--duration-ms", type=int, default=3000)
     args = parser.parse_args()
@@ -73,6 +92,8 @@ def main() -> int:
         run_diagnostics()
     elif args.account_check:
         run_account_check()
+    elif args.bridge_check:
+        run_bridge_check()
     elif args.show:
         run_show(args.duration_ms)
     else:

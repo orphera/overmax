@@ -813,9 +813,9 @@ Phase 11에서도 detection/capture/core, recommendation, verified pipeline은
 - [x] no-account 상태: refresh 버튼 비활성화, 안내 문구 표시
 - [x] account-present 상태: refresh 버튼 활성화, sample candidate rows 렌더링
 - [x] row별 등록/삭제 버튼은 첫 절편에서 no-op callback smoke만 수행
-- [ ] worker thread 결과를 Win32 UI thread로 넘기는 post-message bridge 설계
-- [ ] 실제 `build_candidates()` 연결 전 sample fixture smoke 추가
-- [ ] 실제 upload/delete 연결 전 API mutation이 일어나지 않는 dry-run smoke 추가
+- [x] worker thread 결과를 Win32 UI thread로 넘기는 post-message bridge 설계
+- [x] 실제 `build_candidates()` 연결 전 sample fixture smoke 추가
+- [x] 실제 upload/delete 연결 전 API mutation이 일어나지 않는 dry-run smoke 추가
 - [x] `OverlayController`는 Win32 opt-in 경로에서 동기화 창 골격으로 연결
 
 2026-05-12 골격/연결 절편:
@@ -839,18 +839,60 @@ Phase 11에서도 detection/capture/core, recommendation, verified pipeline은
 ```
 
 결과:
+ 
+ ```text
+ Win32 sync window import ok
+ hwnd_created=True
+ refresh_enabled=False
+ row_count=2
+ status_text=sample 후보를 표시했습니다. 등록/삭제는 아직 no-op입니다.
+ before_refresh_enabled=False
+ after_refresh_enabled=True
+ [Overlay] 동기화 창 backend: win32
+ Win32SyncWindow
+ ```
+
+2026-05-12 Bridge/Worker 절편:
+- `overlay/win32/sync_bridge.py`에 thread-safe `PostMessage` bridge를 추가했다.
+- `Win32SyncWindow`가 `WM_SYNC_SCAN_FINISHED`, `WM_SYNC_ROW_STATUS`,
+  `WM_SYNC_ACTION_FINISHED`를 처리해 background worker 결과를 UI thread로
+  안전하게 받도록 연결했다.
+- `Win32SyncWindow`에 `_start_scan`, `_upload_worker`, `_delete_worker`를
+  추가해 실제 `build_candidates`, `upload_score`, `record_manager.delete`
+  경로를 Win32 UI thread-safe하게 연결했다.
+- `overlay/win32/sync_row.py`에 individual status label을 추가해 행별
+  진행 상태("업로드 중...", "완료", "실패" 등)를 표시하게 했다.
+
+검증:
 
 ```text
-Win32 sync window import ok
-hwnd_created=True
-refresh_enabled=False
-row_count=2
-status_text=sample 후보를 표시했습니다. 등록/삭제는 아직 no-op입니다.
-before_refresh_enabled=False
-after_refresh_enabled=True
-[Overlay] 동기화 창 backend: win32
-Win32SyncWindow
+.\.venv_build\Scripts\python.exe test\win32_sync_window_smoke.py --bridge-check
 ```
+
+결과:
+
+```text
+bridge_row_count=2
+bridge_ok=True
+```
+
+# Phase 12: Win32 UI Polish & Layout Infra
+
+Win32 UI의 하드코딩된 레이아웃을 개선하고, 심미적 완성도를 높인다.
+
+- [ ] Win32 UI Infra (`settings_common.py`) 고도화
+    - [ ] `LayoutContext` 도입 (Spacing, Alignment 관리)
+    - [ ] 시각적 그룹화를 위한 `Card`/`Divider` 컴포넌트 추가
+- [ ] Win32 동기화 창 (`Win32SyncWindow`) 디자인 개선
+    - [ ] Sticky Header/Footer 레이아웃 적용
+    - [ ] 동기화 후보 Row 컬럼 정렬 및 시각적 대비 강화
+- [ ] Win32 설정 창 (`Win32SettingsWindow`) 디자인 개선
+    - [ ] 카드 섹션 기반 레이아웃으로 개편
+    - [ ] 탭 시스템 시각적 피드백 강화
+- [ ] 통합 검증
+    - [ ] DPI 스케일링 대응 확인
+    - [ ] 기존 오버레이 기능 영향 확인 (Zero Regression)
+
 
 ## 검증 기준
 

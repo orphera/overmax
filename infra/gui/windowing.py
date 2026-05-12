@@ -21,6 +21,7 @@ class WindowCreateSpec:
     style: int
     position: tuple[int, int]
     size: tuple[int, int]
+    parent: int = 0
 
 
 def register_window_class(
@@ -52,7 +53,7 @@ def create_window(hinst: int, spec: WindowCreateSpec) -> int:
         y,
         width,
         height,
-        0,
+        spec.parent,
         0,
         hinst,
         None,

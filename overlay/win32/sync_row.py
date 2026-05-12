@@ -16,6 +16,7 @@ class SyncRowHandles:
     controls: list[int]
     upload_hwnd: int
     delete_hwnd: int
+    status_hwnd: int
     upload_id: int
     delete_id: int
 
@@ -38,16 +39,17 @@ def create_candidate_row(
     row_controls.append(controls.static(parent, hinst, ">", (378, top, 18, 22)))
     row_controls.append(controls.static(parent, hinst, _varchive_text(candidate), (402, top, 72, 22)))
     row_controls.append(controls.static(parent, hinst, candidate.reason, (480, top, 74, 22)))
+    status = controls.static(parent, hinst, "", (562, top + 22, 102, 12))  # Below buttons
 
     upload_id = 4100 + index * 2
     delete_id = upload_id + 1
     upload = controls.button(parent, hinst, "등록", upload_id, (562, top - 2, 48, 24))
     delete = controls.button(parent, hinst, "삭제", delete_id, (616, top - 2, 48, 24))
     win32gui.EnableWindow(upload, account_ready)
-    row_controls.extend([upload, delete])
+    row_controls.extend([upload, delete, status])
     for hwnd in row_controls:
         win32gui.SendMessage(hwnd, win32con.WM_SETFONT, font, True)
-    return SyncRowHandles(row_controls, upload, delete, upload_id, delete_id)
+    return SyncRowHandles(row_controls, upload, delete, status, upload_id, delete_id)
 
 
 def _rate_text(rate: float, max_combo: bool) -> str:

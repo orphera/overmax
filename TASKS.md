@@ -27,7 +27,7 @@ OpenCV 제거 이력은 `docs/opencv-to-rust-plan.md`, 전체 Rust 전환 계획
 
 ## 다음 단계: 설정 시스템 포팅
 
-- [ ] `settings.json` + `settings.user.json` 우선순위 재현
+- [x] `settings.json` + `settings.user.json` 우선순위 재현
 - [ ] delta save 정책 재현
 - [ ] normalize/clamp/snap 규칙 재현
 - [ ] 오버레이 위치, 스케일, 투명도, V-Archive user_map 파일 형식 호환 유지

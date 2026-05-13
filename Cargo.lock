@@ -77,6 +77,7 @@ name = "overmax-data"
 version = "0.1.0"
 dependencies = [
  "overmax-core",
+ "serde_json",
 ]
 
 [[package]]

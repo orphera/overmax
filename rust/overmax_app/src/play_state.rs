@@ -1,4 +1,6 @@
 use crate::frame_utils::region_mean_bgr;
+use crate::frame_utils::crop_roi;
+use crate::ocr_engine::OcrDetector;
 use crate::roi::RoiManager;
 use crate::screen_capture::CapturedFrame;
 use overmax_core::GameSessionState;
@@ -21,6 +23,7 @@ pub struct PlayStateDetector {
     history_size: usize,
     history: VecDeque<Option<RawPlayState>>,
     last_stable_state: Option<GameSessionState>,
+    ocr_done_for: Option<(u32, String, String)>,
 }
 
 impl PlayStateDetector {
@@ -29,12 +32,14 @@ impl PlayStateDetector {
             history_size: history_size.max(1),
             history: VecDeque::new(),
             last_stable_state: None,
+            ocr_done_for: None,
         }
     }
 
     pub fn reset(&mut self) {
         self.history.clear();
         self.last_stable_state = None;
+        self.ocr_done_for = None;
     }
 
     pub fn detect(
@@ -42,6 +47,7 @@ impl PlayStateDetector {
         frame: &CapturedFrame,
         rois: &RoiManager,
         song_id: Option<u32>,
+        ocr: &OcrDetector,
     ) -> GameSessionState {
         let mode = detect_button_mode(frame, rois);
         let (diff, confident) = detect_difficulty(frame, rois);
@@ -50,7 +56,9 @@ impl PlayStateDetector {
         self.push_raw(raw.clone(), confident);
 
         if let Some(stable) = self.stable_raw() {
-            let state = stable_state(stable);
+            let stable = stable.clone();
+            let rate = self.detect_rate_once(frame, rois, &stable, ocr);
+            let state = stable_state(&stable, rate);
             self.last_stable_state = Some(state.clone());
             return state;
         }
@@ -82,6 +90,23 @@ impl PlayStateDetector {
             .iter()
             .all(|item| item.as_ref() == Some(first))
             .then_some(first)
+    }
+
+    fn detect_rate_once(
+        &mut self,
+        frame: &CapturedFrame,
+        rois: &RoiManager,
+        raw: &RawPlayState,
+        ocr: &OcrDetector,
+    ) -> Option<f32> {
+        let key = state_key(raw)?;
+        if self.ocr_done_for.as_ref() == Some(&key) {
+            return self.last_stable_state.as_ref().and_then(|state| state.rate);
+        }
+        self.ocr_done_for = Some(key);
+        let rate_roi = rois.get_roi("rate")?;
+        let rate_img = crop_roi(frame, rate_roi)?;
+        ocr.detect_rate(&rate_img).0
     }
 }
 
@@ -128,15 +153,19 @@ pub fn detect_max_combo(frame: &CapturedFrame, rois: &RoiManager) -> bool {
     (f32::from(b) + f32::from(g) + f32::from(r)) / 3.0 >= 160.0
 }
 
-fn stable_state(raw: &RawPlayState) -> GameSessionState {
+fn stable_state(raw: &RawPlayState, rate: Option<f32>) -> GameSessionState {
     GameSessionState {
         song_id: raw.song_id,
         mode: raw.mode.clone(),
         diff: raw.diff.clone(),
         is_stable: true,
         is_max_combo: raw.is_max_combo,
-        rate: None,
+        rate,
     }
+}
+
+fn state_key(raw: &RawPlayState) -> Option<(u32, String, String)> {
+    Some((raw.song_id?, raw.mode.clone()?, raw.diff.clone()?))
 }
 
 fn button_colors() -> [(&'static str, &'static [(u8, u8, u8)]); 4] {
@@ -177,9 +206,10 @@ mod tests {
         paint_rect(&mut frame, 98, 488, 208, 516, (220, 220, 220));
         let rois = RoiManager::new(1920, 1080);
 
-        assert!(!detector.detect(&frame, &rois, Some(7)).is_stable);
-        assert!(!detector.detect(&frame, &rois, Some(7)).is_stable);
-        assert!(detector.detect(&frame, &rois, Some(7)).is_stable);
+        let ocr = crate::ocr_engine::OcrDetector::new();
+        assert!(!detector.detect(&frame, &rois, Some(7), &ocr).is_stable);
+        assert!(!detector.detect(&frame, &rois, Some(7), &ocr).is_stable);
+        assert!(detector.detect(&frame, &rois, Some(7), &ocr).is_stable);
     }
 
     fn blank_frame() -> CapturedFrame {

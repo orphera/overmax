@@ -1,6 +1,7 @@
 mod detection_pipeline;
 mod frame_utils;
 mod hysteresis;
+mod ocr_engine;
 mod play_state;
 mod roi;
 mod screen_capture;
@@ -41,7 +42,8 @@ fn print_runtime_probe(image_db: overmax_data::ImageIndexDb) {
             );
             if let Ok(frame) = capture {
                 let mut pipeline = detection_pipeline::DetectionPipeline::new(image_db);
-                let state = pipeline.process_frame(&frame, false, 0.0).state;
+                println!("ocr: available={}", pipeline.ocr_available());
+                let state = pipeline.process_frame(&frame, 0.0).state;
                 println!("detection_probe: {state}");
             }
         }

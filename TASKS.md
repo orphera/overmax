@@ -46,7 +46,7 @@ OpenCV 제거 이력은 `docs/opencv-to-rust-plan.md`, 전체 Rust 전환 계획
 - [x] Window tracking / capture Rust 구현
 - [x] Detection pipeline Rust 구현
 - [x] Windows OCR 연동 Rust 구현
-- [ ] `egui/winit` 오버레이 UI 구현
+- [x] `egui/winit` 오버레이 UI 구현
 - [ ] 설정 / 동기화 / 디버그 창 구현
 - [ ] Steam session / hotkey / single instance 구현
 - [ ] Updater / packaging Rust 구현

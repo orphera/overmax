@@ -2,6 +2,7 @@ mod detection_pipeline;
 mod frame_utils;
 mod hysteresis;
 mod ocr_engine;
+mod overlay_ui;
 mod play_state;
 mod roi;
 mod screen_capture;
@@ -9,6 +10,14 @@ mod window_tracker;
 
 #[cfg(target_os = "windows")]
 fn main() {
+    if std::env::args().any(|arg| arg == "--overlay-ui") {
+        if let Err(err) = overlay_ui::run_overlay() {
+            eprintln!("overlay ui failed: {err}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     let compat = overmax_data::DataCompatibility::current();
     let state = overmax_core::GameSessionState::default();
     let mut image_db = overmax_data::ImageIndexDb::new(compat.image_index_db, 0.6);

@@ -9,6 +9,12 @@ name = "overmax-rs"
 path = "src/main.rs"
 
 [dependencies]
+eframe = { version = "0.33.2", default-features = false, features = [
+    "default_fonts",
+    "glow",
+    "wayland",
+    "x11",
+] }
 overmax-core = { path = "../overmax_core" }
 overmax-data = { path = "../overmax_data" }
 overmax_cv = { path = "../overmax_cv" }

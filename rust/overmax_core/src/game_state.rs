@@ -44,10 +44,15 @@ impl fmt::Display for GameSessionState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let status = if self.is_stable { "STABLE" } else { "DETECTING" };
         let mc_status = if self.is_max_combo { " (MAX COMBO)" } else { "" };
+        let song_id = self
+            .song_id
+            .map_or_else(|| "None".to_string(), |value| value.to_string());
+        let mode = self.mode.as_deref().unwrap_or("None");
+        let diff = self.diff.as_deref().unwrap_or("None");
+
         write!(
             f,
-            "[{status}] {:?} | {:?} | {:?}{mc_status}",
-            self.song_id, self.mode, self.diff
+            "[{status}] {song_id} | {mode} | {diff}{mc_status}"
         )
     }
 }

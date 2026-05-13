@@ -19,7 +19,12 @@ class GameSessionState:
     @property
     def is_valid(self) -> bool:
         """모든 필수 정보가 존재하고 안정화된 상태인지 여부"""
-        return all([self.song_id, self.mode, self.diff]) and self.is_stable
+        return (
+            self.song_id is not None
+            and bool(self.mode)
+            and bool(self.diff)
+            and self.is_stable
+        )
 
     def __str__(self):
         status = "STABLE" if self.is_stable else "DETECTING"

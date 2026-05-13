@@ -16,14 +16,14 @@ OpenCV 제거 이력은 `docs/opencv-to-rust-plan.md`, 전체 Rust 전환 계획
 - [x] `overmax-core`, `overmax-data`, `overmax-app` crate 경계 정의
 - [x] 기존 `rust/overmax_cv`를 workspace member로 유지
 - [x] 비-Windows 실행 시 명확한 unsupported 에러를 반환하는 app skeleton 추가
-- [ ] Python 기준 fixture와 Rust 결과 비교 harness 작성
+- [x] Python 기준 fixture와 Rust 결과 비교 harness 작성
 
 ## 다음 단계: Core State 모델 포팅
 
 - [x] `GameSessionState` Rust 타입 시작점 추가
 - [x] `rate == 0.0`과 `rate is None` 의미 차이를 `Option<f32>`로 보존
 - [x] `song_id == 0`을 유효 ID로 유지하고 없음은 `Option`으로 표현
-- [ ] Python 기준 fixture를 만들어 Rust 결과와 비교
+- [x] Python 기준 fixture를 만들어 Rust 결과와 비교
 
 ## 다음 단계: 설정 시스템 포팅
 

@@ -1,0 +1,98 @@
+[
+  {
+    "name": "detecting_empty",
+    "state": {
+      "song_id": null,
+      "mode": null,
+      "diff": null,
+      "is_stable": false,
+      "is_max_combo": false,
+      "rate": null
+    },
+    "expected": {
+      "is_valid": false,
+      "should_store_rate": false,
+      "display": "[DETECTING] None | None | None"
+    }
+  },
+  {
+    "name": "stable_song_zero",
+    "state": {
+      "song_id": 0,
+      "mode": "4B",
+      "diff": "MX",
+      "is_stable": true,
+      "is_max_combo": false,
+      "rate": null
+    },
+    "expected": {
+      "is_valid": true,
+      "should_store_rate": false,
+      "display": "[STABLE] 0 | 4B | MX"
+    }
+  },
+  {
+    "name": "stable_rate_none",
+    "state": {
+      "song_id": 42,
+      "mode": "6B",
+      "diff": "SC",
+      "is_stable": true,
+      "is_max_combo": true,
+      "rate": null
+    },
+    "expected": {
+      "is_valid": true,
+      "should_store_rate": false,
+      "display": "[STABLE] 42 | 6B | SC (MAX COMBO)"
+    }
+  },
+  {
+    "name": "stable_rate_zero",
+    "state": {
+      "song_id": 42,
+      "mode": "6B",
+      "diff": "SC",
+      "is_stable": true,
+      "is_max_combo": true,
+      "rate": 0.0
+    },
+    "expected": {
+      "is_valid": true,
+      "should_store_rate": false,
+      "display": "[STABLE] 42 | 6B | SC (MAX COMBO)"
+    }
+  },
+  {
+    "name": "stable_positive_rate",
+    "state": {
+      "song_id": 42,
+      "mode": "6B",
+      "diff": "SC",
+      "is_stable": true,
+      "is_max_combo": false,
+      "rate": 99.12
+    },
+    "expected": {
+      "is_valid": true,
+      "should_store_rate": true,
+      "display": "[STABLE] 42 | 6B | SC"
+    }
+  },
+  {
+    "name": "unstable_positive_rate",
+    "state": {
+      "song_id": 42,
+      "mode": "6B",
+      "diff": "SC",
+      "is_stable": false,
+      "is_max_combo": false,
+      "rate": 99.12
+    },
+    "expected": {
+      "is_valid": false,
+      "should_store_rate": true,
+      "display": "[DETECTING] 42 | 6B | SC"
+    }
+  }
+]

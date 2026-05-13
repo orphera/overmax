@@ -34,11 +34,11 @@ OpenCV 제거 이력은 `docs/opencv-to-rust-plan.md`, 전체 Rust 전환 계획
 
 ## 다음 단계: 데이터 계층 포팅
 
-- [ ] V-Archive songs JSON 로드, 인덱싱, exact/fuzzy 검색 Rust 구현
-- [ ] `record.db` SQLite schema 호환 유지
-- [ ] `(steam_id, song_id, button_mode, difficulty)` primary key 유지
-- [ ] floor 기반 추천 정렬 유지
-- [ ] Python 추천 결과와 Rust 추천 결과 golden test 작성
+- [x] V-Archive songs JSON 로드, 인덱싱, exact/fuzzy 검색 Rust 구현
+- [x] `record.db` SQLite schema 호환 유지
+- [x] `(steam_id, song_id, button_mode, difficulty)` primary key 유지
+- [x] floor 기반 추천 정렬 유지
+- [x] Python 추천 결과와 Rust 추천 결과 golden test 작성
 
 ## 다음 단계: 런타임/배포 포팅
 

@@ -1,0 +1,13 @@
+[package]
+name = "overmax-app"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "overmax-rs"
+path = "src/main.rs"
+
+[dependencies]
+overmax-core = { path = "../overmax_core" }
+overmax-data = { path = "../overmax_data" }

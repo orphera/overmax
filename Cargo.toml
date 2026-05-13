@@ -1,0 +1,15 @@
+[workspace]
+members = [
+    "rust/overmax_app",
+    "rust/overmax_core",
+    "rust/overmax_cv",
+    "rust/overmax_data",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"

@@ -18,7 +18,9 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 
 - 메모리 접근 / 프로세스 인젝션 금지
 - 화면 캡처 기반 처리 유지
-- Python 환경 유지
+- Rust 네이티브 전환 중에도 기존 Python 앱은 기준 구현(reference implementation)으로 유지
+- Rust 앱 기준 스택은 `egui/winit`
+- 기존 사용자 파일 호환 유지: `settings.user.json`, `cache/record.db`, `cache/image_index.db`, `cache/songs.json`, GitHub Releases asset 흐름
 - 인게임 성능 영향 최소화 (최우선)
 
 ---
@@ -101,6 +103,7 @@ Letterbox/Pillarbox 자동 보정 포함.
 - **OCR 모듈 분리**: `capture/ocr_wrapper.py` → `detection/ocr.py` + `detection/ocr_wrapper.py`
 - **오버레이 분해**: 헤더/푸터/네비게이션 위젯 분리, `DebugWindow`·`SyncWindow` 독립 모듈화
 - **Core 유틸 분리**: `global_hotkey.py`, `utils.py`, `version.py` 추출
+- **Rust 전체 포팅 준비**: Rust workspace 골격과 기준 문서 추가, Python 앱을 동등성 검증 기준으로 유지
 
 ---
 

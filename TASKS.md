@@ -1,9 +1,57 @@
 # TASKS
 
-Overmax의 현재 작업은 Python 기반 verified pipeline을 유지하면서,
-OpenCV 런타임 의존성을 Rust/PyO3 backend로 단계적으로 이전하는 것이다.
+Overmax의 현재 작업은 Python 기반 verified pipeline을 기준 구현으로 유지하면서,
+Rust 네이티브 앱으로 단계적으로 전환하는 것이다.
 
-상세 계획은 `docs/opencv-to-rust-plan.md`를 따른다.
+OpenCV 제거 이력은 `docs/opencv-to-rust-plan.md`, 전체 Rust 전환 계획은
+`docs/rust-native-port-plan.md`를 따른다.
+
+## 현재 단계: Rust 전체 포팅 준비
+
+- [x] `CONTEXT.md`의 Python-only 제약을 Rust 전환 기준으로 갱신
+- [x] Rust 앱 기준 스택을 `egui/winit`으로 명시
+- [x] 기존 파일 호환 정책 명시
+- [x] verified pipeline 불변 조건을 Rust 포팅 문서에 복사
+- [x] 루트 Rust workspace 골격 추가
+- [x] `overmax-core`, `overmax-data`, `overmax-app` crate 경계 정의
+- [x] 기존 `rust/overmax_cv`를 workspace member로 유지
+- [x] 비-Windows 실행 시 명확한 unsupported 에러를 반환하는 app skeleton 추가
+- [ ] Python 기준 fixture와 Rust 결과 비교 harness 작성
+
+## 다음 단계: Core State 모델 포팅
+
+- [x] `GameSessionState` Rust 타입 시작점 추가
+- [x] `rate == 0.0`과 `rate is None` 의미 차이를 `Option<f32>`로 보존
+- [x] `song_id == 0`을 유효 ID로 유지하고 없음은 `Option`으로 표현
+- [ ] Python 기준 fixture를 만들어 Rust 결과와 비교
+
+## 다음 단계: 설정 시스템 포팅
+
+- [ ] `settings.json` + `settings.user.json` 우선순위 재현
+- [ ] delta save 정책 재현
+- [ ] normalize/clamp/snap 규칙 재현
+- [ ] 오버레이 위치, 스케일, 투명도, V-Archive user_map 파일 형식 호환 유지
+
+## 다음 단계: 데이터 계층 포팅
+
+- [ ] V-Archive songs JSON 로드, 인덱싱, exact/fuzzy 검색 Rust 구현
+- [ ] `record.db` SQLite schema 호환 유지
+- [ ] `(steam_id, song_id, button_mode, difficulty)` primary key 유지
+- [ ] floor 기반 추천 정렬 유지
+- [ ] Python 추천 결과와 Rust 추천 결과 golden test 작성
+
+## 다음 단계: 런타임/배포 포팅
+
+- [ ] Image DB 검색 경로 Rust 앱 내부 API로 전환
+- [ ] Window tracking / capture Rust 구현
+- [ ] Detection pipeline Rust 구현
+- [ ] Windows OCR 연동 Rust 구현
+- [ ] `egui/winit` 오버레이 UI 구현
+- [ ] 설정 / 동기화 / 디버그 창 구현
+- [ ] Steam session / hotkey / single instance 구현
+- [ ] Updater / packaging Rust 구현
+- [ ] 병렬 런타임 검증 harness 작성
+- [ ] Rust 앱 전환 및 Python 제거 절차 진행
 
 ## 완료: Rust HOG 검증
 

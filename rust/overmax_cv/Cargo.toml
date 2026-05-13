@@ -4,11 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "_overmax_cv"
-crate-type = ["cdylib"]
+name = "overmax_cv"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+python = ["pyo3"]
 
 [dependencies]
-pyo3 = { version = "0.27", features = ["extension-module"] }
+pyo3 = { version = "0.27", features = ["extension-module"], optional = true }
 
 [profile.release]
 lto = "thin"

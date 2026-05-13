@@ -98,7 +98,7 @@ if not exist "%RUST_CV_DIR%\Cargo.toml" (
 
 pushd "%RUST_CV_DIR%"
 set "VIRTUAL_ENV=%VENV_DIR%"
-"%PYTHON_EXE%" -m maturin develop --release
+"%PYTHON_EXE%" -m maturin develop --release --features python
 set "RUST_BUILD_RESULT=%ERRORLEVEL%"
 popd
 

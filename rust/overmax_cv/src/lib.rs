@@ -1,31 +1,36 @@
+pub mod hog;
+pub mod image;
+pub mod ocr;
+
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 
-mod hog;
-mod image;
-mod ocr;
-
-#[pyfunction]
+#[cfg(feature = "python")]
 fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
+#[cfg(feature = "python")]
 #[pyfunction]
 fn hog_gray_64(data: &[u8]) -> PyResult<Vec<f32>> {
     hog::hog_gray_64(data)
 }
 
+#[cfg(feature = "python")]
 #[pyfunction]
 fn hog_gray(data: &[u8], width: usize, height: usize) -> PyResult<Vec<f32>> {
     image::validate_image(data, width, height, 1, "hog_gray")?;
     Ok(hog::hog_gray(data, width, height))
 }
 
+#[cfg(feature = "python")]
 #[pyfunction]
 fn hashes_gray(data: &[u8], width: usize, height: usize) -> PyResult<(String, String, String)> {
     image::validate_image(data, width, height, 1, "hashes_gray")?;
     Ok(image::compute_hashes(data, width, height))
 }
 
+#[cfg(feature = "python")]
 #[pyfunction]
 fn image_features(
     data: &[u8],
@@ -40,6 +45,7 @@ fn image_features(
     Ok((phash, dhash, ahash, hog))
 }
 
+#[cfg(feature = "python")]
 #[pyfunction]
 fn thumbnail_bgra_32(data: &[u8], width: usize, height: usize) -> PyResult<Vec<u8>> {
     image::validate_image(data, width, height, 4, "thumbnail_bgra_32")?;
@@ -47,6 +53,7 @@ fn thumbnail_bgra_32(data: &[u8], width: usize, height: usize) -> PyResult<Vec<u
     Ok(image::resize_area_u8(&gray, width, height, 32, 32))
 }
 
+#[cfg(feature = "python")]
 #[pyfunction]
 fn ocr_preprocess_bgra(
     data: &[u8],
@@ -58,6 +65,7 @@ fn ocr_preprocess_bgra(
     Ok(ocr::preprocess_bgra(data, width, height, force_invert))
 }
 
+#[cfg(feature = "python")]
 #[pymodule]
 fn _overmax_cv(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(version, module)?)?;

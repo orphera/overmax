@@ -1,18 +1,15 @@
-use pyo3::exceptions::PyValueError;
-use pyo3::PyResult;
-
 pub fn validate_image(
     data: &[u8],
     width: usize,
     height: usize,
     channels: usize,
     name: &str,
-) -> PyResult<()> {
+) -> Result<(), String> {
     if width == 0 || height == 0 || !matches!(channels, 1 | 3 | 4) {
-        return Err(PyValueError::new_err(format!("{name} received invalid image shape")));
+        return Err(format!("{name} received invalid image shape"));
     }
     if data.len() != width * height * channels {
-        return Err(PyValueError::new_err(format!("{name} received unexpected byte length")));
+        return Err(format!("{name} received unexpected byte length"));
     }
     Ok(())
 }
@@ -148,9 +145,26 @@ fn bilinear_pixel(
     interpolate_2d(src, sw, x0, y0, x1, y1, fx, fy)
 }
 
-fn interpolate_2d(src: &[u8], sw: usize, x0: usize, y0: usize, x1: usize, y1: usize, fx: f32, fy: f32) -> u8 {
-    let top = lerp(f32::from(src[y0 * sw + x0]), f32::from(src[y0 * sw + x1]), fx);
-    let bottom = lerp(f32::from(src[y1 * sw + x0]), f32::from(src[y1 * sw + x1]), fx);
+fn interpolate_2d(
+    src: &[u8],
+    sw: usize,
+    x0: usize,
+    y0: usize,
+    x1: usize,
+    y1: usize,
+    fx: f32,
+    fy: f32,
+) -> u8 {
+    let top = lerp(
+        f32::from(src[y0 * sw + x0]),
+        f32::from(src[y0 * sw + x1]),
+        fx,
+    );
+    let bottom = lerp(
+        f32::from(src[y1 * sw + x0]),
+        f32::from(src[y1 * sw + x1]),
+        fx,
+    );
     lerp(top, bottom, fy).round().clamp(0.0, 255.0) as u8
 }
 
@@ -204,7 +218,9 @@ fn column_32(src: &[f32], x: usize) -> [f32; 32] {
 }
 
 fn low_dct_values(coeffs: &[f32]) -> Vec<f32> {
-    (0..8).flat_map(|y| (0..8).map(move |x| coeffs[y * 32 + x])).collect()
+    (0..8)
+        .flat_map(|y| (0..8).map(move |x| coeffs[y * 32 + x]))
+        .collect()
 }
 
 fn median_without_dc(values: &[f32]) -> f32 {

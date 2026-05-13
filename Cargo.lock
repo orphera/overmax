@@ -169,6 +169,7 @@ name = "overmax-data"
 version = "0.1.0"
 dependencies = [
  "overmax-core",
+ "overmax_cv",
  "rusqlite",
  "serde",
  "serde_json",

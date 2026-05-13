@@ -1,6 +1,3 @@
-use pyo3::exceptions::PyValueError;
-use pyo3::PyResult;
-
 use crate::image::resize_area_u8;
 
 const SIZE: usize = 64;
@@ -10,9 +7,9 @@ const BINS: usize = 9;
 const HOG_LEN: usize = BLOCKS * BLOCKS * 4 * BINS;
 const BLOCK_SIGMA: f32 = 4.0;
 
-pub fn hog_gray_64(data: &[u8]) -> PyResult<Vec<f32>> {
+pub fn hog_gray_64(data: &[u8]) -> Result<Vec<f32>, String> {
     if data.len() != SIZE * SIZE {
-        return Err(PyValueError::new_err("hog_gray_64 expects 4096 grayscale bytes"));
+        return Err("hog_gray_64 expects 4096 grayscale bytes".to_string());
     }
     Ok(hog_from_resized_gray(data))
 }
@@ -23,7 +20,10 @@ pub fn hog_gray(data: &[u8], width: usize, height: usize) -> Vec<f32> {
 }
 
 fn hog_from_resized_gray(data: &[u8]) -> Vec<f32> {
-    let src = data.iter().map(|value| f32::from(*value)).collect::<Vec<_>>();
+    let src = data
+        .iter()
+        .map(|value| f32::from(*value))
+        .collect::<Vec<_>>();
     let (gx, gy) = gradients(&src);
     block_features(&gx, &gy)
 }
@@ -99,7 +99,13 @@ fn vote_pixel_cells(block: &mut [f32], mag: f32, angle: f32, cell_x: f32, cell_y
     let top = cell_y.floor() as isize;
     let frac_x = cell_x - left as f32;
     let frac_y = cell_y - top as f32;
-    vote_cell(block, left, top, mag * (1.0 - frac_x) * (1.0 - frac_y), angle);
+    vote_cell(
+        block,
+        left,
+        top,
+        mag * (1.0 - frac_x) * (1.0 - frac_y),
+        angle,
+    );
     vote_cell(block, left + 1, top, mag * frac_x * (1.0 - frac_y), angle);
     vote_cell(block, left, top + 1, mag * (1.0 - frac_x) * frac_y, angle);
     vote_cell(block, left + 1, top + 1, mag * frac_x * frac_y, angle);

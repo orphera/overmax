@@ -42,7 +42,7 @@ OpenCV 제거 이력은 `docs/opencv-to-rust-plan.md`, 전체 Rust 전환 계획
 
 ## 다음 단계: 런타임/배포 포팅
 
-- [ ] Image DB 검색 경로 Rust 앱 내부 API로 전환
+- [x] Image DB 검색 경로 Rust 앱 내부 API로 전환
 - [ ] Window tracking / capture Rust 구현
 - [ ] Detection pipeline Rust 구현
 - [ ] Windows OCR 연동 Rust 구현

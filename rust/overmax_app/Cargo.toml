@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 overmax-core = { path = "../overmax_core" }
 overmax-data = { path = "../overmax_data" }
+overmax_cv = { path = "../overmax_cv" }
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

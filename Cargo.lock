@@ -154,6 +154,7 @@ version = "0.1.0"
 dependencies = [
  "overmax-core",
  "overmax-data",
+ "overmax_cv",
  "windows-sys",
 ]
 

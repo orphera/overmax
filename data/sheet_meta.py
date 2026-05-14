@@ -85,10 +85,46 @@ class PatternSheetMeta:
                     "note": str(row.get("비고", "") or row.get("Note", "")).strip(),
                 }
 
-                # 5B 탭만 보조 키 컬럼이 존재
-                if mode == "5B":
-                    meta["assist_key"] = str(row.get("보조 키 여부", "") or row.get("보조키여부", "")).strip()
+                # ------------------------------------------------------------------
+                # 1) '황배 여부' 매핑: 🎲 → 깡랜, 🎲[H] → 핲랜, 🎲[M] → 맥랜
+                raw_gold = meta.get("gold", "").strip()
+                gold_value = ""
+                if raw_gold:
+                    if "[H]" in raw_gold:
+                        gold_value = "핲랜"
+                    elif "[M]" in raw_gold:
+                        gold_value = "맥랜"
+                    else:
+                        gold_value = "랜덤"
+                meta["gold"] = gold_value
 
+                # 2) '키파트 위주' 매핑 (8B 전용): 셀에 이모지가 있으면 keypart 플래그를 설정하고
+                # 비고(note)에 '키파트 위주 패턴' 문구를 덧붙인다. 기존 비고 내용이 있으면 구분자 ' | '를 사용한다.
+                if mode == "8B":
+                    raw_keypart = str(row.get("키파트 위주", "") or row.get("키파트위주", "")).strip()
+                    if raw_keypart:
+                        # set keypart flag for completeness (UI may ignore this)
+                        meta["keypart"] = True
+                        # Append keypart description to note
+                        current_note = meta.get("note", "").strip()
+                        if current_note:
+                            meta["note"] = f"{current_note} | 키파트 위주 패턴"
+                        else:
+                            meta["note"] = "키파트 위주 패턴"
+
+                # 3) '보조 키 여부' 매핑 (5B 전용): ❌→'사용', ⚠ or ⚠️→'주의', ✅→'미사용'
+                if mode == "5B":
+                    raw_assist = str(row.get("보조 키 여부", "") or row.get("보조키여부", "")).strip()
+                    if raw_assist:
+                        assist_map = {
+                            "❌": "사용",
+                            "⚠": "주의",
+                            "⚠️": "주의",
+                            "✅": "미사용",
+                        }
+                        meta["assist_key"] = assist_map.get(raw_assist, raw_assist)
+
+                # 기존 메타에서 실제 값이 하나라도 존재할 때만 저장
                 if any(meta.values()):
                     items[key] = meta
 

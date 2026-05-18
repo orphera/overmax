@@ -43,7 +43,10 @@ fn find_steam_path() -> Option<String> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let key = hkcu.open_subkey(r"Software\Valve\Steam").ok()?;
     let steam_path: String = key.get_value("SteamPath").ok()?;
-    let trimmed = steam_path.trim().trim_end_matches('/').trim_end_matches('\\');
+    let trimmed = steam_path
+        .trim()
+        .trim_end_matches('/')
+        .trim_end_matches('\\');
     if !trimmed.is_empty() {
         return Some(trimmed.to_string());
     }

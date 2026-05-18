@@ -18,9 +18,9 @@ mod steam_session;
 mod sync_ui;
 #[cfg(target_os = "windows")]
 mod tray_icon;
+mod updater;
 mod varchive_upload;
 mod window_tracker;
-mod updater;
 
 #[cfg(target_os = "windows")]
 fn main() {

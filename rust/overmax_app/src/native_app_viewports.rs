@@ -46,22 +46,21 @@ impl NativeApp {
                 .with_title("Overmax 설정")
                 .with_inner_size([440.0, 520.0]),
             move |ctx, class| {
+                let mut local_draft = draft.lock().map(|g| g.clone()).unwrap_or_default();
                 egui::TopBottomPanel::bottom("sett_actions").show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         if ui.button("저장").clicked() {
                             let base_g = base.lock().map(|g| g.clone()).unwrap_or_default();
                             let mut merged_g = merged.lock().map(|g| g.clone()).unwrap_or_default();
-                            if let Ok(mut d) = draft.lock() {
-                                let _ = settings_ui::save_settings_to_disk(
-                                    root.as_ref(),
-                                    defaults.as_ref(),
-                                    &base_g,
-                                    &mut *d,
-                                    &mut merged_g,
-                                );
-                                if let Ok(mut m) = merged.lock() {
-                                    *m = merged_g;
-                                }
+                            let _ = settings_ui::save_settings_to_disk(
+                                root.as_ref(),
+                                defaults.as_ref(),
+                                &base_g,
+                                &mut local_draft,
+                                &mut merged_g,
+                            );
+                            if let Ok(mut m) = merged.lock() {
+                                *m = merged_g;
                             }
                         }
                         if ui.button("닫기").clicked() {
@@ -69,8 +68,9 @@ impl NativeApp {
                         }
                     });
                 });
+                settings_ui::render_settings_deferred(ctx, class, "설정", &mut local_draft);
                 if let Ok(mut d) = draft.lock() {
-                    settings_ui::render_settings_deferred(ctx, class, "설정", &mut *d);
+                    *d = local_draft;
                 }
                 settings_ui::close_if_requested(ctx, &open);
             },
@@ -139,8 +139,21 @@ impl eframe::App for NativeApp {
         self.drain_game_found_refresh_steam();
         self.apply_overlay_visual(ctx);
 
-        let vis = self.overlay_visible.load(Ordering::Relaxed);
-        ctx.send_viewport_cmd(ViewportCommand::Visible(vis));
+        let debug_on = self.debug_open.load(Ordering::Relaxed);
+        let sync_on = self.sync_open.load(Ordering::Relaxed);
+        let overlay_on = self.overlay_visible.load(Ordering::Relaxed);
+        let blocking_viewport_open = settings_on || sync_on || debug_on;
+        let hidden_size = Vec2::new(1.0, 1.0);
+        let visible_size = Vec2::new(overlay_ui::WIDTH, overlay_ui::HEIGHT);
+
+        ctx.send_viewport_cmd(ViewportCommand::MousePassthrough(
+            !overlay_on || blocking_viewport_open,
+        ));
+        ctx.send_viewport_cmd(ViewportCommand::InnerSize(if overlay_on {
+            visible_size
+        } else {
+            hidden_size
+        }));
 
         self.show_debug_viewport(ctx);
         self.show_settings_viewport(ctx);
@@ -149,8 +162,12 @@ impl eframe::App for NativeApp {
         egui::CentralPanel::default()
             .frame(Frame::NONE.fill(Color32::TRANSPARENT))
             .show(ctx, |ui| {
-                ui.set_min_size(Vec2::new(overlay_ui::WIDTH, overlay_ui::HEIGHT));
-                overlay_ui::draw_overlay_panel(
+                if !overlay_on {
+                    ui.set_min_size(hidden_size);
+                    return;
+                }
+                ui.set_min_size(visible_size);
+                let actions = overlay_ui::draw_overlay_panel(
                     ui,
                     &self.session,
                     self.confidence,
@@ -158,6 +175,9 @@ impl eframe::App for NativeApp {
                     self.debug_open.clone(),
                     self.sync_open.clone(),
                 );
+                if actions.start_drag {
+                    ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+                }
             });
     }
 }

@@ -73,7 +73,12 @@ pub fn parse_worker_args(args: &[String]) -> Option<WorkerArgs> {
     })
 }
 
-pub fn spawn_update_worker(app_dir: &Path, payload_dir: &Path, current: &str, latest: &str) -> bool {
+pub fn spawn_update_worker(
+    app_dir: &Path,
+    payload_dir: &Path,
+    current: &str,
+    latest: &str,
+) -> bool {
     let Ok(exe) = std::env::current_exe() else {
         return false;
     };
@@ -106,7 +111,10 @@ pub fn run_update_worker(args: WorkerArgs) -> i32 {
         &args.to_version,
         None,
     );
-    eprintln!("[AppUpdaterWorker] waiting parent pid {} …", args.parent_pid);
+    eprintln!(
+        "[AppUpdaterWorker] waiting parent pid {} …",
+        args.parent_pid
+    );
     if !wait_parent_exit(args.parent_pid, Duration::from_secs(120)) {
         let _ = write_result(
             &result_path,
@@ -180,7 +188,10 @@ fn is_process_running(pid: u32) -> bool {
 }
 
 fn apply_payload(app_dir: &Path, payload_dir: &Path) -> io::Result<()> {
-    let backup = app_dir.join("cache").join("update").join("settings.pre_update.json");
+    let backup = app_dir
+        .join("cache")
+        .join("update")
+        .join("settings.pre_update.json");
     let source_settings = app_dir.join("settings.json");
     if let Some(p) = backup.parent() {
         fs::create_dir_all(p)?;
@@ -197,7 +208,9 @@ fn apply_payload(app_dir: &Path, payload_dir: &Path) -> io::Result<()> {
 
 fn copy_tree_skip_worker(src_root: &Path, dst_root: &Path) -> io::Result<()> {
     for entry in walk_recursive(src_root)? {
-        let rel = entry.strip_prefix(src_root).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let rel = entry
+            .strip_prefix(src_root)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
         if rel.as_os_str().is_empty() {
             continue;
         }

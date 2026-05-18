@@ -109,7 +109,10 @@ pub fn upload_score_blocking(
     if status == 200 {
         return UploadResult {
             success: true,
-            updated: data.get("update").and_then(|v| v.as_bool()).unwrap_or(false),
+            updated: data
+                .get("update")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
             message: String::new(),
         };
     }

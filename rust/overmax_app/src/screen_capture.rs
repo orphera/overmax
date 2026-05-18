@@ -1,9 +1,9 @@
 use crate::window_tracker::WindowRect;
 use std::ptr::null_mut;
 use windows_sys::Win32::Graphics::Gdi::{
-    BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject, BITMAPINFO,
-    BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS, GetDC, HBITMAP, RGBQUAD, ReleaseDC,
-    SRCCOPY,
+    BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC,
+    SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS, HBITMAP,
+    RGBQUAD, SRCCOPY,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]

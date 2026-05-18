@@ -43,12 +43,42 @@ impl RoiManager {
 
     pub fn get_roi(&self, name: &str) -> Option<RoiRect> {
         let roi = match name {
-            "logo" => RoiRect { x1: 167, y1: 23, x2: 303, y2: 49 },
-            "jacket" => RoiRect { x1: 710, y1: 534, x2: 768, y2: 592 },
-            "rate" => RoiRect { x1: 176, y1: 583, x2: 270, y2: 605 },
-            "btn_mode" => RoiRect { x1: 80, y1: 130, x2: 85, y2: 135 },
-            "max_combo_badge" => RoiRect { x1: 409, y1: 587, x2: 445, y2: 620 },
-            "diff_panel" => RoiRect { x1: 98, y1: 488, x2: 208, y2: 516 },
+            "logo" => RoiRect {
+                x1: 167,
+                y1: 23,
+                x2: 303,
+                y2: 49,
+            },
+            "jacket" => RoiRect {
+                x1: 710,
+                y1: 534,
+                x2: 768,
+                y2: 592,
+            },
+            "rate" => RoiRect {
+                x1: 176,
+                y1: 583,
+                x2: 270,
+                y2: 605,
+            },
+            "btn_mode" => RoiRect {
+                x1: 80,
+                y1: 130,
+                x2: 85,
+                y2: 135,
+            },
+            "max_combo_badge" => RoiRect {
+                x1: 409,
+                y1: 587,
+                x2: 445,
+                y2: 620,
+            },
+            "diff_panel" => RoiRect {
+                x1: 98,
+                y1: 488,
+                x2: 208,
+                y2: 516,
+            },
             _ => return None,
         };
         Some(self.transform_roi(roi))
@@ -114,7 +144,12 @@ mod tests {
         let manager = RoiManager::new(1920, 1080);
         assert_eq!(
             manager.get_roi("jacket"),
-            Some(RoiRect { x1: 710, y1: 534, x2: 768, y2: 592 })
+            Some(RoiRect {
+                x1: 710,
+                y1: 534,
+                x2: 768,
+                y2: 592
+            })
         );
     }
 

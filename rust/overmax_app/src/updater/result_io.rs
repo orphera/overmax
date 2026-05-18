@@ -35,7 +35,13 @@ pub fn write_applied_tag(app_dir: &Path, tag: &str) -> std::io::Result<()> {
     fs::write(p, tag.trim())
 }
 
-pub fn write_result(path: &Path, status: &str, from_ver: &str, to_ver: &str, reason: Option<&str>) -> std::io::Result<()> {
+pub fn write_result(
+    path: &Path,
+    status: &str,
+    from_ver: &str,
+    to_ver: &str,
+    reason: Option<&str>,
+) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }

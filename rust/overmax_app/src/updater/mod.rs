@@ -146,7 +146,10 @@ fn handle_consumed_result(r: std::collections::HashMap<String, String>) -> Resul
 }
 
 /// Returns `Ok(false)` if the app should exit (worker spawned).
-pub fn check_and_apply_update_blocking(app_dir: &Path, cfg: &AppUpdateConfig) -> Result<bool, String> {
+pub fn check_and_apply_update_blocking(
+    app_dir: &Path,
+    cfg: &AppUpdateConfig,
+) -> Result<bool, String> {
     if skip_auto_update_by_policy() {
         eprintln!("[AppUpdater] 개발/스킵 모드에서는 자동 패치를 건너뜁니다.");
         return Ok(true);
@@ -205,13 +208,18 @@ fn should_skip_repeated_tag(app_dir: &Path, latest_tag: &str, current_version: &
 
 fn read_applied_tag(app_dir: &Path) -> Option<String> {
     let p = applied_tag_path(app_dir);
-    std::fs::read_to_string(p).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    std::fs::read_to_string(p)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 fn show_message_mb_ok(title: &str, msg: &str) {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_ICONINFORMATION, MB_OK};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        MessageBoxW, MB_ICONERROR, MB_ICONINFORMATION, MB_OK,
+    };
 
     let title_w: Vec<u16> = OsStr::new(title).encode_wide().chain(Some(0)).collect();
     let msg_w: Vec<u16> = OsStr::new(msg).encode_wide().chain(Some(0)).collect();
@@ -233,7 +241,9 @@ fn show_message_mb_ok(title: &str, msg: &str) {
 fn ask_update_confirm(current: &str, latest_tag: &str) -> bool {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONQUESTION, MB_YESNO, IDYES};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        MessageBoxW, IDYES, MB_ICONQUESTION, MB_YESNO,
+    };
 
     let title = "Overmax Update";
     let msg = format!(

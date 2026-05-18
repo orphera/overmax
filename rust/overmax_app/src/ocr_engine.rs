@@ -11,7 +11,9 @@ pub struct OcrDetector {
 
 impl OcrDetector {
     pub fn new() -> Self {
-        Self { engine: WindowsOcrEngine::new() }
+        Self {
+            engine: WindowsOcrEngine::new(),
+        }
     }
 
     pub fn is_available(&self) -> bool {
@@ -22,7 +24,11 @@ impl OcrDetector {
         let text = self.engine.recognize(logo, false).unwrap_or_default();
         let normalized = normalize_alnum(&text);
         let keyword = normalize_alnum(LOGO_KEYWORD);
-        (is_logo_keyword_match(&keyword, &normalized), text, normalized)
+        (
+            is_logo_keyword_match(&keyword, &normalized),
+            text,
+            normalized,
+        )
     }
 
     pub fn detect_rate(&self, rate: &ImageRegion) -> (Option<f32>, String) {
@@ -77,13 +83,28 @@ fn recognize_bmp(engine: &OcrEngine, bmp: &[u8]) -> Result<String, String> {
     let stream = InMemoryRandomAccessStream::new().map_err(to_err)?;
     let writer = DataWriter::CreateDataWriter(&stream).map_err(to_err)?;
     writer.WriteBytes(bmp).map_err(to_err)?;
-    writer.StoreAsync().map_err(to_err)?.join().map_err(to_err)?;
+    writer
+        .StoreAsync()
+        .map_err(to_err)?
+        .join()
+        .map_err(to_err)?;
     writer.DetachStream().map_err(to_err)?;
     stream.Seek(0).map_err(to_err)?;
 
-    let decoder = BitmapDecoder::CreateAsync(&stream).map_err(to_err)?.join().map_err(to_err)?;
-    let bitmap = decoder.GetSoftwareBitmapAsync().map_err(to_err)?.join().map_err(to_err)?;
-    let result = engine.RecognizeAsync(&bitmap).map_err(to_err)?.join().map_err(to_err)?;
+    let decoder = BitmapDecoder::CreateAsync(&stream)
+        .map_err(to_err)?
+        .join()
+        .map_err(to_err)?;
+    let bitmap = decoder
+        .GetSoftwareBitmapAsync()
+        .map_err(to_err)?
+        .join()
+        .map_err(to_err)?;
+    let result = engine
+        .RecognizeAsync(&bitmap)
+        .map_err(to_err)?
+        .join()
+        .map_err(to_err)?;
     let text = result.Text().map_err(to_err)?.to_string_lossy();
     stream.Close().map_err(to_err)?;
     Ok(text)

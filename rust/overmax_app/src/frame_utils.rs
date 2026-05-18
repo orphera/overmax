@@ -25,7 +25,11 @@ pub fn crop_roi(frame: &CapturedFrame, roi: RoiRect) -> Option<ImageRegion> {
         let end = start + (width * 4) as usize;
         bgra.extend_from_slice(&frame.bgra[start..end]);
     }
-    Some(ImageRegion { width, height, bgra })
+    Some(ImageRegion {
+        width,
+        height,
+        bgra,
+    })
 }
 
 pub fn region_mean_bgr(frame: &CapturedFrame, roi: RoiRect) -> (u8, u8, u8) {
@@ -89,7 +93,16 @@ mod tests {
             height: 2,
             bgra: vec![1, 2, 3, 0, 4, 5, 6, 0, 7, 8, 9, 0, 10, 11, 12, 0],
         };
-        let crop = crop_roi(&frame, RoiRect { x1: 1, y1: 0, x2: 2, y2: 2 }).unwrap();
+        let crop = crop_roi(
+            &frame,
+            RoiRect {
+                x1: 1,
+                y1: 0,
+                x2: 2,
+                y2: 2,
+            },
+        )
+        .unwrap();
         assert_eq!(crop.bgra, vec![4, 5, 6, 0, 10, 11, 12, 0]);
     }
 
@@ -101,7 +114,15 @@ mod tests {
             bgra: vec![10, 20, 30, 0, 30, 40, 50, 0],
         };
         assert_eq!(
-            region_mean_bgr(&frame, RoiRect { x1: 0, y1: 0, x2: 1, y2: 2 }),
+            region_mean_bgr(
+                &frame,
+                RoiRect {
+                    x1: 0,
+                    y1: 0,
+                    x2: 1,
+                    y2: 2
+                }
+            ),
             (20, 30, 40)
         );
     }

@@ -23,7 +23,10 @@ pub fn is_newer_version(remote_tag: &str, local_version: &str) -> bool {
     let local = parse_version_tuple(local_version);
     match (remote, local) {
         (Some(r), Some(l)) => r > l,
-        _ => remote_tag.trim().to_ascii_lowercase() != format!("v{}", local_version.trim().to_ascii_lowercase()),
+        _ => {
+            remote_tag.trim().to_ascii_lowercase()
+                != format!("v{}", local_version.trim().to_ascii_lowercase())
+        }
     }
 }
 

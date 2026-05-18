@@ -3,8 +3,8 @@
 use eframe::egui::{self, Color32, ViewportBuilder};
 use overmax_core::GameSessionState;
 use overmax_data::{
-    build_candidates, load_base_settings, load_merged_settings, normalize_settings, upsert_varchive_cache_record,
-    DataCompatibility, RecordDB, SyncCandidate, VArchiveDB,
+    build_candidates, load_base_settings, load_merged_settings, normalize_settings,
+    upsert_varchive_cache_record, DataCompatibility, RecordDB, SyncCandidate, VArchiveDB,
 };
 use serde_json::Value;
 use std::collections::VecDeque;
@@ -15,7 +15,9 @@ use std::sync::{Arc, Mutex};
 
 use crate::debug_ui;
 use crate::global_hotkey::GlobalHotkey;
-use crate::native_helpers::{account_path_for_steam, button_num, first_steam_from_settings, toggle_hotkey_from_settings};
+use crate::native_helpers::{
+    account_path_for_steam, button_num, first_steam_from_settings, toggle_hotkey_from_settings,
+};
 use crate::overlay_ui;
 use crate::probe_worker;
 use crate::single_instance::SingleInstanceGuard;
@@ -129,7 +131,10 @@ impl NativeApp {
         .unwrap_or_else(|_| Value::Object(serde_json::Map::new()));
         let defaults = Arc::new(defaults);
 
-        let base_settings = Arc::new(Mutex::new(load_base_settings(root.as_ref(), (*defaults).clone())));
+        let base_settings = Arc::new(Mutex::new(load_base_settings(
+            root.as_ref(),
+            (*defaults).clone(),
+        )));
         let mut merged = load_merged_settings(root.as_ref(), (*defaults).clone());
         normalize_settings(&mut merged);
         let merged_settings = Arc::new(Mutex::new(merged.clone()));
@@ -152,7 +157,9 @@ impl NativeApp {
         }
 
         let steam0 = {
-            let mg = merged_settings.lock().map_err(|_| "settings lock poisoned")?;
+            let mg = merged_settings
+                .lock()
+                .map_err(|_| "settings lock poisoned")?;
             let mut sid = first_steam_from_settings(mg.clone());
             if sid.is_empty() {
                 sid = recent_steam.unwrap_or_default();
@@ -166,7 +173,9 @@ impl NativeApp {
         let sync_open = Arc::new(AtomicBool::new(false));
         let debug_open = Arc::new(AtomicBool::new(false));
         let hk_key = {
-            let mg = merged_settings.lock().map_err(|_| "settings lock poisoned")?;
+            let mg = merged_settings
+                .lock()
+                .map_err(|_| "settings lock poisoned")?;
             toggle_hotkey_from_settings(&mg)
         };
         let _hotkey = GlobalHotkey::spawn_toggle(&hk_key, overlay_visible.clone());
@@ -252,8 +261,12 @@ impl NativeApp {
             .unwrap_or(1.0) as f32;
         ctx.set_pixels_per_point(scale);
         ctx.style_mut(|s| {
-            s.visuals.widgets.noninteractive.bg_fill =
-                Color32::from_rgba_unmultiplied(18, 24, 38, (255.0 * opacity.clamp(0.1, 1.0)) as u8);
+            s.visuals.widgets.noninteractive.bg_fill = Color32::from_rgba_unmultiplied(
+                18,
+                24,
+                38,
+                (255.0 * opacity.clamp(0.1, 1.0)) as u8,
+            );
         });
     }
 
@@ -337,7 +350,11 @@ impl NativeApp {
     }
 
     fn spawn_scan(&self) {
-        let steam = self.sync_steam_id.lock().map(|g| g.clone()).unwrap_or_default();
+        let steam = self
+            .sync_steam_id
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default();
         let tx = self.sync_tx.clone();
         let root = self.root.clone();
         let rdb = self.record_db.clone();
@@ -360,7 +377,11 @@ impl NativeApp {
             Ok(g) => g.clone(),
             Err(_) => return,
         };
-        let steam = self.sync_steam_id.lock().map(|g| g.clone()).unwrap_or_default();
+        let steam = self
+            .sync_steam_id
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default();
         let account_path = account_path_for_steam(&merged, &steam);
         let tx = self.upload_res_tx.clone();
         let root = self.root.clone();
@@ -396,7 +417,11 @@ impl NativeApp {
                     candidate.overmax_rate,
                     candidate.overmax_mc,
                 ) {
-                    let _ = tx.send((index, "success".into(), format!("업로드 OK, 캐시 갱신 실패: {e}")));
+                    let _ = tx.send((
+                        index,
+                        "success".into(),
+                        format!("업로드 OK, 캐시 갱신 실패: {e}"),
+                    ));
                 } else {
                     let _ = tx.send((index, "success".into(), "등록 완료".into()));
                 }

@@ -90,7 +90,11 @@ impl DetectionPipeline {
         if now - self.last_logo_ocr_ts < LOGO_OCR_COOLDOWN_SEC {
             return self.last_logo_ocr_ok;
         }
-        let Some(logo) = self.rois.get_roi("logo").and_then(|roi| crop_roi(frame, roi)) else {
+        let Some(logo) = self
+            .rois
+            .get_roi("logo")
+            .and_then(|roi| crop_roi(frame, roi))
+        else {
             self.last_logo_ocr_ok = false;
             return false;
         };
@@ -104,7 +108,11 @@ impl DetectionPipeline {
             return;
         }
         self.last_jacket_ts = now;
-        let Some(jacket) = self.rois.get_roi("jacket").and_then(|roi| crop_roi(frame, roi)) else {
+        let Some(jacket) = self
+            .rois
+            .get_roi("jacket")
+            .and_then(|roi| crop_roi(frame, roi))
+        else {
             return;
         };
         let Some(thumb) = make_thumbnail(&jacket) else {
@@ -134,7 +142,12 @@ impl DetectionPipeline {
 
     fn search_song_id_from_jacket(&self, jacket: &crate::frame_utils::ImageRegion) -> Option<u32> {
         self.image_db
-            .search(&jacket.bgra, jacket.width as usize, jacket.height as usize, 4)
+            .search(
+                &jacket.bgra,
+                jacket.width as usize,
+                jacket.height as usize,
+                4,
+            )
             .and_then(|result| result.image_id.parse::<u32>().ok())
     }
 
@@ -150,7 +163,12 @@ impl DetectionPipeline {
         confidence: f32,
         state: GameSessionState,
     ) -> DetectionOutput {
-        DetectionOutput { is_song_select, is_leaving, confidence, state }
+        DetectionOutput {
+            is_song_select,
+            is_leaving,
+            confidence,
+            state,
+        }
     }
 }
 

@@ -1,5 +1,5 @@
-use crate::frame_utils::region_mean_bgr;
 use crate::frame_utils::crop_roi;
+use crate::frame_utils::region_mean_bgr;
 use crate::ocr_engine::OcrDetector;
 use crate::roi::RoiManager;
 use crate::screen_capture::CapturedFrame;
@@ -52,7 +52,12 @@ impl PlayStateDetector {
         let mode = detect_button_mode(frame, rois);
         let (diff, confident) = detect_difficulty(frame, rois);
         let is_max_combo = detect_max_combo(frame, rois);
-        let raw = RawPlayState { song_id, mode, diff, is_max_combo };
+        let raw = RawPlayState {
+            song_id,
+            mode,
+            diff,
+            is_max_combo,
+        };
         self.push_raw(raw.clone(), confident);
 
         if let Some(stable) = self.stable_raw() {
@@ -122,7 +127,9 @@ pub fn detect_button_mode(frame: &CapturedFrame, rois: &RoiManager) -> Option<St
             }
         }
     }
-    (best.1 <= BTN_MODE_MAX_DIST).then_some(best.0?).map(String::from)
+    (best.1 <= BTN_MODE_MAX_DIST)
+        .then_some(best.0?)
+        .map(String::from)
 }
 
 pub fn detect_difficulty(frame: &CapturedFrame, rois: &RoiManager) -> (Option<String>, bool) {
@@ -142,7 +149,10 @@ pub fn detect_difficulty(frame: &CapturedFrame, rois: &RoiManager) -> (Option<St
         return (None, false);
     }
     let second = brightnesses.get(1).map_or(0.0, |item| item.1);
-    (Some(best.to_string()), max_bright - second >= DIFF_CONFIDENT_MARGIN)
+    (
+        Some(best.to_string()),
+        max_bright - second >= DIFF_CONFIDENT_MARGIN,
+    )
 }
 
 pub fn detect_max_combo(frame: &CapturedFrame, rois: &RoiManager) -> bool {
@@ -220,7 +230,14 @@ mod tests {
         }
     }
 
-    fn paint_rect(frame: &mut CapturedFrame, x1: i32, y1: i32, x2: i32, y2: i32, bgr: (u8, u8, u8)) {
+    fn paint_rect(
+        frame: &mut CapturedFrame,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        bgr: (u8, u8, u8),
+    ) {
         for y in y1..y2 {
             for x in x1..x2 {
                 let idx = ((y * frame.width + x) * 4) as usize;

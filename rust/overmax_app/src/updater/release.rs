@@ -16,11 +16,16 @@ const MANIFEST_NAME: &str = "release_manifest.json";
 
 pub fn fetch_latest_release(
     cfg: &AppUpdateConfig,
-) -> Result<(Option<String>, Option<String>, Option<String>), Box<dyn std::error::Error + Send + Sync>> {
-    let url = cfg
-        .latest_release_url
-        .clone()
-        .unwrap_or_else(|| format!("https://api.github.com/repos/{}/{}/releases/latest", cfg.owner, cfg.repo));
+) -> Result<
+    (Option<String>, Option<String>, Option<String>),
+    Box<dyn std::error::Error + Send + Sync>,
+> {
+    let url = cfg.latest_release_url.clone().unwrap_or_else(|| {
+        format!(
+            "https://api.github.com/repos/{}/{}/releases/latest",
+            cfg.owner, cfg.repo
+        )
+    });
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(8))
         .build()?;
@@ -31,7 +36,10 @@ pub fn fetch_latest_release(
         .send()?;
     resp.error_for_status_ref()?;
     let data: Value = resp.json()?;
-    let tag = data.get("tag_name").and_then(|v| v.as_str()).map(String::from);
+    let tag = data
+        .get("tag_name")
+        .and_then(|v| v.as_str())
+        .map(String::from);
     let Some(ref t) = tag else {
         return Ok((None, None, None));
     };
@@ -49,7 +57,10 @@ pub fn fetch_latest_release(
         }
     }
     if asset_url.is_none() {
-        eprintln!("[AppUpdater] 릴리즈에서 '{}' asset을 찾을 수 없음", cfg.asset_name);
+        eprintln!(
+            "[AppUpdater] 릴리즈에서 '{}' asset을 찾을 수 없음",
+            cfg.asset_name
+        );
         return Ok((Some(t.clone()), None, manifest_url));
     }
     Ok((tag, asset_url, manifest_url))
@@ -86,7 +97,10 @@ fn download_file(url: &str, dest: &Path) -> Result<(), Box<dyn std::error::Error
     copy(&mut resp, &mut f)?;
     drop(f);
     std::fs::rename(&tmp, dest)?;
-    eprintln!("[AppUpdater] 다운로드 완료: {}", dest.file_name().unwrap_or_default().to_string_lossy());
+    eprintln!(
+        "[AppUpdater] 다운로드 완료: {}",
+        dest.file_name().unwrap_or_default().to_string_lossy()
+    );
     Ok(())
 }
 
@@ -150,7 +164,10 @@ fn sha256_file(path: &Path) -> Result<String, std::io::Error> {
     Ok(format!("{:x}", h.finalize()))
 }
 
-pub fn extract_zip(zip_path: &Path, stage_dir: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub fn extract_zip(
+    zip_path: &Path,
+    stage_dir: &Path,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if stage_dir.exists() {
         std::fs::remove_dir_all(stage_dir)?;
     }

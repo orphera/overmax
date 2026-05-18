@@ -16,7 +16,10 @@ pub struct SingleInstanceGuard {
 impl SingleInstanceGuard {
     /// Returns `None` if another instance holds the mutex (shows message box, caller should exit).
     pub fn try_acquire() -> Option<Self> {
-        let wide: Vec<u16> = OsStr::new(MUTEX_NAME).encode_wide().chain(Some(0)).collect();
+        let wide: Vec<u16> = OsStr::new(MUTEX_NAME)
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
         unsafe {
             let h = CreateMutexW(null(), 0, wide.as_ptr());
             if h.is_null() {
@@ -46,6 +49,11 @@ fn show_already_running() {
     let title: Vec<u16> = OsStr::new(TITLE).encode_wide().chain(Some(0)).collect();
     let msg: Vec<u16> = OsStr::new(MSG).encode_wide().chain(Some(0)).collect();
     unsafe {
-        MessageBoxW(std::ptr::null_mut(), msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONWARNING);
+        MessageBoxW(
+            std::ptr::null_mut(),
+            msg.as_ptr(),
+            title.as_ptr(),
+            MB_OK | MB_ICONWARNING,
+        );
     }
 }

@@ -117,6 +117,11 @@ impl NativeApp {
 
 impl eframe::App for NativeApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.exit_requested.load(Ordering::Relaxed) {
+            ctx.send_viewport_cmd(ViewportCommand::Close);
+            return;
+        }
+
         let settings_on = self.settings_open.load(Ordering::Relaxed);
         if settings_on && !self.prev_settings_open {
             if let (Ok(m), Ok(mut d)) = (self.merged_settings.lock(), self.settings_draft.lock()) {

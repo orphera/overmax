@@ -20,6 +20,8 @@ use crate::overlay_ui;
 use crate::probe_worker;
 use crate::single_instance::SingleInstanceGuard;
 use crate::steam_session;
+#[cfg(target_os = "windows")]
+use crate::tray_icon::TrayIcon;
 use crate::updater::{self, AppUpdateConfig};
 use crate::varchive_upload;
 
@@ -110,7 +112,10 @@ pub struct NativeApp {
     pub(crate) record_db: Arc<RecordDB>,
     pub(crate) game_found_rx: Receiver<()>,
     pub(crate) overlay_visible: Arc<AtomicBool>,
+    pub(crate) exit_requested: Arc<AtomicBool>,
     pub(crate) _hotkey: Option<GlobalHotkey>,
+    #[cfg(target_os = "windows")]
+    pub(crate) _tray: Option<TrayIcon>,
 }
 
 impl NativeApp {
@@ -156,6 +161,10 @@ impl NativeApp {
         };
 
         let overlay_visible = Arc::new(AtomicBool::new(true));
+        let exit_requested = Arc::new(AtomicBool::new(false));
+        let settings_open = Arc::new(AtomicBool::new(false));
+        let sync_open = Arc::new(AtomicBool::new(false));
+        let debug_open = Arc::new(AtomicBool::new(false));
         let hk_key = {
             let mg = merged_settings.lock().map_err(|_| "settings lock poisoned")?;
             toggle_hotkey_from_settings(&mg)
@@ -172,9 +181,9 @@ impl NativeApp {
             base_settings,
             merged_settings,
             settings_draft,
-            debug_open: Arc::new(AtomicBool::new(false)),
-            settings_open: Arc::new(AtomicBool::new(false)),
-            sync_open: Arc::new(AtomicBool::new(false)),
+            debug_open: debug_open.clone(),
+            settings_open: settings_open.clone(),
+            sync_open: sync_open.clone(),
             scan_pending: Arc::new(AtomicBool::new(false)),
             log_lines: Arc::new(Mutex::new(VecDeque::new())),
             log_rx,
@@ -192,8 +201,17 @@ impl NativeApp {
             prev_settings_open: false,
             record_db,
             game_found_rx,
-            overlay_visible,
+            overlay_visible: overlay_visible.clone(),
+            exit_requested: exit_requested.clone(),
             _hotkey,
+            #[cfg(target_os = "windows")]
+            _tray: Some(TrayIcon::spawn(
+                overlay_visible,
+                settings_open,
+                sync_open,
+                debug_open,
+                exit_requested,
+            )),
         })
     }
 

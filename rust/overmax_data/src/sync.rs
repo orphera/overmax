@@ -271,6 +271,44 @@ pub fn save_fetched_records_to_cache(
     fs::write(&path, text).map_err(|e| e.to_string())
 }
 
+pub fn delete_varchive_cache_record(
+    cache_root: &Path,
+    steam_id: &str,
+    button: i32,
+    song_id: i32,
+    difficulty: &str,
+) -> Result<(), String> {
+    let path = cache_root.join(steam_id).join(format!("{button}.json"));
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let text = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let mut root = serde_json::from_str::<Value>(&text).map_err(|e| e.to_string())?;
+
+    if let Some(obj) = root.as_object_mut() {
+        if let Some(records) = obj.get_mut("records").and_then(|r| r.as_array_mut()) {
+            let title = song_id.to_string();
+            records.retain(|rec| {
+                if let Some(rec_obj) = rec.as_object() {
+                    let title_match = match rec_obj.get("title") {
+                        Some(Value::String(s)) => s == &title,
+                        Some(Value::Number(n)) => n.as_i64() == Some(song_id as i64),
+                        _ => false,
+                    };
+                    let pat_match = rec_obj.get("pattern").and_then(|v| v.as_str()) == Some(difficulty);
+                    !(title_match && pat_match)
+                } else {
+                    true
+                }
+            });
+        }
+    }
+
+    let text = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
+    fs::write(&path, text).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

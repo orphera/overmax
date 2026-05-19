@@ -119,7 +119,8 @@ impl DetectionWorker {
         }
         match capturer.capture_bgra(rect) {
             Ok(frame) => {
-                let out = pipeline.process_frame(&frame, self.start.elapsed().as_secs_f64());
+                let mut out = pipeline.process_frame(&frame, self.start.elapsed().as_secs_f64());
+                out.game_rect = Some(rect);
                 self.log_detection_summary(&out);
                 let _ = self.detection_tx.send(out);
             }
@@ -159,6 +160,7 @@ impl DetectionWorker {
                 current_song_id: None,
                 image_db_ready: false,
                 jacket_status: JacketMatchStatus::NotSongSelect,
+                game_rect: None,
             });
         }
         self.was_found = false;

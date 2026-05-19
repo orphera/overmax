@@ -44,13 +44,56 @@ impl NativeApp {
         }
         let open = self.debug_open.clone();
         let lines = self.log_lines.clone();
+        let paused = self.debug_paused.clone();
+        let roi = self.debug_roi.clone();
+        let filters = self.debug_filters.clone();
         let title = self.debug_title();
         ctx.show_viewport_deferred(
             native_helpers::vp_debug(),
-            Self::auxiliary_viewport(&title, [720.0, 420.0]),
+            Self::auxiliary_viewport(&title, [720.0, 460.0]),
             move |ctx, class| {
-                debug_ui::render_debug(ctx, class, &title, &lines);
+                debug_ui::render_debug(
+                    ctx,
+                    class,
+                    &title,
+                    &lines,
+                    &paused,
+                    &roi,
+                    &filters,
+                );
                 debug_ui::close_if_requested(ctx, &open);
+            },
+        );
+    }
+
+    fn show_roi_viewport(&self, ctx: &egui::Context) {
+        if !self.debug_roi.load(Ordering::Relaxed) {
+            return;
+        }
+        let game_rect = {
+            if let Ok(g) = self.game_rect.lock() {
+                *g
+            } else {
+                None
+            }
+        };
+        let Some(rect) = game_rect else {
+            return;
+        };
+
+        ctx.show_viewport_deferred(
+            egui::ViewportId::from_hash_of("overmax_roi_vp"),
+            egui::ViewportBuilder::default()
+                .with_title("Overmax ROI Overlay")
+                .with_decorations(false)
+                .with_transparent(true)
+                .with_mouse_passthrough(true)
+                .with_inner_size([rect.width as f32, rect.height as f32])
+                .with_position(eframe::egui::pos2(rect.left as f32, rect.top as f32))
+                .with_always_on_top(),
+            move |ctx, class| {
+                ctx.send_viewport_cmd(ViewportCommand::MousePassthrough(true));
+                crate::roi_overlay_ui::render_roi_overlay(ctx, class, rect);
             },
         );
     }
@@ -74,6 +117,7 @@ impl NativeApp {
             sync_open: self.sync_open.clone(),
             scan_pending: self.scan_pending.clone(),
             sync_steam_id: self.sync_steam_id.clone(),
+            fetch_tx: self.fetch_req_tx.clone(),
         };
         ctx.show_viewport_deferred(
             native_helpers::vp_settings(),
@@ -127,6 +171,7 @@ impl NativeApp {
         let status = self.sync_status.clone();
         let candidates = self.sync_candidates.clone();
         let upload_tx = self.upload_req_tx.clone();
+        let delete_tx = self.delete_req_tx.clone();
         ctx.show_viewport_deferred(
             native_helpers::vp_sync(),
             Self::auxiliary_viewport("V-Archive 동기화", [520.0, 560.0]),
@@ -145,6 +190,9 @@ impl NativeApp {
                     },
                     |i| {
                         let _ = upload_tx.send(i);
+                    },
+                    |i| {
+                        let _ = delete_tx.send(i);
                     },
                 );
                 sync_ui::close_if_requested(ctx, &open);
@@ -180,6 +228,7 @@ impl eframe::App for NativeApp {
         self.drain_sync_scan();
         self.drain_upload_results();
         self.drain_fetch_results();
+        self.poll_delete_requests();
         self.drain_game_found_refresh_steam();
         self.apply_overlay_visual(ctx);
         ctx.send_viewport_cmd(ViewportCommand::ContentProtected(true));
@@ -199,6 +248,7 @@ impl eframe::App for NativeApp {
         }));
 
         self.show_debug_viewport(ctx);
+        self.show_roi_viewport(ctx);
         self.show_settings_viewport(ctx);
         self.show_sync_viewport(ctx);
 

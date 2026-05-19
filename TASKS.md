@@ -76,16 +76,16 @@ OpenCV 제거 이력은 `docs/opencv-to-rust-plan.md`, 전체 Rust 전환 계획
 
 ### 기능 보강
 
-- [ ] V-Archive 동기화 창의 로컬 기록 삭제 기능 포팅
+- [x] V-Archive 동기화 창의 로컬 기록 삭제 기능 포팅
   - Python 기준: `SyncWindow._on_delete_requested`, `RecordManager.delete`
   - Rust 현황: 후보 스캔과 업로드는 있으나 삭제 액션이 없음
-- [ ] 설정창 V-Archive 계정 UX 보강
+- [x] 설정창 V-Archive 계정 UX 보강
   - Python 기준: 계정별 V-Archive ID, account.txt browse, 모드별 fetch 버튼
   - Rust 현황: 기본 입력과 sync 열기는 있으나 browse/fetch 버튼 및 상태 UX가 단순화됨
-- [ ] DebugWindow ROI 표시 오버레이 포팅
+- [x] DebugWindow ROI 표시 오버레이 포팅
   - Python 기준: `overlay.ui.navigation.RoiOverlayWindow`, DebugWindow ROI 토글
   - Rust 현황: ROI 계산은 있으나 게임 화면 위 ROI 시각화 창이 없음
-- [ ] DebugWindow 로그 편의 기능 보강
+- [x] DebugWindow 로그 편의 기능 보강
   - Python 기준: 색상 카테고리, 일시정지, 지우기, ROI 토글
   - Rust 현황: 로그 표시 중심의 단순 창
 

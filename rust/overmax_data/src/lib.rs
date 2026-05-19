@@ -19,6 +19,6 @@ pub use settings::{
 };
 pub use sheet_meta::{PatternSheetMeta, PatternSheetMetaItem};
 pub use sync::{
-    build_candidates, load_varchive_record_cache, upsert_varchive_cache_record, save_fetched_records_to_cache, SyncCandidate,
+    build_candidates, load_varchive_record_cache, upsert_varchive_cache_record, save_fetched_records_to_cache, delete_varchive_cache_record, SyncCandidate,
 };
 pub use varchive::VArchiveDB;

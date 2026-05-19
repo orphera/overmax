@@ -131,6 +131,10 @@ pub struct NativeApp {
     pub(crate) scan_pending: Arc<AtomicBool>,
     pub(crate) log_lines: Arc<Mutex<VecDeque<String>>>,
     pub(crate) log_rx: Option<Receiver<String>>,
+    pub(crate) debug_paused: Arc<AtomicBool>,
+    pub(crate) debug_roi: Arc<AtomicBool>,
+    pub(crate) game_rect: Arc<Mutex<Option<crate::window_tracker::WindowRect>>>,
+    pub(crate) debug_filters: Arc<Mutex<std::collections::HashMap<String, bool>>>,
     pub(crate) session: GameSessionState,
     pub(crate) confidence: f32,
     pub(crate) recorded_states: std::collections::HashSet<(u32, String, String)>,
@@ -147,6 +151,8 @@ pub struct NativeApp {
     pub(crate) fetch_req_tx: Sender<(String, String, i32)>,
     pub(crate) fetch_res_rx: Receiver<(String, i32, Result<usize, String>)>,
     pub(crate) fetch_res_tx: Sender<(String, i32, Result<usize, String>)>,
+    pub(crate) delete_req_rx: Receiver<usize>,
+    pub(crate) delete_req_tx: Sender<usize>,
     pub(crate) detection_rx: Receiver<DetectionOutput>,
     pub(crate) ui_cmd_rx: Receiver<UiCommand>,
     pub(crate) varchive_db: Arc<VArchiveDB>,
@@ -191,7 +197,7 @@ impl NativeApp {
         });
 
         let merged_settings = Arc::new(Mutex::new(merged.clone()));
-        let settings_draft = Arc::new(Mutex::new(merged));
+        let settings_draft = Arc::new(Mutex::new(merged.clone()));
 
         let compat = DataCompatibility::current();
         let recent_steam = steam_session::most_recent_steam_id();
@@ -241,9 +247,29 @@ impl NativeApp {
         let (sync_tx, sync_rx) = mpsc::channel();
         let (upload_req_tx, upload_req_rx) = mpsc::channel();
         let (upload_res_tx, upload_res_rx) = mpsc::channel();
+        let (delete_req_tx, delete_req_rx) = mpsc::channel::<usize>();
         let (ui_cmd_tx, ui_cmd_rx) = mpsc::channel();
         let (fetch_req_tx, fetch_req_rx) = mpsc::channel();
         let (fetch_res_tx, fetch_res_rx) = mpsc::channel();
+
+        // 시작 시 자동 갱신
+        if merged.get("varchive").and_then(|v| v.get("auto_refresh")).and_then(|v| v.as_bool()).unwrap_or(false) {
+            let v_id = merged.get("varchive")
+                .and_then(|v| v.get("user_map"))
+                .and_then(|m| m.get(&steam0))
+                .and_then(|u| {
+                    if u.is_object() {
+                        u.get("v_id").and_then(|v| v.as_str())
+                    } else {
+                        u.as_str()
+                    }
+                })
+                .unwrap_or("");
+            if !v_id.is_empty() {
+                let _ = fetch_req_tx.send((steam0.clone(), v_id.to_string(), 0));
+            }
+        }
+
         detection_worker::spawn(
             (*root).clone(),
             merged_settings
@@ -254,6 +280,13 @@ impl NativeApp {
             game_found_tx,
             detection_tx,
         );
+
+        let mut filters = std::collections::HashMap::new();
+        filters.insert("[ScreenCapture]".to_string(), true);
+        filters.insert("[Overlay]".to_string(), true);
+        filters.insert("[VArchive]".to_string(), true);
+        filters.insert("[WindowTracker]".to_string(), true);
+        filters.insert("[Main]".to_string(), true);
 
         let mut app = Self {
             root,
@@ -267,6 +300,10 @@ impl NativeApp {
             scan_pending: Arc::new(AtomicBool::new(false)),
             log_lines: Arc::new(Mutex::new(VecDeque::new())),
             log_rx: Some(log_rx),
+            debug_paused: Arc::new(AtomicBool::new(false)),
+            debug_roi: Arc::new(AtomicBool::new(false)),
+            game_rect: Arc::new(Mutex::new(None)),
+            debug_filters: Arc::new(Mutex::new(filters)),
             session: GameSessionState::detecting(),
             confidence: 0.0,
             recorded_states: std::collections::HashSet::new(),
@@ -279,6 +316,8 @@ impl NativeApp {
             upload_req_tx,
             upload_res_rx,
             upload_res_tx,
+            delete_req_rx,
+            delete_req_tx,
             fetch_req_rx,
             fetch_req_tx,
             fetch_res_rx,
@@ -302,6 +341,33 @@ impl NativeApp {
 
         app.handle_auto_refresh();
         Ok(app)
+    }
+
+    pub(crate) fn poll_delete_requests(&mut self) {
+        while let Ok(idx) = self.delete_req_rx.try_recv() {
+            let cand = self
+                .sync_candidates
+                .lock()
+                .ok()
+                .and_then(|g| g.get(idx).cloned());
+            if let Some(c) = cand {
+                if self.record_manager.delete(c.song_id, &c.button_mode, &c.difficulty) {
+                    debug_ui::push_log(
+                        &self.log_lines,
+                        self.max_log_lines(),
+                        format!("[Sync] 로컬 기록 삭제 완료: {} ({} {})", c.song_name, c.button_mode, c.difficulty),
+                    );
+                    self.spawn_scan();
+                    self.refresh_overlay_data();
+                } else {
+                    debug_ui::push_log(
+                        &self.log_lines,
+                        self.max_log_lines(),
+                        format!("[Sync] 로컬 기록 삭제 실패: {} ({} {})", c.song_name, c.button_mode, c.difficulty),
+                    );
+                }
+            }
+        }
     }
 
     pub(crate) fn max_log_lines(&self) -> usize {

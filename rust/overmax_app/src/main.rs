@@ -16,6 +16,7 @@ mod overlay_recommend_ui;
 mod overlay_ui;
 mod play_state;
 mod roi;
+mod roi_overlay_ui;
 mod screen_capture;
 mod settings_ui;
 mod single_instance;

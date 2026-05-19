@@ -15,6 +15,7 @@ pub fn render_sync(
     candidates: &[SyncCandidate],
     on_scan: impl Fn(),
     on_upload: impl Fn(usize) + Copy,
+    on_delete: impl Fn(usize) + Copy,
 ) {
     let mut body = |ui: &mut egui::Ui| {
         apply_window_style(ui.ctx());
@@ -58,7 +59,7 @@ pub fn render_sync(
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for (i, c) in candidates.iter().enumerate() {
-                    candidate_row(ui, i, c, on_upload);
+                    candidate_row(ui, i, c, on_upload, on_delete);
                     ui.add_space(6.0);
                 }
             });
@@ -73,7 +74,7 @@ pub fn render_sync(
     }
 }
 
-fn candidate_row<F: Fn(usize)>(ui: &mut egui::Ui, index: usize, c: &SyncCandidate, on_upload: F) {
+fn candidate_row<F: Fn(usize), D: Fn(usize)>(ui: &mut egui::Ui, index: usize, c: &SyncCandidate, on_upload: F, on_delete: D) {
     Frame::new()
         .fill(Theme::ROW)
         .stroke(Stroke::new(1.0, Theme::STROKE))
@@ -98,6 +99,9 @@ fn candidate_row<F: Fn(usize)>(ui: &mut egui::Ui, index: usize, c: &SyncCandidat
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("등록").clicked() {
                         on_upload(index);
+                    }
+                    if ui.button("삭제").clicked() {
+                        on_delete(index);
                     }
                 });
             });

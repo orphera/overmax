@@ -43,6 +43,27 @@ impl RecordManager {
         result
     }
 
+    pub fn delete(&self, song_id: i32, button_mode: &str, difficulty: &str) -> bool {
+        if self.record_db.delete(song_id, button_mode, difficulty) {
+            let steam_id = self.record_db.get_steam_id();
+            if let Ok(mut guard) = self.varchive_cache.lock() {
+                guard.remove(&(song_id, button_mode.to_string(), difficulty.to_string()));
+            }
+            if !steam_id.is_empty() && steam_id != "__unknown__" {
+                let btn = button_mode.replace("B", "").parse::<i32>().unwrap_or(4);
+                let _ = crate::sync::delete_varchive_cache_record(
+                    &self.varchive_cache_root,
+                    &steam_id,
+                    btn,
+                    song_id,
+                    difficulty,
+                );
+            }
+            return true;
+        }
+        false
+    }
+
     fn merge_varchive_cache(&self, result: &mut HashMap<RecordKey, RecordValue>, song_ids: &[i32]) {
         let Ok(cache) = self.varchive_cache.lock() else {
             return;

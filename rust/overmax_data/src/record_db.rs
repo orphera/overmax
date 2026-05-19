@@ -153,6 +153,24 @@ impl RecordDB {
         false
     }
 
+    pub fn delete(&self, song_id: i32, button_mode: &str, difficulty: &str) -> bool {
+        if !self.is_ready {
+            return false;
+        }
+
+        let sid = song_id.to_string();
+        let steam_id = self.get_steam_id();
+
+        if let Ok(conn) = Connection::open(&self.db_path) {
+            let result = conn.execute(
+                "DELETE FROM records WHERE steam_id=?1 AND song_id=?2 AND button_mode=?3 AND difficulty=?4",
+                params![steam_id, sid, button_mode, difficulty],
+            );
+            return result.map(|n| n > 0).unwrap_or(false);
+        }
+        false
+    }
+
     pub fn get(&self, song_id: i32, button_mode: &str, difficulty: &str) -> Option<(f64, bool)> {
         if !self.is_ready {
             return None;

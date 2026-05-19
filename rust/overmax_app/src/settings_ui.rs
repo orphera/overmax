@@ -7,6 +7,7 @@ use overmax_data::{diff_settings, load_merged_settings, normalize_settings, save
 use serde_json::{json, Map, Value};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 pub struct SettingsUiContext {
@@ -14,6 +15,7 @@ pub struct SettingsUiContext {
     pub sync_open: Arc<AtomicBool>,
     pub scan_pending: Arc<AtomicBool>,
     pub sync_steam_id: Arc<Mutex<String>>,
+    pub fetch_tx: Sender<(String, String, i32)>,
 }
 
 pub fn render_settings_form(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContext) {
@@ -126,14 +128,56 @@ fn auto_refresh_row(ui: &mut egui::Ui, draft: &mut Value) {
 fn steam_account_rows(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContext) {
     let entry = user_entry_mut(draft, &ctx.current_steam_id);
     text_row(ui, entry, "V-Archive ID", "v_id", 180.0);
-    text_row(ui, entry, "account.txt", "account_path", 300.0);
-    if ui.button("동기화 후보").clicked() {
-        if let Ok(mut sid) = ctx.sync_steam_id.lock() {
-            *sid = ctx.current_steam_id.clone();
+    
+    ui.horizontal(|ui| {
+        ui.add_space(80.0); // Align with text_row label
+        for b in [4, 5, 6, 8] {
+            if ui.button(format!("{b}B")).clicked() {
+                let v_id = entry.get("v_id").and_then(|v| v.as_str()).unwrap_or("");
+                if !v_id.is_empty() {
+                    let _ = ctx.fetch_tx.send((ctx.current_steam_id.clone(), v_id.to_string(), b));
+                }
+            }
         }
-        ctx.sync_open.store(true, Ordering::Relaxed);
-        ctx.scan_pending.store(true, Ordering::Relaxed);
-    }
+        if ui.button("All").clicked() {
+            let v_id = entry.get("v_id").and_then(|v| v.as_str()).unwrap_or("");
+            if !v_id.is_empty() {
+                let _ = ctx.fetch_tx.send((ctx.current_steam_id.clone(), v_id.to_string(), 0));
+            }
+        }
+    });
+
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("account.txt").color(Theme::TEXT));
+        let mut path_str = entry
+            .get("account_path")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if ui
+            .add(TextEdit::singleline(&mut path_str).desired_width(200.0))
+            .changed()
+        {
+            entry.insert("account_path".into(), json!(path_str.trim()));
+        }
+        if ui.button("찾아보기").clicked() {
+            if let Some(file_path) = rfd::FileDialog::new()
+                .add_filter("Text Files", &["txt"])
+                .pick_file()
+            {
+                let path_str = file_path.to_string_lossy().to_string();
+                entry.insert("account_path".into(), json!(path_str));
+            }
+        }
+        if ui.button("동기화 후보").clicked() {
+            if let Ok(mut sid) = ctx.sync_steam_id.lock() {
+                *sid = ctx.current_steam_id.clone();
+            }
+            ctx.sync_open.store(true, Ordering::Relaxed);
+            ctx.scan_pending.store(true, Ordering::Relaxed);
+        }
+    });
 }
 
 fn text_row(ui: &mut egui::Ui, entry: &mut Map<String, Value>, label: &str, key: &str, width: f32) {

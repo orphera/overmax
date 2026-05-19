@@ -23,6 +23,7 @@ pub struct DetectionOutput {
     pub current_song_id: Option<u32>,
     pub image_db_ready: bool,
     pub jacket_status: JacketMatchStatus,
+    pub game_rect: Option<crate::window_tracker::WindowRect>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -267,6 +268,7 @@ impl DetectionPipeline {
             current_song_id: self.current_song_id,
             image_db_ready: self.image_db.is_ready(),
             jacket_status,
+            game_rect: None,
         }
     }
 }

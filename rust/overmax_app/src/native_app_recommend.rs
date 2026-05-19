@@ -10,6 +10,9 @@ impl NativeApp {
     pub(crate) fn drain_detection_results(&mut self) {
         let mut changed = false;
         while let Ok(output) = self.detection_rx.try_recv() {
+            if let Ok(mut r) = self.game_rect.lock() {
+                *r = output.game_rect;
+            }
             if !output.is_song_select {
                 self.recorded_states.clear();
             }

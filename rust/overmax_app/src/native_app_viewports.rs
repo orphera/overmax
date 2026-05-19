@@ -19,7 +19,7 @@ fn game_window_title(settings: &serde_json::Value) -> &str {
         .unwrap_or("DJMAX RESPECT V")
 }
 
-fn is_mouse_over_overlay(ctx: &egui::Context, scale: f32) -> bool {
+fn is_mouse_over_overlay(ctx: &egui::Context, _scale: f32) -> bool {
     let Some(rect) = ctx.input(|i| i.viewport().outer_rect) else {
         return false;
     };

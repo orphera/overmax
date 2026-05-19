@@ -1,1 +1,0 @@
-"""Overlay UI widgets package."""

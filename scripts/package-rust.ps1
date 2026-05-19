@@ -14,9 +14,9 @@ try {
     $dist = Join-Path $repoRoot "dist/overmax-rust"
     if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
     New-Item -ItemType Directory -Path $dist | Out-Null
-    Copy-Item $exe $dist
+    Copy-Item $exe (Join-Path $dist "overmax.exe")
     Copy-Item (Join-Path $repoRoot "settings.json") $dist -ErrorAction SilentlyContinue
-    Write-Host "Output: $dist (overmax-rs.exe + settings.json if present)"
+    Write-Host "Output: $dist (overmax.exe + settings.json if present)"
 } finally {
     Pop-Location
 }

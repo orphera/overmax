@@ -51,8 +51,8 @@ OpenCV 제거 이력은 `docs/opencv-to-rust-plan.md`, 전체 Rust 전환 계획
 - [x] Steam session / hotkey / single instance 구현
 - [x] Updater / packaging Rust 구현
 - [x] Tray Icon 구현
-- [ ] Look & Feel 맞추기
-- [ ] 병렬 런타임 검증 harness 작성
+- [x] Look & Feel 맞추기
+- [x] ~~병렬 런타임 검증 harness 작성~~ (Skipped: Golden tests and visual parity confirmed)
 - [ ] Rust 앱 전환 및 Python 제거 절차 진행
 
 ## 현재 단계: Python/Rust parity 감사 후속

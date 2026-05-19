@@ -15,6 +15,7 @@ mod native_app_viewports;
 mod native_helpers;
 mod ocr_engine;
 mod overlay_recommend_ui;
+mod overlay_theme;
 mod overlay_ui;
 mod play_state;
 mod roi;

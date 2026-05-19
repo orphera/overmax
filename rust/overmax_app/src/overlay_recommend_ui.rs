@@ -1,3 +1,4 @@
+use crate::overlay_theme::Theme;
 use crate::overlay_ui::diff_color;
 use eframe::egui::{
     self, Align, Color32, CornerRadius, FontId, Frame, Label, Layout, Margin, Rect, RichText, Vec2,
@@ -121,7 +122,7 @@ fn draw_empty_recommend(ui: &mut egui::Ui, text: &str, scale: f32) {
         ui.add(
             Label::new(
                 RichText::new(text)
-                    .color(Color32::from_rgb(80, 88, 112))
+                    .color(Theme::TEXT_MUTED)
                     .font(FontId::proportional(11.0 * scale)),
             )
             .selectable(false),
@@ -131,7 +132,7 @@ fn draw_empty_recommend(ui: &mut egui::Ui, text: &str, scale: f32) {
 
 fn draw_recommend_row(ui: &mut egui::Ui, entry: &RecommendEntry, scale: f32) {
     Frame::new()
-        .fill(Color32::from_rgb(36, 46, 70))
+        .fill(Theme::ROW_BG)
         .corner_radius(CornerRadius::same((6.0 * scale) as u8))
         .inner_margin(Margin::symmetric((RECOMMEND_ROW_MARGIN_X * scale) as i8, 0))
         .show(ui, |ui| {
@@ -194,22 +195,26 @@ fn draw_rate(ui: &mut egui::Ui, entry: &RecommendEntry, scale: f32) {
     let Some(rate) = entry.rate else {
         ui.label(
             RichText::new("——")
-                .color(Color32::from_rgb(80, 88, 112))
+                .color(Theme::TEXT_MUTED)
                 .font(FontId::proportional(11.0 * scale)),
         );
         return;
     };
-    ui.label(
-        RichText::new(format!("{rate:.2}%"))
-            .color(rate_color(rate))
-            .font(FontId::proportional(11.0 * scale))
-            .strong(),
-    );
-    if rate >= 100.0 {
-        draw_status_badge(ui, "P", Color32::from_rgb(160, 54, 210), scale);
-    } else if entry.is_max_combo {
-        draw_status_badge(ui, "M", Color32::from_rgb(48, 200, 255), scale);
-    }
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 6.0 * scale;
+        ui.add(
+            Label::new(
+                RichText::new(format!("{rate:.2}%"))
+                    .color(rate_color(rate))
+                    .font(FontId::proportional(11.0 * scale))
+                    .strong(),
+            )
+            .selectable(false),
+        );
+        if entry.is_max_combo {
+            draw_status_badge(ui, "M", Color32::from_rgb(48, 200, 255), scale);
+        }
+    });
 }
 
 fn draw_status_badge(ui: &mut egui::Ui, text: &str, color: Color32, scale: f32) {
@@ -249,7 +254,7 @@ fn pattern_floor_label(
 
 fn song_name_text(entry: &RecommendEntry, scale: f32) -> RichText {
     RichText::new(&entry.song_name)
-        .color(Color32::from_rgb(232, 238, 255))
+        .color(Theme::TEXT_BRIGHT)
         .font(FontId::proportional(11.0 * scale))
         .strong()
 }
@@ -264,11 +269,11 @@ fn badge_text(entry: &RecommendEntry) -> String {
 
 fn tab_fill(active: bool, exists: bool) -> Color32 {
     if !exists {
-        Color32::from_rgb(20, 26, 40)
+        Theme::TAB_DIM_BG
     } else if active {
-        Color32::from_rgb(63, 80, 117)
+        Theme::TAB_ACTIVE_BG
     } else {
-        Color32::from_rgb(28, 36, 54)
+        Theme::TAB_INACTIVE_BG
     }
 }
 
@@ -285,25 +290,23 @@ fn pattern_label(pattern: Option<&PatternTabInfo>) -> String {
 
 fn pattern_text_color(active: bool, exists: bool) -> Color32 {
     if active {
-        Color32::from_rgb(180, 203, 255)
+        Theme::TEXT_HINT
     } else if exists {
-        Color32::from_rgb(136, 145, 167)
+        Theme::TEXT_SECONDARY
     } else {
-        Color32::from_rgb(80, 88, 112)
+        Theme::TEXT_MUTED
     }
 }
 
 fn rate_color(rate: f64) -> Color32 {
     if rate >= 100.0 {
-        Color32::from_rgb(255, 215, 0)
+        Theme::TEXT_ACCENT
+    } else if rate >= 99.8 {
+        Theme::OK
     } else if rate >= 99.0 {
-        Color32::from_rgb(184, 220, 255)
-    } else if rate >= 95.0 {
-        Color32::from_rgb(126, 200, 227)
-    } else if rate >= 90.0 {
-        Color32::from_rgb(181, 234, 215)
+        Theme::TEXT_HINT
     } else {
-        Color32::from_rgb(255, 153, 153)
+        Theme::TEXT_BRIGHT
     }
 }
 

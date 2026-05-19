@@ -2,6 +2,7 @@ use crate::overlay_recommend_ui::{
     avg_rate_text, draw_diff_tabs, draw_recommendations, pattern_count_text, PatternTabInfo,
     RECOMMEND_BODY_HEIGHT,
 };
+use crate::overlay_theme::Theme;
 use crate::ui_command::UiCommand;
 use eframe::egui::{
     self, Align, Button, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId,
@@ -20,20 +21,6 @@ pub struct OverlayActions {
     pub start_drag: bool,
     pub restore_game_focus: bool,
     pub command: Option<UiCommand>,
-}
-
-struct Theme;
-
-impl Theme {
-    const PANEL_BG: Color32 = Color32::from_rgb(18, 24, 38);
-    const PANEL_STROKE: Color32 = Color32::from_rgb(18, 24, 38);
-    const HEADER_BG: Color32 = Color32::from_rgb(30, 40, 62);
-    const SECTION_BG: Color32 = Color32::from_rgb(22, 30, 48);
-    const TEXT_PRIMARY: Color32 = Color32::from_rgb(240, 244, 255);
-    const TEXT_SECONDARY: Color32 = Color32::from_rgb(80, 88, 112);
-    const TEXT_ACCENT: Color32 = Color32::from_rgb(255, 210, 102);
-    const OK: Color32 = Color32::from_rgb(0, 212, 255);
-    const WARN: Color32 = Color32::from_rgb(255, 75, 75);
 }
 
 struct Px {
@@ -66,6 +53,7 @@ impl Px {
     fn footer_margin_x(&self) -> f32 { 10.0 * self.scale }
     fn footer_margin_y(&self) -> f32 { 5.0 * self.scale }
 }
+
 
 pub fn install_korean_font(ctx: &egui::Context) {
     let Some(font_bytes) = load_windows_korean_font() else {

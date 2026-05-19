@@ -4,8 +4,8 @@ use eframe::egui::{self, Color32, ViewportBuilder};
 use overmax_core::GameSessionState;
 use overmax_data::{
     build_candidates, load_base_settings, load_merged_settings, normalize_settings,
-    upsert_varchive_cache_record, DataCompatibility, RecommendResult, RecordDB, RecordManager,
-    SyncCandidate, VArchiveDB,
+    upsert_varchive_cache_record, DataCompatibility, PatternSheetMeta, RecommendResult, RecordDB,
+    RecordManager, SyncCandidate, VArchiveDB,
 };
 use serde_json::Value;
 use std::collections::VecDeque;
@@ -133,6 +133,7 @@ pub struct NativeApp {
     pub(crate) detection_rx: Receiver<DetectionOutput>,
     pub(crate) ui_cmd_rx: Receiver<UiCommand>,
     pub(crate) varchive_db: Arc<VArchiveDB>,
+    pub(crate) sheet_meta: Arc<PatternSheetMeta>,
     pub(crate) recommendations: RecommendResult,
     pub(crate) pattern_tabs: Vec<crate::overlay_recommend_ui::PatternTabInfo>,
     pub(crate) prev_settings_open: bool,
@@ -187,6 +188,9 @@ impl NativeApp {
             let _ = log_tx.send(format!("[VArchive] songs load failed: {e}"));
         }
         let varchive_db = Arc::new(varchive_db);
+        let sheet_meta = Arc::new(PatternSheetMeta::load_cache(
+            root.join("cache").join("pattern_meta.json"),
+        ));
 
         let steam0 = {
             let mg = merged_settings
@@ -253,6 +257,7 @@ impl NativeApp {
             detection_rx,
             ui_cmd_rx,
             varchive_db,
+            sheet_meta,
             recommendations: RecommendResult::empty(),
             pattern_tabs: Vec::new(),
             prev_settings_open: false,

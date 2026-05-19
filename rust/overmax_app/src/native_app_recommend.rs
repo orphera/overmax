@@ -67,10 +67,14 @@ impl NativeApp {
             .iter()
             .filter_map(|diff| {
                 let pattern = patterns.get(*diff)?;
+                let meta = self.sheet_meta.get(&song.name, mode, diff);
                 Some(PatternTabInfo {
                     diff: (*diff).to_string(),
                     level: pattern.level,
                     floor_name: pattern.floor_name.clone(),
+                    gold: meta.gold,
+                    note: meta.note,
+                    assist_key: meta.assist_key,
                 })
             })
             .collect()

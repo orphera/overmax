@@ -23,6 +23,9 @@ pub struct PatternTabInfo {
     pub diff: String,
     pub level: Option<u32>,
     pub floor_name: Option<String>,
+    pub gold: String,
+    pub note: String,
+    pub assist_key: String,
 }
 
 pub fn draw_diff_tabs(ui: &mut egui::Ui, active: Option<&str>, patterns: &[PatternTabInfo]) {
@@ -305,6 +308,9 @@ mod tests {
             diff: "SC".into(),
             level: Some(12),
             floor_name: Some("12.3".into()),
+            gold: String::new(),
+            note: String::new(),
+            assist_key: String::new(),
         };
 
         assert_eq!(pattern_label(Some(&pattern)), "12.3");

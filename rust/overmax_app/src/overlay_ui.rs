@@ -111,7 +111,14 @@ pub fn draw_overlay_panel(
         .stroke(egui::Stroke::new(1.0, Theme::PANEL_STROKE))
         .show(ui, |ui| {
             ui.set_width(WIDTH - f32::from(Px::PANEL_MARGIN * 2));
-            draw_header(ui, state, song_label, &settings_open, &mut actions);
+            draw_header(
+                ui,
+                state,
+                song_label,
+                pattern_tabs,
+                &settings_open,
+                &mut actions,
+            );
             ui.add_space(Px::PANEL_GAP);
             draw_body(ui, state, pattern_tabs, recommendations);
             ui.add_space(Px::PANEL_GAP);
@@ -131,6 +138,7 @@ fn draw_header(
     ui: &mut egui::Ui,
     state: &GameSessionState,
     song_label: &str,
+    pattern_tabs: &[PatternTabInfo],
     settings_open: &Arc<AtomicBool>,
     actions: &mut OverlayActions,
 ) {
@@ -173,7 +181,7 @@ fn draw_header(
             ui.with_layout(Layout::top_down(Align::Center), |ui| {
                 ui.add(
                     Label::new(
-                        RichText::new(meta_text(state))
+                        RichText::new(meta_text(state, pattern_tabs))
                             .color(Theme::TEXT_ACCENT)
                             .font(FontId::proportional(10.0))
                             .strong(),
@@ -288,10 +296,27 @@ fn draw_footer(
         });
 }
 
-fn meta_text(state: &GameSessionState) -> String {
-    match (state.mode.as_deref(), state.diff.as_deref()) {
-        (Some(mode), Some(diff)) => format!("{mode} | {diff}"),
-        _ => "—".to_string(),
+fn meta_text(state: &GameSessionState, pattern_tabs: &[PatternTabInfo]) -> String {
+    let Some(diff) = state.diff.as_deref() else {
+        return "—".to_string();
+    };
+    let Some(pattern) = pattern_tabs.iter().find(|pattern| pattern.diff == diff) else {
+        return "—".to_string();
+    };
+    let mut badges = Vec::new();
+    if !pattern.gold.is_empty() {
+        badges.push(format!("황배:{}", pattern.gold));
+    }
+    if !pattern.assist_key.is_empty() {
+        badges.push(format!("보조:{}", pattern.assist_key));
+    }
+    if !pattern.note.is_empty() {
+        badges.push(pattern.note.clone());
+    }
+    if badges.is_empty() {
+        "—".to_string()
+    } else {
+        badges.join(" | ")
     }
 }
 
@@ -308,12 +333,35 @@ pub(crate) fn diff_color(diff: &str) -> Color32 {
 #[cfg(test)]
 mod tests {
     use super::{diff_color, load_windows_korean_font, meta_text};
+    use crate::overlay_recommend_ui::PatternTabInfo;
     use eframe::egui::Color32;
     use overmax_core::GameSessionState;
 
     #[test]
     fn formats_empty_meta_like_pyqt_header() {
-        assert_eq!(meta_text(&GameSessionState::detecting()), "—");
+        assert_eq!(meta_text(&GameSessionState::detecting(), &[]), "—");
+    }
+
+    #[test]
+    fn formats_sheet_meta_like_pyqt_header() {
+        let state = GameSessionState {
+            song_id: Some(1),
+            mode: Some("5B".into()),
+            diff: Some("SC".into()),
+            is_stable: true,
+            is_max_combo: false,
+            rate: None,
+        };
+        let patterns = vec![PatternTabInfo {
+            diff: "SC".into(),
+            level: Some(12),
+            floor_name: Some("12.3".into()),
+            gold: "O".into(),
+            note: "개인차".into(),
+            assist_key: "Y".into(),
+        }];
+
+        assert_eq!(meta_text(&state, &patterns), "황배:O | 보조:Y | 개인차");
     }
 
     #[test]

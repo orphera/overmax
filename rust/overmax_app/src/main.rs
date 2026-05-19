@@ -1,3 +1,4 @@
+mod cache_update;
 mod debug_ui;
 mod detection_pipeline;
 mod detection_worker;

@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
+use crate::cache_update;
 use crate::debug_ui;
 use crate::detection_pipeline::DetectionOutput;
 use crate::detection_worker;
@@ -164,12 +165,17 @@ impl NativeApp {
         )));
         let mut merged = load_merged_settings(root.as_ref(), (*defaults).clone());
         normalize_settings(&mut merged);
-        let merged_settings = Arc::new(Mutex::new(merged.clone()));
-        let settings_draft = Arc::new(Mutex::new(merged));
 
         let (log_tx, log_rx) = mpsc::channel();
         let (game_found_tx, game_found_rx) = mpsc::channel();
         let (detection_tx, detection_rx) = mpsc::channel();
+
+        cache_update::refresh_startup_caches(root.as_ref(), &merged, &mut |msg| {
+            let _ = log_tx.send(msg);
+        });
+
+        let merged_settings = Arc::new(Mutex::new(merged.clone()));
+        let settings_draft = Arc::new(Mutex::new(merged));
 
         let compat = DataCompatibility::current();
         let recent_steam = steam_session::most_recent_steam_id();

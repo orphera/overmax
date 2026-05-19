@@ -55,14 +55,23 @@ impl WindowTracker {
     }
 
     fn find_hwnd(&self) -> Option<windows_sys::Win32::Foundation::HWND> {
-        let hwnd = unsafe {
-            windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW(
-                std::ptr::null(),
-                self.title.as_ptr(),
-            )
-        };
-        (!hwnd.is_null()).then_some(hwnd)
+        find_hwnd_by_title(&self.title)
     }
+}
+
+pub fn restore_foreground_by_title(title: &str) -> bool {
+    let title = encode_wide(title);
+    let Some(hwnd) = find_hwnd_by_title(&title) else {
+        return false;
+    };
+    unsafe { windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd) != 0 }
+}
+
+fn find_hwnd_by_title(title: &[u16]) -> Option<windows_sys::Win32::Foundation::HWND> {
+    let hwnd = unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW(std::ptr::null(), title.as_ptr())
+    };
+    (!hwnd.is_null()).then_some(hwnd)
 }
 
 fn client_rect_for_hwnd(hwnd: windows_sys::Win32::Foundation::HWND) -> Option<WindowRect> {

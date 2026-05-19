@@ -18,6 +18,7 @@ pub const HEIGHT: f32 = 326.0;
 #[derive(Default, Clone, Copy)]
 pub struct OverlayActions {
     pub start_drag: bool,
+    pub restore_game_focus: bool,
     pub command: Option<UiCommand>,
 }
 
@@ -199,6 +200,9 @@ fn draw_header(
     );
     if drag_response.drag_started() {
         actions.start_drag = true;
+    }
+    if drag_response.drag_stopped() {
+        actions.restore_game_focus = true;
     }
 }
 

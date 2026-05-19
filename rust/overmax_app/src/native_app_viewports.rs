@@ -9,9 +9,18 @@ use crate::native_helpers;
 use crate::overlay_ui;
 use crate::settings_ui;
 use crate::sync_ui;
+use crate::window_tracker;
 
 fn overlay_mouse_passthrough(overlay_on: bool, auxiliary_open: bool) -> bool {
     !overlay_on || auxiliary_open
+}
+
+fn game_window_title(settings: &serde_json::Value) -> &str {
+    settings
+        .get("window_tracker")
+        .and_then(|v| v.get("window_title"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("DJMAX RESPECT V")
 }
 
 impl NativeApp {
@@ -213,6 +222,11 @@ impl eframe::App for NativeApp {
                 if actions.start_drag {
                     ctx.send_viewport_cmd(ViewportCommand::StartDrag);
                 }
+                if actions.restore_game_focus {
+                    if let Ok(settings) = self.merged_settings.lock() {
+                        window_tracker::restore_foreground_by_title(game_window_title(&settings));
+                    }
+                }
                 if let Some(command) = actions.command {
                     self.handle_ui_command(command);
                     ctx.request_repaint();
@@ -244,5 +258,18 @@ mod tests {
         assert!(super::overlay_mouse_passthrough(true, true));
         assert!(super::overlay_mouse_passthrough(false, false));
         assert!(!super::overlay_mouse_passthrough(true, false));
+    }
+
+    #[test]
+    fn game_window_title_uses_settings_or_python_default() {
+        let settings = serde_json::json!({
+            "window_tracker": {"window_title": "DJMAX TEST"}
+        });
+
+        assert_eq!(super::game_window_title(&settings), "DJMAX TEST");
+        assert_eq!(
+            super::game_window_title(&serde_json::json!({})),
+            "DJMAX RESPECT V"
+        );
     }
 }

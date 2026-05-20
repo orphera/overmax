@@ -95,6 +95,12 @@ class RoiOverlayWindow(QWidget):
             QColor("#00FF88"),
             "BTN MODE",
         )
+        self._draw_box(
+            painter,
+            self._roi_to_qrect(*self.roiman.get_roi("online_btn_mode")),
+            QColor("#60FFB0"),
+            "ONLINE BTN MODE",
+        )
 
         # 4. Rate OCR 영역
         self._draw_box(

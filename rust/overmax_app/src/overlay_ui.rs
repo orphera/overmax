@@ -12,8 +12,8 @@ use overmax_data::RecommendResult;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-pub const BASE_WIDTH: f32 = 420.0;
-pub const BASE_HEIGHT: f32 = 500.0;
+pub const BASE_WIDTH: f32 = 360.0;
+pub const BASE_HEIGHT: f32 = 380.0;
 
 #[derive(Default, Clone, Copy)]
 pub struct OverlayActions {

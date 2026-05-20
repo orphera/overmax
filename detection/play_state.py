@@ -56,9 +56,22 @@ def detect_button_mode(frame: np.ndarray, roiman: ROIManager) -> Optional[str]:
     return best_mode if best_dist <= BTN_MODE_MAX_DIST else None
 
 
-def detect_difficulty(frame: np.ndarray, roiman: ROIManager) -> tuple[Optional[str], bool]:
+def _is_online_mode(screen_mode: Optional[str]) -> bool:
+    return screen_mode == "ONLINE"
+
+
+def detect_difficulty(
+    frame: np.ndarray,
+    roiman: ROIManager,
+    screen_mode: Optional[str] = None,
+) -> tuple[Optional[str], bool]:
+    get_diff_roi = (
+        roiman.get_online_diff_panel_roi
+        if _is_online_mode(screen_mode)
+        else roiman.get_diff_panel_roi
+    )
     brightnesses = {
-        diff: sum(_region_mean_bgr(frame, roiman.get_diff_panel_roi(diff))) / 3.0
+        diff: sum(_region_mean_bgr(frame, get_diff_roi(diff))) / 3.0
         for diff in ["NM", "HD", "MX", "SC"]
     }
     sorted_diffs = sorted(brightnesses, key=lambda d: brightnesses[d], reverse=True)
@@ -71,8 +84,13 @@ def detect_difficulty(frame: np.ndarray, roiman: ROIManager) -> tuple[Optional[s
     return best_diff, is_confident
 
 
-def detect_max_combo(frame: np.ndarray, roiman: ROIManager) -> bool:
-    roi = roiman.get_roi("max_combo_badge")
+def detect_max_combo(
+    frame: np.ndarray,
+    roiman: ROIManager,
+    screen_mode: Optional[str] = None,
+) -> bool:
+    roi_name = "online_max_combo_badge" if _is_online_mode(screen_mode) else "max_combo_badge"
+    roi = roiman.get_roi(roi_name)
     b, g, r = _region_mean_bgr(frame, roi)
     return (r + g + b) / 3.0 >= 160
 
@@ -108,8 +126,8 @@ class PlayStateDetector:
         새로운 상태가 안정화되면 내부적으로 Rate OCR을 수행합니다.
         """
         raw_mode = detect_button_mode(frame, roiman)
-        raw_diff, raw_confident = detect_difficulty(frame, roiman)
-        raw_max_combo = detect_max_combo(frame, roiman)
+        raw_diff, raw_confident = detect_difficulty(frame, roiman, screen_mode)
+        raw_max_combo = detect_max_combo(frame, roiman, screen_mode)
         
         # 유효한 데이터인 경우만 히스토리에 추가
         current_raw = (song_id, raw_mode, raw_diff, raw_max_combo)

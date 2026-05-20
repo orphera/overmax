@@ -20,10 +20,12 @@ class ROIManager:
         "jacket": (710, 534, 768, 592),
         "online_jacket": (664, 534, 724, 592),
         "rate": (176, 583, 270, 605),
-        "online_rate": (176, 555, 285, 580),
+        "online_rate": (176, 553, 285, 579),
         "btn_mode": (80, 130, 85, 135),
         "max_combo_badge": (409, 587, 445, 620),
+        "online_max_combo_badge": (318, 548, 354, 580),
         "diff_panel": (98, 488, 208, 516),
+        "online_diff_panel": (82, 467, 198, 498),
     }
 
     # 난이도별 X 오프셋 (1920x1080 기준)
@@ -101,5 +103,11 @@ class ROIManager:
     def get_diff_panel_roi(self, diff: str) -> Tuple[int, int, int, int]:
         """난이도별 패널 ROI를 현재 해상도에 맞춰 변환하여 반환."""
         base_x1, y1, base_x2, y2 = self.ROIS["diff_panel"]
+        offset = self.DIFF_OFFSETS.get(diff, 0)
+        return self.transform_roi((base_x1 + offset, y1, base_x2 + offset, y2))
+
+    def get_online_diff_panel_roi(self, diff: str) -> Tuple[int, int, int, int]:
+        """ONLINE difficulty panel ROI, transformed to the current resolution."""
+        base_x1, y1, base_x2, y2 = self.ROIS["online_diff_panel"]
         offset = self.DIFF_OFFSETS.get(diff, 0)
         return self.transform_roi((base_x1 + offset, y1, base_x2 + offset, y2))

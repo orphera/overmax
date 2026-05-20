@@ -11,6 +11,8 @@ const DIFF_MIN_BRIGHTNESS: f32 = 45.0;
 const DIFF_CONFIDENT_MARGIN: f32 = 15.0;
 const DIFFICULTIES: [&str; 4] = ["NM", "HD", "MX", "SC"];
 
+type ButtonColorEntry = (&'static str, &'static [(u8, u8, u8)]);
+
 #[derive(Clone, Debug, PartialEq)]
 struct RawPlayState {
     context: Option<PlayContext>,
@@ -122,8 +124,8 @@ pub fn detect_button_mode(frame: &CapturedFrame, rois: &RoiManager) -> Option<St
         }
     }
     (best.1 <= BTN_MODE_MAX_DIST)
-        .then_some(best.0?)
-        .map(String::from)
+        .then_some(best.0)
+        .flatten()
 }
 
 pub fn detect_difficulty(frame: &CapturedFrame, rois: &RoiManager) -> (Option<String>, bool) {
@@ -157,7 +159,7 @@ pub fn detect_max_combo(frame: &CapturedFrame, rois: &RoiManager) -> bool {
     (f32::from(b) + f32::from(g) + f32::from(r)) / 3.0 >= 160.0
 }
 
-fn button_colors() -> [(&'static str, &'static [(u8, u8, u8)]); 4] {
+fn button_colors() -> [ButtonColorEntry; 4] {
     [
         ("4B", &[(0x55, 0x4F, 0x2D), (0x5A, 0x47, 0x0C)]),
         ("5B", &[(0xC6, 0xA9, 0x44)]),

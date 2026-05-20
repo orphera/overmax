@@ -138,7 +138,7 @@ fn client(timeout: Duration) -> Client {
     Client::builder()
         .timeout(timeout)
         .build()
-        .expect("reqwest client")
+        .unwrap_or_else(|_| Client::new())
 }
 
 fn download_bytes(

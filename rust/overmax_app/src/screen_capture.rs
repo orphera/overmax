@@ -115,9 +115,9 @@ impl DibSection {
         height: i32,
     ) -> Result<Self, String> {
         let mut bits = null_mut();
-        let mut info = bitmap_info(width, height);
+        let info = bitmap_info(width, height);
         let handle =
-            unsafe { CreateDIBSection(dc, &mut info, DIB_RGB_COLORS, &mut bits, null_mut(), 0) };
+            unsafe { CreateDIBSection(dc, &info, DIB_RGB_COLORS, &mut bits, null_mut(), 0) };
         if handle.is_null() || bits.is_null() {
             return Err("CreateDIBSection failed".to_string());
         }

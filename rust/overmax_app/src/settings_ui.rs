@@ -374,14 +374,14 @@ fn object_section_mut<'a>(draft: &'a mut Value, section: &str) -> &'a mut Map<St
     if !draft.is_object() {
         *draft = Value::Object(Map::new());
     }
-    let root = draft.as_object_mut().expect("draft object initialized");
+    let root = draft.as_object_mut().unwrap(); // Safe due to check above
     let entry = root
         .entry(section)
         .or_insert_with(|| Value::Object(Map::new()));
     if !entry.is_object() {
         *entry = Value::Object(Map::new());
     }
-    entry.as_object_mut().expect("settings section object")
+    entry.as_object_mut().unwrap() // Safe due to check above
 }
 
 fn user_entry_mut<'a>(draft: &'a mut Value, steam_id: &str) -> &'a mut Map<String, Value> {
@@ -392,14 +392,14 @@ fn user_entry_mut<'a>(draft: &'a mut Value, steam_id: &str) -> &'a mut Map<Strin
     if !user_map_value.is_object() {
         *user_map_value = Value::Object(Map::new());
     }
-    let user_map = user_map_value.as_object_mut().expect("user_map object");
+    let user_map = user_map_value.as_object_mut().unwrap(); // Safe due to check above
     let entry = user_map
         .entry(steam_id)
         .or_insert_with(|| json!({"v_id": "", "account_path": ""}));
     if let Some(v_id) = entry.as_str().map(str::to_string) {
         *entry = json!({"v_id": v_id, "account_path": ""});
     }
-    entry.as_object_mut().expect("user_map entry object")
+    entry.as_object_mut().unwrap() // Safe due to check above
 }
 
 #[cfg(test)]

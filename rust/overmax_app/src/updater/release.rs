@@ -17,12 +17,15 @@ const GITHUB_USER_AGENT: &str = concat!("overmax-rs/", env!("CARGO_PKG_VERSION")
 const GITHUB_API_ACCEPT: &str = "application/vnd.github+json";
 const GITHUB_API_VERSION: &str = "2022-11-28";
 
+pub struct LatestRelease {
+    pub tag: Option<String>,
+    pub asset_url: Option<String>,
+    pub manifest_url: Option<String>,
+}
+
 pub fn fetch_latest_release(
     cfg: &AppUpdateConfig,
-) -> Result<
-    (Option<String>, Option<String>, Option<String>),
-    Box<dyn std::error::Error + Send + Sync>,
-> {
+) -> Result<LatestRelease, Box<dyn std::error::Error + Send + Sync>> {
     let url = cfg.latest_release_url.clone().unwrap_or_else(|| {
         format!(
             "https://api.github.com/repos/{}/{}/releases/latest",
@@ -39,7 +42,11 @@ pub fn fetch_latest_release(
         .and_then(|v| v.as_str())
         .map(String::from);
     let Some(ref t) = tag else {
-        return Ok((None, None, None));
+        return Ok(LatestRelease {
+            tag: None,
+            asset_url: None,
+            manifest_url: None,
+        });
     };
     let mut asset_url = None;
     let mut manifest_url = None;
@@ -59,9 +66,17 @@ pub fn fetch_latest_release(
             "[AppUpdater] 릴리즈에서 '{}' asset을 찾을 수 없음",
             cfg.asset_name
         );
-        return Ok((Some(t.clone()), None, manifest_url));
+        return Ok(LatestRelease {
+            tag: Some(t.clone()),
+            asset_url: None,
+            manifest_url,
+        });
     }
-    Ok((tag, asset_url, manifest_url))
+    Ok(LatestRelease {
+        tag,
+        asset_url,
+        manifest_url,
+    })
 }
 
 fn release_json(

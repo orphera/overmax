@@ -49,6 +49,17 @@ pub struct Recommender<'a, R: RecordSource> {
     rdb: &'a R,
 }
 
+struct CandidateSearchParams<'a> {
+    target_song_id: i32,
+    target_mode: &'a str,
+    target_diff: &'a str,
+    ref_floor: f64,
+    use_official: bool,
+    ref_diff_grp: &'a str,
+    floor_range: f64,
+    same_mode_only: bool,
+}
+
 impl<'a, R: RecordSource> Recommender<'a, R> {
     pub fn new(vdb: &'a VArchiveDB, rdb: &'a R) -> Self {
         Self { vdb, rdb }
@@ -93,22 +104,22 @@ impl<'a, R: RecordSource> Recommender<'a, R> {
         let ref_floor = Self::parse_floor_value(p.floor_name.as_ref());
         let use_official = ref_floor.is_none();
 
-        let (final_ref_floor, ref_diff_grp) = if use_official {
-            (p.level.unwrap_or(0) as f64, Self::diff_group(difficulty))
+        let (final_ref_floor, ref_diff_grp) = if let Some(floor) = ref_floor {
+            (floor, "")
         } else {
-            (ref_floor.unwrap(), "")
+            (p.level.unwrap_or(0) as f64, Self::diff_group(difficulty))
         };
 
-        let mut candidates = self.get_candidates(
-            song_id,
-            button_mode,
-            difficulty,
-            final_ref_floor,
+        let mut candidates = self.get_candidates(CandidateSearchParams {
+            target_song_id: song_id,
+            target_mode: button_mode,
+            target_diff: difficulty,
+            ref_floor: final_ref_floor,
             use_official,
             ref_diff_grp,
             floor_range,
             same_mode_only,
-        );
+        });
 
         if candidates.is_empty() {
             return RecommendResult::empty();
@@ -121,10 +132,8 @@ impl<'a, R: RecordSource> Recommender<'a, R> {
                 Ordering::Less
             } else if !a.is_played() && b.is_played() {
                 Ordering::Greater
-            } else if a.is_played() && b.is_played() {
-                a.rate
-                    .unwrap()
-                    .partial_cmp(&b.rate.unwrap())
+            } else if let (Some(ra), Some(rb)) = (a.rate, b.rate) {
+                ra.partial_cmp(&rb)
                     .unwrap_or(Ordering::Equal)
                     .then_with(|| {
                         a.floor
@@ -162,17 +171,10 @@ impl<'a, R: RecordSource> Recommender<'a, R> {
 
     fn get_candidates(
         &self,
-        target_song_id: i32,
-        target_mode: &str,
-        target_diff: &str,
-        ref_floor: f64,
-        use_official: bool,
-        ref_diff_grp: &str,
-        floor_range: f64,
-        same_mode_only: bool,
+        params: CandidateSearchParams,
     ) -> Vec<RecommendEntry> {
-        let modes_to_check = if same_mode_only {
-            vec![target_mode]
+        let modes_to_check = if params.same_mode_only {
+            vec![params.target_mode]
         } else {
             vec!["4B", "5B", "6B", "8B"]
         };
@@ -191,9 +193,9 @@ impl<'a, R: RecordSource> Recommender<'a, R> {
                         if let Some(p) = mode_patterns.get(*diff) {
                             let cand_floor_val = Self::parse_floor_value(p.floor_name.as_ref());
 
-                            let final_cand_floor = if use_official {
+                            let final_cand_floor = if params.use_official {
                                 if cand_floor_val.is_some()
-                                    || Self::diff_group(diff) != ref_diff_grp
+                                    || Self::diff_group(diff) != params.ref_diff_grp
                                 {
                                     continue;
                                 }
@@ -205,11 +207,11 @@ impl<'a, R: RecordSource> Recommender<'a, R> {
                                 }
                             };
 
-                            if (final_cand_floor - ref_floor).abs() > floor_range {
+                            if (final_cand_floor - params.ref_floor).abs() > params.floor_range {
                                 continue;
                             }
 
-                            if sid == target_song_id && mode == &target_mode && diff == &target_diff
+                            if sid == params.target_song_id && mode == &params.target_mode && diff == &params.target_diff
                             {
                                 continue;
                             }
@@ -234,7 +236,7 @@ impl<'a, R: RecordSource> Recommender<'a, R> {
         candidates
     }
 
-    fn merge_record_rates(&self, candidates: &mut Vec<RecommendEntry>) {
+    fn merge_record_rates(&self, candidates: &mut [RecommendEntry]) {
         if !self.rdb.is_ready() {
             return;
         }

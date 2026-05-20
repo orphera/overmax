@@ -157,12 +157,11 @@ pub fn check_and_apply_update_blocking(
     if !cfg.enabled {
         return Ok(true);
     }
-    let (latest_tag, asset_url, manifest_url) =
-        fetch_latest_release(cfg).map_err(|e| e.to_string())?;
-    let Some(tag) = latest_tag else {
+    let release = fetch_latest_release(cfg).map_err(|e| e.to_string())?;
+    let Some(tag) = release.tag else {
         return Ok(true);
     };
-    let Some(url) = asset_url else {
+    let Some(url) = release.asset_url else {
         return Ok(true);
     };
     if !is_newer_version(&tag, app_version()) {
@@ -183,7 +182,7 @@ pub fn check_and_apply_update_blocking(
     eprintln!("[AppUpdater] 새 버전 감지: {} -> {tag}", app_version());
     let zip_path = update_root(app_dir).join(&cfg.asset_name);
     let stage_dir = update_root(app_dir).join("stage");
-    download_and_verify(&url, manifest_url.as_deref(), &cfg.asset_name, &zip_path)
+    download_and_verify(&url, release.manifest_url.as_deref(), &cfg.asset_name, &zip_path)
         .map_err(|e| e.to_string())?;
     extract_zip(&zip_path, &stage_dir).map_err(|e| e.to_string())?;
     let Some(payload) = resolve_payload_dir(&stage_dir) else {

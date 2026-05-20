@@ -322,7 +322,7 @@ fn centered_badge_rect(cell: Rect, width: f32, scale: f32) -> Rect {
 mod tests {
     use super::{
         centered_badge_rect, pattern_label, recommend_row_inner_width, PatternTabInfo,
-        BADGE_HEIGHT, RECOMMEND_ROW_GAP, RECOMMEND_ROW_HEIGHT,
+        BADGE_HEIGHT, RECOMMEND_ROW_HEIGHT,
     };
     use eframe::egui::{Pos2, Rect, Vec2};
 

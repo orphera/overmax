@@ -125,7 +125,7 @@ unsafe extern "system" fn window_proc(
             0
         }
         WM_COMMAND => {
-            handle_menu_command((wparam & 0xffff) as usize);
+            handle_menu_command(wparam & 0xffff);
             0
         }
         WM_CLOSE => {
@@ -151,25 +151,24 @@ unsafe fn add_notify_icon(hwnd: HWND) {
         ..Default::default()
     };
     write_wide_fixed(&mut data.szTip, "Overmax");
-    Shell_NotifyIconW(NIM_ADD, &mut data);
+    Shell_NotifyIconW(NIM_ADD, &data);
     data.Anonymous.uVersion = NOTIFYICON_VERSION_4;
-    Shell_NotifyIconW(NIM_SETVERSION, &mut data);
+    Shell_NotifyIconW(NIM_SETVERSION, &data);
 }
 
 unsafe fn delete_notify_icon(hwnd: HWND) {
-    let mut data = NOTIFYICONDATAW {
+    let data = NOTIFYICONDATAW {
         cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
         hWnd: hwnd,
         uID: TRAY_ID,
         ..Default::default()
     };
-    Shell_NotifyIconW(NIM_DELETE, &mut data);
+    Shell_NotifyIconW(NIM_DELETE, &data);
 }
 
 unsafe fn handle_tray_event(hwnd: HWND, event: u32) {
-    match event {
-        WM_RBUTTONUP => show_context_menu(hwnd),
-        _ => {}
+    if event == WM_RBUTTONUP {
+        show_context_menu(hwnd);
     }
 }
 

@@ -78,16 +78,19 @@ fn parse_vdf(content: &str) -> HashMap<String, VdfVal> {
             continue;
         }
         if line == "}" {
-            if map_stack.len() <= 1 {
-                continue;
+            if map_stack.len() > 1 {
+                if let (Some(done), Some(key)) = (map_stack.pop(), key_stack.pop()) {
+                    if let Some(parent) = map_stack.last_mut() {
+                        parent.insert(key, VdfVal::Obj(done));
+                    }
+                }
             }
-            let done = map_stack.pop().unwrap();
-            let key = key_stack.pop().unwrap();
-            map_stack.last_mut().unwrap().insert(key, VdfVal::Obj(done));
             continue;
         }
         if let Some((k, v)) = parse_quoted_key_value_line(line) {
-            map_stack.last_mut().unwrap().insert(k, VdfVal::Str(v));
+            if let Some(parent) = map_stack.last_mut() {
+                parent.insert(k, VdfVal::Str(v));
+            }
             pending_key = None;
         } else if let Some(k) = parse_quoted_key_open_brace(line) {
             key_stack.push(k);

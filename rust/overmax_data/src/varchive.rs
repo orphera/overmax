@@ -30,6 +30,12 @@ pub struct VArchiveDB {
     title_map: HashMap<String, Vec<Song>>,
 }
 
+impl Default for VArchiveDB {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VArchiveDB {
     pub fn new() -> Self {
         Self {

@@ -258,7 +258,7 @@ pub fn save_fetched_records_to_cache(
         .get("user")
         .and_then(|u| u.get("updated_at"))
         .cloned()
-        .unwrap_or_else(|| json!(null));
+        .unwrap_or(json!(null));
 
     let cache_data = json!({
         "v_id": v_id,

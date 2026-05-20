@@ -196,7 +196,7 @@ impl NativeApp {
                     ctx,
                     class,
                     sync_ui::SyncProps {
-                        steam_id: &mut *steam_g,
+                        steam_id: &mut steam_g,
                         status: &status_s,
                         candidates: &list,
                         on_scan: || {
@@ -401,39 +401,6 @@ impl eframe::App for NativeApp {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::NativeApp;
-    use eframe::egui;
-
-    #[test]
-    fn auxiliary_viewports_stay_out_of_taskbar() {
-        let builder = NativeApp::auxiliary_viewport("debug", [720.0, 420.0]);
-
-        assert_eq!(builder.taskbar, Some(false));
-        assert_eq!(builder.visible, Some(true));
-        assert_eq!(builder.resizable, Some(true));
-        assert_ne!(
-            builder.window_level,
-            Some(egui::viewport::WindowLevel::AlwaysOnTop)
-        );
-        assert_ne!(builder.active, Some(true));
-    }
-
-    #[test]
-    fn game_window_title_uses_settings_or_python_default() {
-        let settings = serde_json::json!({
-            "window_tracker": {"window_title": "DJMAX TEST"}
-        });
-
-        assert_eq!(super::game_window_title(&settings), "DJMAX TEST");
-        assert_eq!(
-            super::game_window_title(&serde_json::json!({})),
-            "DJMAX RESPECT V"
-        );
-    }
-}
-
 #[cfg(target_os = "windows")]
 fn apply_window_opacity(opacity: f32, log_lines: &Arc<Mutex<VecDeque<String>>>) -> bool {
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
@@ -501,4 +468,37 @@ fn apply_window_opacity(opacity: f32, log_lines: &Arc<Mutex<VecDeque<String>>>) 
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NativeApp;
+    use eframe::egui;
+
+    #[test]
+    fn auxiliary_viewports_stay_out_of_taskbar() {
+        let builder = NativeApp::auxiliary_viewport("debug", [720.0, 420.0]);
+
+        assert_eq!(builder.taskbar, Some(false));
+        assert_eq!(builder.visible, Some(true));
+        assert_eq!(builder.resizable, Some(true));
+        assert_ne!(
+            builder.window_level,
+            Some(egui::viewport::WindowLevel::AlwaysOnTop)
+        );
+        assert_ne!(builder.active, Some(true));
+    }
+
+    #[test]
+    fn game_window_title_uses_settings_or_python_default() {
+        let settings = serde_json::json!({
+            "window_tracker": {"window_title": "DJMAX TEST"}
+        });
+
+        assert_eq!(super::game_window_title(&settings), "DJMAX TEST");
+        assert_eq!(
+            super::game_window_title(&serde_json::json!({})),
+            "DJMAX RESPECT V"
+        );
+    }
 }

@@ -127,6 +127,15 @@ fn overlap(start: f32, end: f32, idx: f32) -> f32 {
     end.min(idx + 1.0) - start.max(idx)
 }
 
+struct BilinearCoords {
+    x0: usize,
+    y0: usize,
+    x1: usize,
+    y1: usize,
+    fx: f32,
+    fy: f32,
+}
+
 fn bilinear_pixel(
     src: &[u8],
     sw: usize,
@@ -144,30 +153,32 @@ fn bilinear_pixel(
     let y1 = (y0 + 1).min(sh - 1);
     let fx = sx - sx.floor();
     let fy = sy - sy.floor();
-    interpolate_2d(src, sw, x0, y0, x1, y1, fx, fy)
+    interpolate_2d(
+        src,
+        sw,
+        BilinearCoords {
+            x0,
+            y0,
+            x1,
+            y1,
+            fx,
+            fy,
+        },
+    )
 }
 
-fn interpolate_2d(
-    src: &[u8],
-    sw: usize,
-    x0: usize,
-    y0: usize,
-    x1: usize,
-    y1: usize,
-    fx: f32,
-    fy: f32,
-) -> u8 {
+fn interpolate_2d(src: &[u8], sw: usize, c: BilinearCoords) -> u8 {
     let top = lerp(
-        f32::from(src[y0 * sw + x0]),
-        f32::from(src[y0 * sw + x1]),
-        fx,
+        f32::from(src[c.y0 * sw + c.x0]),
+        f32::from(src[c.y0 * sw + c.x1]),
+        c.fx,
     );
     let bottom = lerp(
-        f32::from(src[y1 * sw + x0]),
-        f32::from(src[y1 * sw + x1]),
-        fx,
+        f32::from(src[c.y1 * sw + c.x0]),
+        f32::from(src[c.y1 * sw + c.x1]),
+        c.fx,
     );
-    lerp(top, bottom, fy).round().clamp(0.0, 255.0) as u8
+    lerp(top, bottom, c.fy).round().clamp(0.0, 255.0) as u8
 }
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {

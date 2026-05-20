@@ -74,8 +74,7 @@ pub fn run_native_app() -> eframe::Result<()> {
                 .map(|app| Box::new(app) as Box<dyn eframe::App>)
                 .map_err(|e| {
                     eprintln!("native app init: {e}");
-                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))
-                        as Box<dyn std::error::Error + Send + Sync>
+                    Box::new(std::io::Error::other(e)) as Box<dyn std::error::Error + Send + Sync>
                 })
         }),
     )
@@ -103,18 +102,6 @@ fn native_options(merged: &Value) -> eframe::NativeOptions {
     eframe::NativeOptions {
         viewport: builder,
         ..Default::default()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::native_options;
-
-    #[test]
-    fn main_overlay_stays_out_of_taskbar() {
-        let options = native_options(&serde_json::json!({}));
-
-        assert_eq!(options.viewport.taskbar, Some(false));
     }
 }
 
@@ -651,5 +638,17 @@ impl NativeApp {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::native_options;
+
+    #[test]
+    fn main_overlay_stays_out_of_taskbar() {
+        let options = native_options(&serde_json::json!({}));
+
+        assert_eq!(options.viewport.taskbar, Some(false));
     }
 }

@@ -8,7 +8,7 @@ import re
 from typing import Optional
 import numpy as np
 from detection.ocr_wrapper import WindowsOcrEngine
-from constants import LOGO_OCR_KEYWORD
+from constants import LOGO_OCR_KEYWORDS
 
 
 class OcrDetector:
@@ -17,16 +17,21 @@ class OcrDetector:
         self._log = log_cb or print
         self.engine = WindowsOcrEngine(log_cb)
 
-    async def detect_logo(self, logo_img: np.ndarray) -> tuple[bool, str, str]:
+    async def detect_logo(self, logo_img: np.ndarray) -> tuple[bool, str, str, Optional[str]]:
         """
         주어진 로고 이미지 영역에서 FREESTYLE 키워드를 감지합니다.
-        반환: (is_detected, raw_text, normalized_text)
+        반환: (is_detected, raw_text, normalized_text, matched_keyword)
         """
         text = await self.engine.recognize(logo_img)
         normalized = self._normalize_alnum(text)
-        keyword = self._normalize_alnum(LOGO_OCR_KEYWORD)
-        is_detected = self._is_logo_keyword_match(keyword, normalized)
-        return is_detected, text, normalized
+        matched_keyword = None
+        for keyword in LOGO_OCR_KEYWORDS:
+            normalized_keyword = self._normalize_alnum(keyword)
+            if self._is_logo_keyword_match(normalized_keyword, normalized):
+                matched_keyword = normalized_keyword
+                break
+        is_detected = matched_keyword is not None
+        return is_detected, text, normalized, matched_keyword
 
     async def detect_rate(self, rate_img: np.ndarray) -> tuple[Optional[float], str]:
         """

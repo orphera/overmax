@@ -71,7 +71,7 @@ class RoiOverlayWindow(QWidget):
             painter,
             self._roi_to_qrect(*self.roiman.get_roi("logo")),
             QColor("#CC66FF"),
-            "LOGO (FREESTYLE)",
+            "LOGO",
         )
 
         # 2. 재킷 ROI
@@ -96,6 +96,12 @@ class RoiOverlayWindow(QWidget):
             self._roi_to_qrect(*self.roiman.get_roi("rate")),
             QColor("#00AAFF"),
             "RATE OCR",
+        )
+        self._draw_box(
+            painter,
+            self._roi_to_qrect(*self.roiman.get_roi("online_rate")),
+            QColor("#66DDFF"),
+            "ONLINE RATE",
         )
 
         # 5. 난이도별 감지 영역

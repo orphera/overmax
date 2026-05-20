@@ -100,7 +100,8 @@ class PlayStateDetector:
         self, 
         frame: np.ndarray, 
         roiman: ROIManager, 
-        song_id: Optional[int]
+        song_id: Optional[int],
+        screen_mode: Optional[str] = None,
     ) -> GameSessionState:
         """
         현재 프레임을 분석하여 안정화된 게임 상태를 반환합니다.
@@ -147,7 +148,8 @@ class PlayStateDetector:
                 rate = self._last_stable_state.rate
         else:
             # 새로운 상태 진입 -> OCR 수행
-            rate_roi = roiman.get_roi("rate")
+            rate_roi_name = "online_rate" if screen_mode == "ONLINE" else "rate"
+            rate_roi = roiman.get_roi(rate_roi_name)
             # ROI 영역 크롭 (helpers 의 기능을 직접 사용하거나 roiman 확장 고려)
             h, w = frame.shape[:2]
             x1, y1, x2, y2 = rate_roi

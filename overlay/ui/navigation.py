@@ -81,6 +81,12 @@ class RoiOverlayWindow(QWidget):
             QColor("#FF0000"),
             "JACKET",
         )
+        self._draw_box(
+            painter,
+            self._roi_to_qrect(*self.roiman.get_roi("online_jacket")),
+            QColor("#FF6688"),
+            "ONLINE JACKET",
+        )
 
         # 3. 버튼 모드 감지 영역
         self._draw_box(

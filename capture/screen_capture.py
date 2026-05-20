@@ -93,6 +93,7 @@ class ScreenCapture:
         self._last_jacket_ts = 0.0
         self._last_jacket_thumb: Optional[np.ndarray] = None
         self._last_jacket_match_ts = 0.0
+        self._last_jacket_roi_name: Optional[str] = None
 
         self._last_emitted_state: Optional[GameSessionState] = None
         self._recorded_states: set = set()
@@ -199,6 +200,8 @@ class ScreenCapture:
 
     def _reset_on_screen_exit(self):
         self._current_song_id = None
+        self._last_jacket_thumb = None
+        self._last_jacket_roi_name = None
         self._last_emitted_state = None
         self._last_logo_ocr_match = None
         self._recorded_states.clear()
@@ -210,11 +213,19 @@ class ScreenCapture:
 
         self._last_jacket_ts = now
         jacket_roi_name = "online_jacket" if self._last_logo_ocr_match == "ONLINE" else "jacket"
+        if jacket_roi_name != self._last_jacket_roi_name:
+            self._last_jacket_thumb = None
+            self._current_song_id = None
+            self._last_jacket_roi_name = jacket_roi_name
+
         jacket_roi = self.roiman.get_roi(jacket_roi_name)
         jacket_img = crop_roi(full_frame, jacket_roi)
         thumb = make_thumbnail(jacket_img)
         image_changed = has_thumbnail_changed(thumb, self._last_jacket_thumb, JACKET_CHANGE_THRESHOLD)
-        force_recheck = (now - self._last_jacket_match_ts) >= JACKET_FORCE_RECHECK_SEC
+        force_recheck = (
+            self._current_song_id is None
+            and (now - self._last_jacket_match_ts) >= JACKET_FORCE_RECHECK_SEC
+        )
         if not (image_changed or force_recheck):
             return
 
@@ -222,7 +233,9 @@ class ScreenCapture:
         self._last_jacket_match_ts = now
         if image_changed:
             self._current_song_id = None
-        self._current_song_id = self._search_song_id_from_jacket(jacket_img)
+        matched_song_id = self._search_song_id_from_jacket(jacket_img)
+        if matched_song_id is not None:
+            self._current_song_id = matched_song_id
 
     def _should_match_jacket(self, now: float) -> bool:
         return (

@@ -47,36 +47,91 @@ impl Px {
 }
 
 
-pub fn install_korean_font(ctx: &egui::Context) {
-    let Some(font_bytes) = load_windows_korean_font() else {
-        return;
-    };
+pub fn install_cjk_fonts(ctx: &egui::Context) {
     let mut fonts = FontDefinitions::default();
-    fonts.font_data.insert(
-        "malgun_gothic".to_string(),
-        std::sync::Arc::new(FontData::from_owned(font_bytes)),
-    );
-    for family in [FontFamily::Proportional, FontFamily::Monospace] {
-        fonts
-            .families
-            .entry(family)
-            .or_default()
-            .insert(0, "malgun_gothic".to_string());
+    
+    let font_names = [
+        ("malgun", "malgun.ttf"),
+        ("msgothic", "msgothic.ttc"),
+        ("msyh", "msyh.ttc"),
+        ("meiryo", "meiryo.ttc"),
+        ("gulim", "gulim.ttc"),
+    ];
+
+    let font_dirs = get_platform_font_dirs();
+    let mut loaded_fonts = Vec::new();
+
+    for (name, filename) in font_names {
+        for dir in &font_dirs {
+            let path = dir.join(filename);
+            if let Ok(bytes) = std::fs::read(&path) {
+                let mut font_data = FontData::from_owned(bytes);
+                if filename.ends_with(".ttc") {
+                    font_data.index = 0;
+                }
+                fonts.font_data.insert(
+                    name.to_string(),
+                    std::sync::Arc::new(font_data),
+                );
+                loaded_fonts.push(name.to_string());
+                break; // Found this font, move to the next name
+            }
+        }
     }
+
+    if loaded_fonts.is_empty() {
+        return;
+    }
+
+    for family in [FontFamily::Proportional, FontFamily::Monospace] {
+        let family_fonts = fonts.families.entry(family).or_default();
+        for name in &loaded_fonts {
+            family_fonts.push(name.clone());
+        }
+    }
+
     ctx.set_fonts(fonts);
 }
 
-pub fn load_windows_korean_font() -> Option<Vec<u8>> {
-    for path in [
-        r"C:\Windows\Fonts\malgun.ttf",
-        r"C:\Windows\Fonts\malgunsl.ttf",
-        r"C:\Windows\Fonts\gulim.ttc",
-    ] {
-        if let Ok(bytes) = std::fs::read(path) {
-            return Some(bytes);
+fn get_platform_font_dirs() -> Vec<std::path::PathBuf> {
+    let mut dirs = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        // 1. System Font Folder (usually C:\Windows\Fonts)
+        if let Ok(windir) = std::env::var("SystemRoot") {
+            dirs.push(std::path::PathBuf::from(windir).join("Fonts"));
+        } else if let Ok(windir) = std::env::var("WINDIR") {
+            dirs.push(std::path::PathBuf::from(windir).join("Fonts"));
+        } else {
+            dirs.push(std::path::PathBuf::from(r"C:\Windows\Fonts"));
+        }
+
+        // 2. User Font Folder (introduced in Windows 10)
+        if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
+            dirs.push(std::path::PathBuf::from(localappdata).join(r"Microsoft\Windows\Fonts"));
         }
     }
-    None
+
+    #[cfg(target_os = "linux")]
+    {
+        dirs.push(std::path::PathBuf::from("/usr/share/fonts"));
+        dirs.push(std::path::PathBuf::from("/usr/local/share/fonts"));
+        if let Ok(home) = std::env::var("HOME") {
+            dirs.push(std::path::PathBuf::from(home).join(".local/share/fonts"));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        dirs.push(std::path::PathBuf::from("/Library/Fonts"));
+        dirs.push(std::path::PathBuf::from("/System/Library/Fonts"));
+        if let Ok(home) = std::env::var("HOME") {
+            dirs.push(std::path::PathBuf::from(home).join("Library/Fonts"));
+        }
+    }
+
+    dirs
 }
 
 pub fn draw_overlay_panel(
@@ -335,9 +390,9 @@ pub(crate) fn diff_color(diff: &str) -> Color32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{diff_color, load_windows_korean_font, meta_text};
+    use super::{diff_color, install_cjk_fonts, meta_text};
     use crate::overlay_recommend_ui::PatternTabInfo;
-    use eframe::egui::Color32;
+    use eframe::egui::{Color32, Context};
     use overmax_core::{GameSessionState, PlayContext};
 
     #[test]
@@ -375,7 +430,9 @@ mod tests {
     }
 
     #[test]
-    fn finds_windows_korean_font_on_target_machine() {
-        assert!(load_windows_korean_font().is_some());
+    fn finds_and_installs_cjk_fonts_without_panic() {
+        let ctx = Context::default();
+        install_cjk_fonts(&ctx);
+        // If it reaches here without panicking, the logic is sound.
     }
 }

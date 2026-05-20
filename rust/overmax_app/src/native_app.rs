@@ -69,7 +69,7 @@ pub fn run_native_app() -> eframe::Result<()> {
         "Overmax",
         options,
         Box::new(|cc| {
-            overlay_ui::install_korean_font(&cc.egui_ctx);
+            overlay_ui::install_cjk_fonts(&cc.egui_ctx);
             NativeApp::new()
                 .map(|app| Box::new(app) as Box<dyn eframe::App>)
                 .map_err(|e| {

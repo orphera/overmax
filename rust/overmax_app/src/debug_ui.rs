@@ -37,19 +37,31 @@ pub fn render_debug(
         });
     } else {
         egui::CentralPanel::default()
-            .frame(Frame::new().fill(Theme::PANEL_BG).inner_margin(Margin::same(18)))
+            .frame(Frame::new().fill(Theme::PANEL_BG).inner_margin(Margin::same(24)))
             .show(ctx, |ui| {
+                ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(title).color(Theme::TEXT_PRIMARY).size(Theme::FONT_HEADING).strong());
+                    ui.label(
+                        RichText::new("Debug")
+                            .color(Theme::TEXT_ACCENT)
+                            .size(Theme::FONT_HEADING)
+                            .strong(),
+                    );
+                    ui.label(
+                        RichText::new("Logs")
+                            .color(Theme::TEXT_PRIMARY)
+                            .size(Theme::FONT_HEADING)
+                            .strong(),
+                    );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let total_lines = if let Ok(g) = lines.lock() { g.len() } else { 0 };
-                        ui.label(RichText::new(format!("총 {total_lines}줄")).color(Theme::TEXT_MUTED).size(Theme::FONT_TINY));
+                        ui.label(RichText::new(format!("{} lines", total_lines)).color(Theme::TEXT_MUTED).size(Theme::FONT_TINY));
                     });
                 });
-                ui.add_space(8.0);
+                ui.add_space(16.0);
 
                 render_controls(ui, lines, paused, filters);
-                ui.add_space(12.0);
+                ui.add_space(16.0);
 
                 log_scroll(ui, lines, filters);
             });
@@ -66,17 +78,20 @@ fn render_controls(
         // Pause Button
         let is_paused = paused.load(Ordering::Relaxed);
         let pause_text = if is_paused { "▶ 재개" } else { "⏸ 일시정지" };
-        let pause_btn = egui::Button::new(RichText::new(pause_text).size(Theme::FONT_SMALL))
-            .fill(if is_paused { Theme::BTN_PAUSED } else { Theme::CARD })
-            .stroke(Stroke::new(1.0, Theme::STROKE));
+        let pause_btn = egui::Button::new(RichText::new(pause_text).size(Theme::FONT_SMALL).strong())
+            .min_size(egui::vec2(80.0, Theme::CONTROL_HEIGHT))
+            .fill(if is_paused { Theme::BTN_PAUSED } else { Theme::SECONDARY })
+            .corner_radius(egui::CornerRadius::same(Theme::R_SM));
         if ui.add(pause_btn).clicked() {
             paused.store(!is_paused, Ordering::Relaxed);
         }
 
         // Clear Button
         let clear_btn = egui::Button::new(RichText::new("🗑 지우기").size(Theme::FONT_SMALL))
+            .min_size(egui::vec2(80.0, Theme::CONTROL_HEIGHT))
             .fill(Theme::CARD)
-            .stroke(Stroke::new(1.0, Theme::STROKE));
+            .stroke(Stroke::new(1.0, Theme::STROKE))
+            .corner_radius(egui::CornerRadius::same(Theme::R_SM));
         if ui.add(clear_btn).clicked() {
             if let Ok(mut g) = lines.lock() {
                 g.clear();
@@ -84,11 +99,13 @@ fn render_controls(
         }
     });
 
-    ui.add_space(6.0);
+    ui.add_space(8.0);
 
     // Filters Row
     ui.horizontal(|ui| {
-        ui.label(RichText::new("필터:").color(Theme::TEXT_MUTED).size(Theme::FONT_SMALL));
+        ui.label(RichText::new("필터:").color(Theme::TEXT_SECONDARY).size(Theme::FONT_SMALL).strong());
+        ui.add_space(4.0);
+        
         if let Ok(mut filters_lock) = filters.lock() {
             let tags = [
                 "[ScreenCapture]",
@@ -148,12 +165,13 @@ fn log_scroll(
     Frame::new()
         .fill(Theme::CARD)
         .stroke(Stroke::new(1.0, Theme::STROKE))
-        .corner_radius(CornerRadius::same(8))
+        .corner_radius(CornerRadius::same(Theme::R_MD))
         .inner_margin(Margin::same(12))
         .show(ui, |ui| {
             let row_height = ui.text_style_height(&egui::TextStyle::Monospace);
             ScrollArea::vertical()
                 .stick_to_bottom(true)
+                .auto_shrink([false, false])
                 .show_rows(ui, row_height, filtered_lines.len(), |ui, range| {
                     for idx in range {
                         let line = &filtered_lines[idx];

@@ -1,6 +1,6 @@
 //! Settings editor: overlay scale/opacity and capture/matcher intervals.
 
-use crate::overlay_theme::{apply_secondary_window_style, Theme};
+use crate::overlay_theme::{apply_secondary_window_style, render_pill_tabs, Theme};
 use eframe::egui::{
     self, CornerRadius, Frame, Margin, RichText, Slider, Stroke, TextEdit, ViewportClass,
 };
@@ -21,45 +21,45 @@ pub struct SettingsUiContext {
 
 pub fn render_settings_form(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContext) {
     apply_secondary_window_style(ui.ctx());
+    
     ui.add_space(8.0);
-    ui.heading(
-        RichText::new("Overmax 설정")
-            .color(Theme::TEXT_PRIMARY)
-            .size(Theme::FONT_HEADING)
-            .strong(),
-    );
-    ui.add_space(20.0);
-    let tab = settings_tabs(ui);
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new("Overmax")
+                .color(Theme::TEXT_ACCENT)
+                .size(Theme::FONT_HEADING)
+                .strong(),
+        );
+        ui.label(
+            RichText::new("설정")
+                .color(Theme::TEXT_PRIMARY)
+                .size(Theme::FONT_HEADING)
+                .strong(),
+        );
+    });
+    
     ui.add_space(16.0);
-    match tab {
-        0 => ui_tab(ui, draft),
-        1 => varchive_tab(ui, draft, ctx),
-        _ => system_tab(ui, draft),
-    }
-}
-
-fn settings_tabs(ui: &mut egui::Ui) -> usize {
+    
     let id = ui.id().with("settings_tab");
     let mut active = ui.data(|d| d.get_temp::<usize>(id).unwrap_or(0));
-    ui.horizontal(|ui| {
-        for (idx, label) in ["UI", "V-Archive", "System"].iter().enumerate() {
-            if ui
-                .selectable_label(
-                    active == idx,
-                    RichText::new(*label).size(Theme::FONT_BODY),
-                )
-                .clicked()
-            {
-                active = idx;
-            }
-        }
-    });
+    render_pill_tabs(ui, "settings_tabs", &["UI", "V-Archive", "System"], &mut active);
     ui.data_mut(|d| d.insert_temp(id, active));
-    active
+    
+    ui.add_space(20.0);
+    
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            match active {
+                0 => ui_tab(ui, draft),
+                1 => varchive_tab(ui, draft, ctx),
+                _ => system_tab(ui, draft),
+            }
+        });
 }
 
 fn ui_tab(ui: &mut egui::Ui, draft: &mut Value) {
-    section_frame(ui, "오버레이", |ui| overlay_section(ui, draft));
+    section_frame(ui, "오버레이 설정", |ui| overlay_section(ui, draft));
 }
 
 fn overlay_section(ui: &mut egui::Ui, draft: &mut Value) {
@@ -67,59 +67,71 @@ fn overlay_section(ui: &mut egui::Ui, draft: &mut Value) {
         return;
     };
     
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("크기").color(Theme::TEXT_PRIMARY).size(Theme::FONT_BODY));
+    form_row(ui, "크기", |ui| {
         let current_scale = overlay.get("scale").and_then(|v| v.as_f64()).unwrap_or(1.0);
-        for (label, val) in [("S", 0.75), ("M", 1.0), ("L", 1.25), ("XL", 1.5)] {
-            if ui
-                .selectable_label(
-                    (current_scale - val).abs() < 0.01,
-                    RichText::new(label).size(Theme::FONT_SMALL),
-                )
-                .clicked()
-            {
-                overlay.insert("scale".into(), serde_json::json!(val));
+        ui.horizontal(|ui| {
+            ui.style_mut().spacing.item_spacing.x = 4.0;
+            for (label, val) in [("S", 0.75), ("M", 1.0), ("L", 1.25), ("XL", 1.5)] {
+                let is_active = (current_scale - val).abs() < 0.01;
+                let btn = egui::Button::new(RichText::new(label).size(Theme::FONT_SMALL).strong())
+                    .min_size(egui::vec2(36.0, Theme::CONTROL_HEIGHT))
+                    .fill(if is_active { Theme::TAB_ACTIVE_BG } else { Theme::TAB_DIM_BG })
+                    .stroke(Stroke::new(1.0, Theme::STROKE))
+                    .corner_radius(egui::CornerRadius::same(Theme::R_SM));
+                    
+                if ui.add(btn).clicked() {
+                    overlay.insert("scale".into(), serde_json::json!(val));
+                }
             }
-        }
+        });
     });
 
-    ui.add_space(12.0);
+    ui.add_space(Theme::ROW_SPACING);
 
-    let mut opacity = overlay
-        .get("base_opacity")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.8);
-    if ui
-        .add(
-            Slider::new(&mut opacity, 0.1..=1.0)
-                .step_by(0.1)
-                .text(RichText::new("기본 투명도").size(Theme::FONT_SMALL)),
-        )
-        .changed()
-    {
-        overlay.insert("base_opacity".into(), serde_json::json!(opacity));
-    }
+    form_row(ui, "투명도", |ui| {
+        let mut opacity = overlay
+            .get("base_opacity")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.8);
+            
+        let slider = Slider::new(&mut opacity, 0.1..=1.0)
+            .step_by(0.1)
+            .custom_formatter(|v, _| format!("{:.0}%", v * 100.0))
+            .trailing_fill(true);
+            
+        if ui.add_sized(egui::vec2(ui.available_width(), Theme::CONTROL_HEIGHT), slider).changed() {
+            overlay.insert("base_opacity".into(), serde_json::json!(opacity));
+        }
+    });
 }
 
 fn varchive_tab(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContext) {
-    section_frame(ui, "계정", |ui| {
-        ui.label(
-            RichText::new(current_steam_label(ctx))
-                .color(Theme::TEXT_MUTED)
-                .size(Theme::FONT_SMALL),
-        );
-        ui.add_space(8.0);
-        auto_refresh_row(ui, draft);
+    section_frame(ui, "V-Archive 계정", |ui| {
+        form_row(ui, "연동 상태", |ui| {
+            ui.label(
+                RichText::new(current_steam_label(ctx))
+                    .color(Theme::TEXT_MUTED)
+                    .size(Theme::FONT_SMALL),
+            );
+        });
+        
+        ui.add_space(Theme::ROW_SPACING);
+        
+        form_row(ui, "자동화", |ui| {
+            auto_refresh_row(ui, draft);
+        });
+
         if ctx.current_steam_id.is_empty() {
             ui.add_space(8.0);
             ui.label(
                 RichText::new("발견된 Steam 계정이 없습니다.")
-                    .color(Theme::TEXT_MUTED)
+                    .color(Theme::WARN)
                     .size(Theme::FONT_SMALL),
             );
             return;
         }
-        ui.add_space(12.0);
+        
+        ui.add_space(16.0);
         steam_account_rows(ui, draft, ctx);
     });
 }
@@ -148,55 +160,101 @@ fn auto_refresh_row(ui: &mut egui::Ui, draft: &mut Value) {
 
 fn steam_account_rows(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContext) {
     let entry = user_entry_mut(draft, &ctx.current_steam_id);
-    text_row(ui, entry, "V-Archive ID", "v_id", 180.0);
     
-    ui.horizontal(|ui| {
-        ui.add_space(100.0); // Align with text_row label
-        for b in [4, 5, 6, 8] {
-            if ui.button(RichText::new(format!("{b}B")).size(Theme::FONT_SMALL)).clicked() {
-                let v_id = entry.get("v_id").and_then(|v| v.as_str()).unwrap_or("");
-                if !v_id.is_empty() {
-                    let _ = ctx.fetch_tx.send((ctx.current_steam_id.clone(), v_id.to_string(), b));
-                }
-            }
-        }
-        if ui.button(RichText::new("All").size(Theme::FONT_SMALL)).clicked() {
-            let v_id = entry.get("v_id").and_then(|v| v.as_str()).unwrap_or("");
-            if !v_id.is_empty() {
-                let _ = ctx.fetch_tx.send((ctx.current_steam_id.clone(), v_id.to_string(), 0));
-            }
+    form_row(ui, "V-Archive ID", |ui| {
+        let mut text = entry
+            .get("v_id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if ui
+            .add(TextEdit::singleline(&mut text)
+                .font(egui::FontId::proportional(Theme::FONT_BODY))
+                .vertical_align(egui::Align::Center)
+                .margin(egui::Margin::symmetric(8, 0))
+                .desired_width(ui.available_width())
+                .min_size(egui::vec2(0.0, Theme::CONTROL_HEIGHT)))
+            .changed()
+        {
+            entry.insert("v_id".into(), json!(text.trim()));
         }
     });
+    
+    ui.add_space(Theme::ROW_SPACING);
+    
+    form_row(ui, "데이터 동기화", |ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.style_mut().spacing.item_spacing.x = 4.0;
+            for b in [4, 5, 6, 8] {
+                let btn = egui::Button::new(RichText::new(format!("{b}B")).size(Theme::FONT_SMALL))
+                    .min_size(egui::vec2(40.0, Theme::CONTROL_HEIGHT))
+                    .fill(Theme::TAB_DIM_BG)
+                    .stroke(Stroke::new(1.0, Theme::STROKE))
+                    .corner_radius(egui::CornerRadius::same(Theme::R_SM));
+                if ui.add(btn).clicked() {
+                    let v_id = entry.get("v_id").and_then(|v| v.as_str()).unwrap_or("");
+                    if !v_id.is_empty() {
+                        let _ = ctx.fetch_tx.send((ctx.current_steam_id.clone(), v_id.to_string(), b));
+                    }
+                }
+            }
+            let all_btn = egui::Button::new(RichText::new("All").size(Theme::FONT_SMALL).strong())
+                .min_size(egui::vec2(40.0, Theme::CONTROL_HEIGHT))
+                .fill(Theme::TAB_ACTIVE_BG)
+                .corner_radius(egui::CornerRadius::same(Theme::R_SM));
+            if ui.add(all_btn).clicked() {
+                let v_id = entry.get("v_id").and_then(|v| v.as_str()).unwrap_or("");
+                if !v_id.is_empty() {
+                    let _ = ctx.fetch_tx.send((ctx.current_steam_id.clone(), v_id.to_string(), 0));
+                }
+            }
+        });
+    });
 
-    ui.add_space(12.0);
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("account.txt").color(Theme::TEXT_PRIMARY).size(Theme::FONT_SMALL));
+    ui.add_space(Theme::ROW_SPACING);
+    
+    form_row(ui, "account.txt", |ui| {
         let mut path_str = entry
             .get("account_path")
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string();
-        if ui
-            .add(TextEdit::singleline(&mut path_str).desired_width(200.0))
-            .changed()
-        {
-            entry.insert("account_path".into(), json!(path_str.trim()));
-        }
-        if ui.button(RichText::new("찾아보기").size(Theme::FONT_SMALL)).clicked() {
-            if let Some(file_path) = rfd::FileDialog::new()
-                .add_filter("Text Files", &["txt"])
-                .pick_file()
-            {
-                let path_str = file_path.to_string_lossy().to_string();
-                entry.insert("account_path".into(), json!(path_str));
+            
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let find_btn = egui::Button::new(RichText::new("찾기").size(Theme::FONT_SMALL))
+                .min_size(egui::vec2(60.0, Theme::CONTROL_HEIGHT))
+                .fill(Theme::TAB_ACTIVE_BG)
+                .corner_radius(egui::CornerRadius::same(Theme::R_SM));
+            if ui.add(find_btn).clicked() {
+                if let Some(file_path) = rfd::FileDialog::new()
+                    .add_filter("Text Files", &["txt"])
+                    .pick_file()
+                {
+                    let path_str = file_path.to_string_lossy().to_string();
+                    entry.insert("account_path".into(), json!(path_str));
+                }
             }
-        }
+            
+            ui.add_space(4.0);
+            
+            ui.add(TextEdit::singleline(&mut path_str)
+                .font(egui::FontId::proportional(Theme::FONT_BODY))
+                .vertical_align(egui::Align::Center)
+                .margin(egui::Margin::symmetric(8, 0))
+                .desired_width(ui.available_width())
+                .min_size(egui::vec2(0.0, Theme::CONTROL_HEIGHT)));
+        });
     });
 
-    ui.add_space(8.0);
+    ui.add_space(20.0);
     ui.horizontal(|ui| {
-        ui.add_space(100.0);
-        if ui.button(RichText::new("동기화 후보 찾기").size(Theme::FONT_SMALL)).clicked() {
+        ui.add_space(Theme::LABEL_WIDTH + 8.0);
+        let scan_btn = egui::Button::new(RichText::new("🔍 동기화 후보 찾기").size(Theme::FONT_BODY).strong())
+            .min_size(egui::vec2(180.0, 40.0))
+            .fill(Theme::TEXT_ACCENT)
+            .corner_radius(egui::CornerRadius::same(Theme::R_SM));
+        
+        if ui.add(scan_btn).clicked() {
             if let Ok(mut sid) = ctx.sync_steam_id.lock() {
                 *sid = ctx.current_steam_id.clone();
             }
@@ -206,46 +264,32 @@ fn steam_account_rows(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiCont
     });
 }
 
-fn text_row(ui: &mut egui::Ui, entry: &mut Map<String, Value>, label: &str, key: &str, width: f32) {
-    let mut text = entry
-        .get(key)
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(label).color(Theme::TEXT_PRIMARY).size(Theme::FONT_BODY));
-        ui.add_space(4.0);
-        if ui
-            .add(TextEdit::singleline(&mut text).desired_width(width))
-            .changed()
-        {
-            entry.insert(key.into(), json!(text.trim()));
-        }
-    });
-}
-
 fn system_tab(ui: &mut egui::Ui, draft: &mut Value) {
-    section_frame(ui, "업데이트", |ui| update_section(ui, draft));
+    section_frame(ui, "업데이트 설정", |ui| update_section(ui, draft));
 }
 
 fn update_section(ui: &mut egui::Ui, draft: &mut Value) {
     let app_update = object_section_mut(draft, "app_update");
-    let mut enabled = app_update
-        .get("enabled")
-        .and_then(Value::as_bool)
-        .unwrap_or(true);
-    if ui
-        .checkbox(&mut enabled, RichText::new("자동 업데이트").size(Theme::FONT_BODY))
-        .changed()
-    {
-        app_update.insert("enabled".into(), json!(enabled));
-    }
-    ui.add_space(8.0);
-    ui.label(
-        RichText::new(format!("현재 버전: {}", env!("CARGO_PKG_VERSION")))
-            .color(Theme::TEXT_PRIMARY)
-            .size(Theme::FONT_SMALL),
-    );
+    form_row(ui, "자동 업데이트", |ui| {
+        let mut enabled = app_update
+            .get("enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        if ui
+            .checkbox(&mut enabled, RichText::new("사용").size(Theme::FONT_BODY))
+            .changed()
+        {
+            app_update.insert("enabled".into(), json!(enabled));
+        }
+    });
+    ui.add_space(Theme::ROW_SPACING);
+    form_row(ui, "버전 정보", |ui| {
+        ui.label(
+            RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+                .color(Theme::TEXT_PRIMARY)
+                .size(Theme::FONT_BODY),
+        );
+    });
 }
 
 pub fn render_settings_deferred(
@@ -290,19 +334,40 @@ fn section_frame(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)
     Frame::new()
         .fill(Theme::CARD)
         .stroke(Stroke::new(1.0, Theme::STROKE))
-        .corner_radius(CornerRadius::same(12))
+        .corner_radius(CornerRadius::same(Theme::R_MD))
         .inner_margin(Margin::same(20))
         .show(ui, |ui| {
-            ui.label(
-                RichText::new(title)
-                    .color(Theme::TEXT_PRIMARY)
-                    .size(Theme::FONT_BODY)
-                    .strong(),
-            );
-            ui.add_space(12.0);
+            ui.set_min_width(ui.available_width());
+            ui.horizontal(|ui| {
+                // Vertical accent line
+                let (rect, _) = ui.allocate_at_least(egui::vec2(3.0, 18.0), egui::Sense::hover());
+                ui.painter().rect_filled(rect, 1.5, Theme::PRIMARY);
+                ui.add_space(8.0);
+                
+                ui.label(
+                    RichText::new(title)
+                        .color(Theme::TEXT_PRIMARY)
+                        .size(Theme::FONT_BODY)
+                        .strong(),
+                );
+            });
+            ui.add_space(16.0);
             add(ui);
         });
-    ui.add_space(12.0);
+    ui.add_space(16.0);
+}
+
+/// A helper to render a label with fixed width followed by controls, ensuring perfect alignment.
+fn form_row(ui: &mut egui::Ui, label: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
+    ui.horizontal(|ui| {
+        ui.set_min_width(ui.available_width());
+        ui.add_sized(
+            egui::vec2(Theme::LABEL_WIDTH, Theme::CONTROL_HEIGHT),
+            egui::Label::new(RichText::new(label).color(Theme::TEXT_SECONDARY).size(Theme::FONT_BODY)),
+        );
+        ui.add_space(8.0);
+        add_contents(ui);
+    });
 }
 
 fn object_section_mut<'a>(draft: &'a mut Value, section: &str) -> &'a mut Map<String, Value> {

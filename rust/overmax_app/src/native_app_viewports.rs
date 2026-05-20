@@ -1,6 +1,6 @@
 //! Deferred viewports + `eframe::App` (split from `native_app.rs` for file-size limits).
 
-use eframe::egui::{self, Color32, Vec2, ViewportBuilder, ViewportCommand};
+use eframe::egui::{self, Color32, RichText, Vec2, ViewportBuilder, ViewportCommand};
 use std::collections::VecDeque;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use crate::debug_ui;
 use crate::native_app::NativeApp;
 use crate::native_helpers;
+use crate::overlay_theme::Theme;
 use crate::overlay_ui;
 use crate::settings_ui;
 use crate::sync_ui;
@@ -113,28 +114,43 @@ impl NativeApp {
                     s.debug.debug_on_hover = false;
                 });
                 let mut local_draft = draft.lock().map(|g| g.clone()).unwrap_or_default();
-                egui::TopBottomPanel::bottom("sett_actions").show(ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        if ui.button("저장").clicked() {
-                            let base_g = base.lock().map(|g| g.clone()).unwrap_or_default();
-                            let mut merged_g = merged.lock().map(|g| g.clone()).unwrap_or_default();
-                            let _ = settings_ui::save_settings_to_disk(
-                                root.as_ref(),
-                                defaults.as_ref(),
-                                &base_g,
-                                &mut local_draft,
-                                &mut merged_g,
-                            );
-                            if let Ok(mut m) = merged.lock() {
-                                *m = merged_g;
-                            }
-                        }
-                        if ui.button("닫기").clicked() {
-                            open.store(false, Ordering::Relaxed);
-                            ui.ctx().request_repaint_of(ui.ctx().parent_viewport_id());
-                        }
+                egui::TopBottomPanel::bottom("sett_actions")
+                    .frame(egui::Frame::new().fill(Theme::PANEL_BG).inner_margin(egui::Margin::symmetric(24, 16)))
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                let close_btn = egui::Button::new(RichText::new("닫기").size(Theme::FONT_BODY))
+                                    .min_size(egui::vec2(80.0, Theme::CONTROL_HEIGHT))
+                                    .fill(Theme::SECONDARY)
+                                    .corner_radius(egui::CornerRadius::same(Theme::R_SM));
+                                if ui.add(close_btn).clicked() {
+                                    open.store(false, Ordering::Relaxed);
+                                    ui.ctx().request_repaint_of(ui.ctx().parent_viewport_id());
+                                }
+                                
+                                ui.add_space(8.0);
+                                
+                                let save_btn = egui::Button::new(RichText::new("저장").size(Theme::FONT_BODY).strong())
+                                    .min_size(egui::vec2(100.0, Theme::CONTROL_HEIGHT))
+                                    .fill(Theme::PRIMARY)
+                                    .corner_radius(egui::CornerRadius::same(Theme::R_SM));
+                                if ui.add(save_btn).clicked() {
+                                    let base_g = base.lock().map(|g| g.clone()).unwrap_or_default();
+                                    let mut merged_g = merged.lock().map(|g| g.clone()).unwrap_or_default();
+                                    let _ = settings_ui::save_settings_to_disk(
+                                        root.as_ref(),
+                                        defaults.as_ref(),
+                                        &base_g,
+                                        &mut local_draft,
+                                        &mut merged_g,
+                                    );
+                                    if let Ok(mut m) = merged.lock() {
+                                        *m = merged_g;
+                                    }
+                                }
+                            });
+                        });
                     });
-                });
                 settings_ui::render_settings_deferred(
                     ctx,
                     class,

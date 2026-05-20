@@ -118,6 +118,12 @@ class RoiOverlayWindow(QWidget):
                 QColor("#FFAA00"),
                 diff,
             )
+            self._draw_box(
+                painter,
+                self._roi_to_qrect(*self.roiman.get_online_diff_panel_roi(diff)),
+                QColor("#FFD36A"),
+                f"ONLINE {diff}",
+            )
 
         # 6. Max Combo 영역
         self._draw_box(
@@ -125,5 +131,11 @@ class RoiOverlayWindow(QWidget):
             self._roi_to_qrect(*self.roiman.get_roi("max_combo_badge")),
             QColor("#00AAFF"),
             "MAX COMBO",
+        )
+        self._draw_box(
+            painter,
+            self._roi_to_qrect(*self.roiman.get_roi("online_max_combo_badge")),
+            QColor("#4DD2FF"),
+            "ONLINE MAX COMBO",
         )
 

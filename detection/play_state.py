@@ -44,8 +44,17 @@ def _region_mean_bgr(
     return int(mean[0]), int(mean[1]), int(mean[2])
 
 
-def detect_button_mode(frame: np.ndarray, roiman: ROIManager) -> Optional[str]:
-    roi = roiman.get_roi("btn_mode")
+def _is_online_mode(screen_mode: Optional[str]) -> bool:
+    return screen_mode == "ONLINE"
+
+
+def detect_button_mode(
+    frame: np.ndarray,
+    roiman: ROIManager,
+    screen_mode: Optional[str] = None,
+) -> Optional[str]:
+    roi_name = "online_btn_mode" if _is_online_mode(screen_mode) else "btn_mode"
+    roi = roiman.get_roi(roi_name)
     mean_bgr = _region_mean_bgr(frame, roi)
     best_mode, best_dist = None, float("inf")
     for mode, colors in BTN_COLORS.items():
@@ -54,10 +63,6 @@ def detect_button_mode(frame: np.ndarray, roiman: ROIManager) -> Optional[str]:
             if dist < best_dist:
                 best_dist, best_mode = dist, mode
     return best_mode if best_dist <= BTN_MODE_MAX_DIST else None
-
-
-def _is_online_mode(screen_mode: Optional[str]) -> bool:
-    return screen_mode == "ONLINE"
 
 
 def detect_difficulty(
@@ -125,7 +130,7 @@ class PlayStateDetector:
         현재 프레임을 분석하여 안정화된 게임 상태를 반환합니다.
         새로운 상태가 안정화되면 내부적으로 Rate OCR을 수행합니다.
         """
-        raw_mode = detect_button_mode(frame, roiman)
+        raw_mode = detect_button_mode(frame, roiman, screen_mode)
         raw_diff, raw_confident = detect_difficulty(frame, roiman, screen_mode)
         raw_max_combo = detect_max_combo(frame, roiman, screen_mode)
         

@@ -209,7 +209,8 @@ class ScreenCapture:
             return
 
         self._last_jacket_ts = now
-        jacket_roi = self.roiman.get_roi("jacket")
+        jacket_roi_name = "online_jacket" if self._last_logo_ocr_match == "ONLINE" else "jacket"
+        jacket_roi = self.roiman.get_roi(jacket_roi_name)
         jacket_img = crop_roi(full_frame, jacket_roi)
         thumb = make_thumbnail(jacket_img)
         image_changed = has_thumbnail_changed(thumb, self._last_jacket_thumb, JACKET_CHANGE_THRESHOLD)

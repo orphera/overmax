@@ -5,6 +5,10 @@
   },
   "screen_capture": {
     "logo_ocr_keyword": "FREESTYLE",
+    "logo_ocr_keywords": [
+      "FREESTYLE",
+      "ONLINE"
+    ],
     "logo_ocr_cooldown_sec": 1.0,
     "freestyle_history_size": 7,
     "freestyle_on_ratio": 0.6,

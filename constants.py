@@ -40,6 +40,13 @@ OCR_INTERVAL = float(SCREEN_CAPTURE_SETTINGS["ocr_interval_sec"])
 IDLE_SLEEP_INTERVAL = float(SCREEN_CAPTURE_SETTINGS["idle_sleep_sec"])
 
 LOGO_OCR_KEYWORD = str(SCREEN_CAPTURE_SETTINGS["logo_ocr_keyword"]).upper()
+LOGO_OCR_KEYWORDS = tuple(
+    str(keyword).upper()
+    for keyword in SCREEN_CAPTURE_SETTINGS.get(
+        "logo_ocr_keywords",
+        [LOGO_OCR_KEYWORD, "ONLINE"],
+    )
+)
 LOGO_OCR_COOLDOWN_SEC = float(SCREEN_CAPTURE_SETTINGS["logo_ocr_cooldown_sec"])
 
 # 로고 인식 히스토리/판정

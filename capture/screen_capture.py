@@ -79,6 +79,7 @@ class ScreenCapture:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._last_logo_ocr_ts = 0.0
         self._last_logo_ocr_ok = False
+        self._last_logo_ocr_match: Optional[str] = None
         
         self._hysteresis = HysteresisBuffer(
             history_size=FREESTYLE_HISTORY_SIZE,
@@ -184,7 +185,12 @@ class ScreenCapture:
         self._update_song_id_from_jacket(full_frame, now)
         song_id = self._current_song_id
         
-        state = await self.play_state_detector.detect(full_frame, self.roiman, song_id)
+        state = await self.play_state_detector.detect(
+            full_frame,
+            self.roiman,
+            song_id,
+            self._last_logo_ocr_match,
+        )
         self._emit_state_if_changed(state)
         
         # 새로운 유효 기록 수집 시도
@@ -194,6 +200,7 @@ class ScreenCapture:
     def _reset_on_screen_exit(self):
         self._current_song_id = None
         self._last_emitted_state = None
+        self._last_logo_ocr_match = None
         self._recorded_states.clear()
         self.play_state_detector.reset()
 
@@ -290,8 +297,9 @@ class ScreenCapture:
         logo_img = crop_roi(full_frame, logo_roi)
         now = time.time()
         if now - self._last_logo_ocr_ts >= LOGO_OCR_COOLDOWN_SEC:
-            is_detected, text, normalized = await self.ocr_detector.detect_logo(logo_img)
+            is_detected, text, normalized, matched_keyword = await self.ocr_detector.detect_logo(logo_img)
             self._last_logo_ocr_ok = is_detected
+            self._last_logo_ocr_match = matched_keyword
             self._last_logo_ocr_ts = now
             if is_detected != self._last_logo_detected_val:
                 self.log(f"로고 OCR: '{text}' (norm='{normalized}') -> {is_detected}")

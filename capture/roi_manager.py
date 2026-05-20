@@ -22,7 +22,7 @@ class ROIManager:
         "rate": (176, 583, 270, 605),
         "online_rate": (176, 553, 285, 579),
         "btn_mode": (80, 130, 85, 135),
-        "online_btn_mode": (80, 130, 85, 135),
+        "online_btn_mode": (60, 130, 65, 135),
         "max_combo_badge": (409, 587, 445, 620),
         "online_max_combo_badge": (318, 548, 354, 580),
         "diff_panel": (98, 488, 208, 516),

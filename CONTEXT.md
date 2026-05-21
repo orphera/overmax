@@ -1,6 +1,6 @@
 # Context: Overmax Development
 
-이 문서는 Overmax 프로젝트의 현재 상태, 설계 결정 사항, 그리고 향후 계획을 기록한다.
+이 문서는 Overmax 프로젝트의 현재 상태, 설계 결정 사항, 그리고 시스템 스펙을 기록한다.
 
 ---
 
@@ -8,167 +8,123 @@
 
 Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선택된 곡의 난이도별 정보를 오버레이로 보여주는 도구이다.
 
-- **인식 방식**: 화면 캡처 및 이미지 매칭 (OpenCV) + OCR (Windows OCR)
-- **UI**: PyQt6 (투명 윈도우, 하드웨어 가속 활용)
+- **인식 방식**: 화면 캡처 + Rust 네이티브 CV 이미지 매칭 (`overmax_cv`) + OCR (Windows OCR)
+- **UI**: egui / winit (하드웨어 가속 활용 멀티 뷰포트 네이티브 UI)
 - **데이터**: V-Archive DB (JSON) 및 로컬 기록 DB (SQLite)
 
 ---
 
 # Core Constraints
 
-- 메모리 접근 / 프로세스 인젝션 금지
-- 화면 캡처 기반 처리 유지
-- Rust 네이티브 전환 중에도 기존 Python 앱은 기준 구현(reference implementation)으로 유지
-- Rust 앱 기준 스택은 `egui/winit`
-- 기존 사용자 파일 호환 유지: `settings.user.json`, `cache/record.db`, `cache/image_index.db`, `cache/songs.json`, GitHub Releases asset 흐름
-- 인게임 성능 영향 최소화 (최우선)
+- 메모리 접근 / 프로세스 인젝션 금지 (화면 캡처 및 Win32 API 추적 방식 유지)
+- 인게임 성능 영향 최소화 (최우선 과제)
+- Python 레거시 코드 완전 제거 및 순수 Rust 코드베이스로 전환 완료 (`rust/` workspace)
+- Windows 10 (버전 1809) / 11 64-bit 환경 전용 (Windows OCR API 및 Win32 API 의존성)
+- 기존 사용자 파일과의 호환성 유지:
+  - `settings.user.json` (사용자 설정 델타 저장)
+  - `cache/record.db` (로컬 플레이 기록 SQLite DB)
+  - `cache/songs.json` (V-Archive 곡 DB)
+  - `cache/image_index.db` (곡 재킷 매칭용 DB)
 
 ---
 
 # Current Architecture
 
+## Workspace Crate 구조
+- `overmax_app`: 메인 애플리케이션 (`egui/winit` 기반 GUI, 화면 캡처 루프, 디텍션 워커, 앱/DB 자가 업데이트)
+- `overmax_core`: 공통 데이터 모델 및 핵심 상태 구조체 (`GameSessionState`, `PlayContext`, `SceneType`)
+- `overmax_data`: 설정 파싱, SQLite DB (`RecordDB`), V-Archive API 클라이언트, 추천 정렬 로직
+- `overmax_cv`: 이미지 매칭(HOG, Perceptual Hash), OCR 전처리(Grayscale, Upscale, Otsu 이진화 등)
+
+## 데이터 흐름 및 스레드 구조
 ```
-WindowTracker
-→ ScreenCapture (HysteresisBuffer + OcrDetector)
-→ Detection Pipeline (ImageDB + PlayStateDetector)
-→ GameSessionState (verified)
-→ OverlayController
-→ OverlayWindow (PyQt6)
-       └── HeaderWidget / FooterWidget
-       └── PatternView (난이도 탭)
-       └── RecommendView × N (추천 목록)
-       └── SettingsWindow (설정)
-       └── SyncWindow (V-Archive 동기화)
-       └── DebugWindow (디버그 로그)
+[Main GUI Thread (egui/winit)]
+   ├── Overlay Window (오버레이 정보 표시, 드래그 이동/스케일링)
+   ├── Settings / Sync / Debug Windows (설정 변경, V-Archive 기록 동기화, 실시간 로그)
+   └── Channel Receiver (디텍션 결과 수신 및 UI 상태 반영)
+           ▲
+           │ (mpsc channel)
+           ▼
+[Detection Worker Thread]
+   ├── WindowTracker: DJMAX RESPECT V 창 추적 (Win32 API)
+   ├── ScreenCapture: GDI 기반의 실시간 프레임 캡처
+   └── DetectionPipeline
+        ├── OcrDetector: Windows OCR (logo -> SceneType 판별, rate -> f32 추출)
+        ├── ImageIndexDb: overmax_cv (HOG + Hash 매칭 -> song_id 탐색)
+        └── PlayStateDetector: (버튼 모드, 난이도, 맥스콤보 감지)
 ```
 
-패키지 구조: `capture/`, `core/`, `data/`, `detection/`, `overlay/`
+---
+
+# Detection Pipeline & State Handling
+
+## 1. 씬 감지 및 동적 ROI (Scene-Aware ROI)
+- **로고 OCR 감지**: `logo` ROI 영역에 대해 Windows OCR을 수행.
+  - 키워드 매칭: `FREESTYLE` -> `SceneType::Freestyle`, `ONLINE` -> `SceneType::Online`, 매칭 실패 -> `SceneType::Unknown`.
+- **동적 ROI 전환**: `RoiManager`가 감지된 씬(`SceneType`)에 따라 최적의 ROI 세트(Freestyle / Online)를 동적으로 전환.
+  - `logo` ROI는 씬과 독립적으로 상단 고정 좌표를 가지며, 씬 판별의 트리거 역할을 수행.
+- **히스테리시스 버퍼**: `HysteresisBuffer`를 통해 선곡 화면 진입/이탈 판정 및 신뢰도(Confidence) 계산.
+
+## 2. 곡 인식 (Song Recognition)
+- **재킷 이미지 매칭**: `ImageIndexDb`를 통해 캡처된 재킷 영역과 미리 색인된 곡 재킷의 유사도를 계산.
+- **Rust Native CV**: OpenCV 종속성을 완전히 걷어내고 `overmax_cv`를 통해 Perceptual Hash + HOG 방식을 구현. 795개 재킷 기준 100% 동일한 Top-1 매칭 및 높은 HOG Cosine 유사도(평균 0.996) 확보.
+
+## 3. 원자적 상태 감지 및 안정화 (Atomic Play Context Sync)
+- **PlayState 감지**:
+  - **버튼 모드 (Button Mode)**: `btn_mode` ROI의 평균 BGR 색상과 미리 정의된 대표색(4B/5B/6B/8B)의 Euclidean 거리가 60 이하인 모드 중 최적 매칭값 선택.
+  - **난이도 (Difficulty)**: 각 난이도 패널 ROI(NM/HD/MX/SC)의 평균 밝기를 계산. 상위 1위 밝기가 최소 밝기(45) 이상이고 2위와의 차이(margin)가 15.0 이상일 때 유효(confident)한 난이도로 판정.
+  - **Max Combo**: `max_combo_badge` ROI의 평균 밝기가 160 이상일 때 True.
+  - **Rate**: `rate` ROI 영역의 Windows OCR 결과를 실수값(`f32`)으로 실시간 수집.
+- **원자적 안정화**:
+  - 곡 ID, 버튼 모드, 난이도, Rate, Max Combo 전체를 하나의 `PlayContext`로 묶어 관리.
+  - `PlayStateDetector`에서 이 전체 필드가 연속으로 N 프레임(기본 3프레임) 동안 완벽히 동일하게 감지될 때만 `GameSessionState.is_stable = true` 상태로 commit.
+  - 안정적으로 확정된 상태에 한해서만 로컬 SQLite DB(`cache/record.db`)에 플레이 기록을 자동 upsert 및 저장.
 
 ---
 
-# Detection Pipeline
+# UI & UX Features
 
-## Primary Signals
-
-- **선곡화면 감지**: FREESTYLE 로고 OCR + 히스토리/히스테리시스
-- **곡 인식**: 재킷 이미지 매칭 (ImageDB — perceptual hash + HOG + ORB, 가중치 0.45/0.35/0.20)
-- **PlayStateDetector** (`detection/play_state.py`): 모드/난이도/Max Combo/Rate를 원자 단위로 통합 감지
-  - **버튼 모드**: BTN_MODE_ROI 평균색 vs 대표색 거리 비교 (4B/5B/6B/8B), 임계값 60
-  - **난이도**: DIFF_PANEL_ROI 평균 밝기 비교, 상위 패널 vs 2위 margin ≥ 15.0
-  - **Max Combo**: 뱃지 영역 평균 밝기 ≥ 160
-
-## Secondary Signals
-
-- **OCR (Windows OCR)**: `detection/ocr.py` — FREESTYLE 로고 검증 / Rate 수집
-  - 3× upscale + Otsu binarization, force_invert 재시도 1회
-  - OCR은 primary signal 불가 (small text, low contrast) — Rate 수집 및 로고 전용
-  - PlayStateDetector 내부에서 상태 안정화 시 1회 Rate OCR 수행
-
-## State Handling
-
-- `HysteresisBuffer` (`capture/hysteresis.py`): 선곡화면 진입/이탈 판정 (on/off 비율 별도 임계값)
-- **Confidence Score**: 히스테리시스 버퍼의 hit 비율을 기반으로 산출 (0.0~1.0)
-- 후반 히스토리 비율 하락 감지 시 `[이탈중]` skip (Confidence 0.5x 보정)
-- `PlayStateDetector` 연속 동일 프레임 기반 안정화 (기본 3프레임)
-- `GameSessionState.is_stable` = True일 때만 상태 commit
-
-## ROI 좌표
-
-`ROIManager` (`capture/roi_manager.py`) 가 1920×1080 기준 픽셀 좌표를 현재 창 크기로 변환한다.  
-Letterbox/Pillarbox 자동 보정 포함.
-
-**예외**: 16:9 비율 해상도에서만 검증 되었고, 16:10 비율 해상도를 추가로 지원 해야 함.
-
----
-
-# Progress Tracking
-
-- 기본적인 곡 인식 및 오버레이 표시 구현 완료
-- V-Archive 데이터 동기화 및 추천 시스템 구현 완료
-- `ROIManager`를 통한 해상도 독립적 좌표 관리 구현 완료
-- `image_db_updater.py`: GitHub Releases 기반 `image_index.db` 자동 업데이트 구현 완료
-- `app_updater.py`: GitHub Releases 기반 앱 자동패치 구현 완료
-- 단일 인스턴스 보장 (Windows named mutex)
-- 오버레이 위치 저장/복원 (`settings.user.json` 내 `overlay.position`)
-- Steam ID 기반 사용자 식별 (로그인 세션 자동 감지)
-- ROIManager 해상도 변환 완료 (Letterbox/Pillarbox 보정)
-- 설정창 추가 완료 (투명도 조절 및 설정 파일 분리 적용)
-- **V-Archive 기록 연동**: API 기반 데이터 수집 및 로컬 DB 병합 완료 + 갱신 후보 추출 및 등록 기능 (`SyncWindow`)
-- **Max Combo 감지**: 뱃지 영역 밝기 기반 감지 구현 완료
-- **오버레이 스케일링**: 0.75x ~ 1.5x 프리셋 지원 및 스냅 기능 구현 완료
-- **신뢰도 기반 투명도**: 인식 상태에 따라 오버레이가 부드럽게 페이드인/아웃됨
-- **설정 시스템 최적화**: `settings.user.json`에 변경된 항목만 저장(delta save) 및 값 검증(clamp/snap)
-- **자동 업데이트 시스템**: 앱(GitHub Releases) 및 이미지 DB(`image_index.db`) 자동 갱신 파이프라인 구축 완료
-- **Detection 리팩토링**: `mode_diff.py` → `PlayStateDetector` (`play_state.py`)로 모드/난이도/Max Combo/Rate 통합
-- **OCR 모듈 분리**: `capture/ocr_wrapper.py` → `detection/ocr.py` + `detection/ocr_wrapper.py`
-- **오버레이 분해**: 헤더/푸터/네비게이션 위젯 분리, `DebugWindow`·`SyncWindow` 독립 모듈화
-- **Core 유틸 분리**: `global_hotkey.py`, `utils.py`, `version.py` 추출
-- **Rust 전체 포팅 준비**: Rust workspace 골격과 기준 문서 추가, Python 앱을 동등성 검증 기준으로 유지
-
----
-
-# Problems
-
-## 1. 인식 정확도
-
-- **버튼 모드**:
-  - 대표색 고정 → 환경/감마 변화에 취약
-  - 거리 임계값(60) 튜닝 필요, 샘플 색상 보강 필요
-
-- **난이도**:
-  - 밝기 기반이라 UI 전환 중 오인식 가능
-  - margin 임계값(15.0) 환경에 따라 불안정
-
-## 2. 성능 리스크
-
-- OCR 호출 비용: 로고 + Rate 각 독립 호출 (Windows OCR 연산 부하 모니터링 필요)
-- Rate OCR 시도 횟수 제한 (현재 최대 3회)으로 무한 재시도 방지
-
-## 3. 사용자 식별
-
-- Steam ID: `loginusers.vdf` 파싱, 멀티 계정 전환 시 갱신 타이밍 불안정
-- V-Archive ID: 사용자가 직접 입력해야 하며, Steam ID와의 매핑 로직 필요
-
----
-
-# Failed Approaches
-
-## OCR Hybrid (버튼 모드/난이도 검증)
-
-- 목표: 픽셀 기반 감지 보조
-- 결과: 런타임에서 인식 불안정 (빈번한 실패)
-- 원인: 작은 텍스트, low contrast, anti-aliasing, 캡처 품질 차이
-- 결론: primary signal 불가 → verifier/fallback 용도도 제한
-- 재검토 조건: ROI 정규화, 멀티프레임 처리 도입 후
-
----
-
-# Important Invariants
-
-- `is_stable = True`일 때만 상태 commit
-- detection → verification → commit 흐름 유지
-- 단일 프레임 결과에 의존하지 않음
-- 동일 `(song_id, mode, diff)` 조합 Rate 수집 중복 제한 (`_recorded_states`)
-- `rate == 0.0`은 저장하지 않음 (미플레이로 간주)
-- `if rate is None` 과 `if rate == 0.0` 은 의미가 다름 — 명시적 None 체크 필수
-- `song_id` 가 0인 경우도 존재함. `song_id is None` 으로 검사 해야 함
-- image_db 에 추가/삭제는 overlay 프로그램을 통해 하지 않음
-- 모든 설정 변경은 `settings.user.json`에 저장하며, `settings.json` 보다 우선순위가 높음
-- **설정값 검증**: 저장 시 `_normalize_dict`를 통해 유효 범위 내로 강제 조정
+- **egui/winit 멀티 뷰포트**: 네이티브 타이틀바가 없는 투명 오버레이 구현.
+- **오버레이 드래그 & 스냅**: 마우스 드래그를 통한 위치 이동 및 모니터 경계 스냅 지원. 마우스 드래그 종료 시 자동으로 DJMAX RESPECT V 게임 창으로 포커스(foreground)를 복원하여 플레이 방해를 최소화.
+- **스케일 프리셋**: 75% ~ 150% 스케일 조절 지원 및 `settings.user.json` 저장. egui 렌더링 시 버튼 크기 고정 및 패딩 보정을 통해 UI Jitter(흔들림)를 방지.
+- **V-Archive 연동 및 기록 동기화**:
+  - V-Archive API를 통한 플레이 데이터 패치/자동 갱신.
+  - 로컬 DB에만 존재하는 갱신 후보 데이터를 스캔하여 V-Archive 웹서버에 일괄 등록/삭제 지원 (`SyncWindow`).
 
 ---
 
 # Debug Strategy
 
-- `DebugController`: 모듈별 색상 구분 로그, 필터/일시정지/지우기
-- `RoiOverlayWindow`: 게임 화면 위 ROI 경계 실시간 표시 (디버그 창 ROI 토글 연동)
-- 런타임 OCR 입력 품질 검증 필요 (스틸샷 vs 런타임 캡처 품질 차이)
+- **Debug UI**: `debug_ui.rs`를 통해 모듈별 실시간 디버그 로그 표시, 카테고리 필터링, 일시정지, 비우기 기능 제공.
 
 ---
 
-# Next Focus
+# Important Invariants (불변 조건)
 
-1. **Rate OCR 좌표 비율 추가 지원** — 현재 16:9 비율만 지원
-1. **DLC 필터링** — 추천 목록에서 미보유 DLC 제외
-1. **버튼 모드/난이도 인식 보강** — 단순 픽셀 거리/밝기 외에 보조 알고리즘 검토
-1. **빌드 결과물 크기 축소** — 불필요한 패키지 제외 및 리소스 최적화
+1. **상태 기록 조건**: `is_stable = true` 일 때만 상태를 commit하고 기록을 저장한다.
+2. **미플레이 구분**: `rate == 0.0`은 미플레이 상태를 의미하며 DB에 저장하지 않는다.
+3. **명시적 Null 처리**: `rate` 수집값은 `Option<f32>`로 표현되어 미플레이(`0.0` 또는 `None` 처리)와 명시적으로 구분되어야 한다.
+4. **곡 ID 예외**: `song_id == 0`은 유효한 곡 ID로 처리한다. 곡 정보가 아예 없는 경우는 `Option::None`이어야 한다.
+5. **설정값 유효성 검증**: 사용자 설정 저장 시 반드시 delta 형식을 유지하고 값의 범위를 normalize/clamp 처리한다.
+
+---
+
+# Future Focus
+
+1. **pattern_meta 키(Key) 체계 및 유사 곡 검색 구축**:
+   - `pattern_meta`의 기존 Key 구조(`mode|title|diff`)는 제목 중복 문제에 취약함.
+   - `songs.json` 내에서 곡명 외 다른 패턴 메타 데이터(버튼, 난이도 등)를 종합 비교해 가장 매칭률이 높은 유사 곡을 찾고 `song_id` 기반 Key(`mode|song_id|diff`)로 마이그레이션하는 유사도 검색 알고리즘 신설.
+2. **라이트모드 (Lite Mode) 추가**:
+   - 추천 탭을 숨기고 현재 곡의 비공식 난이도 및 선택된 패턴의 핵심 메타 정보만 집중 노출하는 모드.
+   - 래더 매칭 등에서 빠르게 상대 패턴 정보를 파악하고 준비하는 용도로 활용 가능.
+3. **V-Archive 기록 갱신 실시간 알림**:
+   - 감지된 Rate가 V-Archive 로컬 캐시/서버 기록보다 높을 경우 신기록 달성 알림(Toast/Notification 등) 제공.
+4. **감지 씬(Scene) 다양화**:
+   - FREESTYLE 및 ONLINE 매칭 대기방 외에도 래더 매칭 씬이나 결과 화면 등 감지 가능 범위를 추가 확장.
+5. **전체화면(Fullscreen) 호환성 검증**:
+   - DJMAX RESPECT V를 전체화면 모드로 구동할 때의 캡처 루프 및 winit 투명 오버레이 렌더링 호환성 조사 및 대응.
+6. **OBS 방송 송출용 화면 모드 (OBS Mode)**:
+   - 인터넷 방송 스트리머들을 위해 크로마키(Chroma key) 전용 스킨이나 OBS에서 캡처/배치가 편리한 방송 특화 레이아웃 모드 지원.
+7. **V-Archive 클라이언트 완전 대체 (장기 목표)**:
+   - 공식 데스크톱 클라이언트의 도움 없이 Overmax 자체 앱 내에서 플레이 기록 수집부터 V-Archive 연동 및 백업 업로드까지 전담하는 올인원 클라이언트 구현.
+

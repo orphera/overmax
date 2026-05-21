@@ -136,6 +136,13 @@ OpenCV 제거 이력은 `docs/opencv-to-rust-plan.md`, 전체 Rust 전환 계획
 - [x] 앱 import smoke test
 - [ ] 실제 앱 실행 smoke test
 
+## 다음 단계: 0.2.1 배포 및 업데이터 교체
+
+- [ ] 0.2.0 버전 배포 후, 기존 커스텀 업데이터 모듈(`rust/overmax_app/src/updater`) 제거
+- [ ] `self_update` 크레이트 도입 및 연동 (`Cargo.toml`에 추가)
+- [ ] 포터블 환경 유지를 위한 `.exe` 파일 내부 교체(`self_replace`) 로직 검증
+- [ ] 0.2.1 버전용 GitHub Releases 연동 테스트
+
 ## 검증 기준
 
 실제 이미지셋이 준비되면 다음 기준을 통과해야 한다.

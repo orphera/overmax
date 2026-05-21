@@ -29,7 +29,7 @@
   },
   "jacket_matcher": {
     "db_path": "cache/image_index.db",
-    "similarity_threshold": 0.6,
+    "similarity_threshold": 0.85,
     "match_interval_sec": 0.8,
     "jacket_change_threshold": 2.5,
     "jacket_force_recheck_sec": 2.0,

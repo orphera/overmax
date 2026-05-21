@@ -229,9 +229,8 @@ fn draw_header(
                         .font(FontId::proportional(15.0 * px.scale));
                     let btn = Button::new(text)
                         .fill(Theme::SECTION_BG)
-                        .corner_radius(CornerRadius::same((6.0 * px.scale) as u8))
-                        .min_size(Vec2::splat(px.settings_btn()));
-                    let response = ui.add(btn).on_hover_text("설정");
+                        .corner_radius(CornerRadius::same((6.0 * px.scale) as u8));
+                    let response = ui.add_sized(Vec2::splat(px.settings_btn()), btn).on_hover_text("설정");
                     settings_button_rect = Some(response.rect);
                     if response.clicked() {
                         settings_open.store(true, Ordering::Relaxed);

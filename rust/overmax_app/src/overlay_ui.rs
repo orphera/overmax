@@ -136,12 +136,10 @@ fn get_platform_font_dirs() -> Vec<std::path::PathBuf> {
 
 pub struct OverlayProps<'a> {
     pub state: &'a GameSessionState,
-    pub confidence: f32,
     pub song_label: &'a str,
     pub pattern_tabs: &'a [PatternTabInfo],
     pub recommendations: &'a RecommendResult,
     pub settings_open: Arc<AtomicBool>,
-    pub debug_open: Arc<AtomicBool>,
     pub sync_open: Arc<AtomicBool>,
     pub scale: f32,
 }
@@ -183,9 +181,7 @@ pub fn draw_overlay_panel(
             ui.add_space(px.panel_gap());
             draw_footer(
                 ui,
-                props.confidence,
                 props.recommendations,
-                &props.debug_open,
                 &props.sync_open,
                 &mut actions,
                 &px,
@@ -323,9 +319,7 @@ fn draw_body(
 
 fn draw_footer(
     ui: &mut egui::Ui,
-    confidence: f32,
     recommendations: &RecommendResult,
-    debug_open: &Arc<AtomicBool>,
     sync_open: &Arc<AtomicBool>,
     actions: &mut OverlayActions,
     px: &Px,
@@ -337,13 +331,6 @@ fn draw_footer(
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().button_padding = egui::vec2(2.0 * px.scale, 1.0 * px.scale);
-                
-                let debug_btn = Button::new(RichText::new("debug").font(FontId::proportional(11.0 * px.scale)))
-                    .wrap();
-                if ui.add_sized(Vec2::new(42.0 * px.scale, 18.0 * px.scale), debug_btn).clicked() {
-                    debug_open.store(true, Ordering::Relaxed);
-                    actions.command = Some(UiCommand::OpenDebug);
-                }
                 
                 let sync_btn = Button::new(RichText::new("sync").font(FontId::proportional(11.0 * px.scale)))
                     .wrap();
@@ -359,7 +346,7 @@ fn draw_footer(
                             .font(FontId::proportional(11.0 * px.scale)),
                     );
                     ui.label(
-                        RichText::new(avg_rate_text(recommendations, confidence))
+                        RichText::new(avg_rate_text(recommendations))
                             .color(Theme::TEXT_SECONDARY)
                             .font(FontId::proportional(11.0 * px.scale))
                             .strong(),

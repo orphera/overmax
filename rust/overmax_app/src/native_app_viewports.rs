@@ -348,12 +348,10 @@ impl eframe::App for NativeApp {
                     ui,
                     &overlay_ui::OverlayProps {
                         state: &self.session,
-                        confidence: self.confidence,
                         song_label: &self.current_song_label(),
                         pattern_tabs: &self.pattern_tabs,
                         recommendations: &self.recommendations,
                         settings_open: self.ui_state.settings_open.clone(),
-                        debug_open: self.ui_state.debug_open.clone(),
                         sync_open: self.ui_state.sync_open.clone(),
                         scale,
                     },

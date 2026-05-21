@@ -61,12 +61,8 @@ pub fn draw_recommendations(
     });
 }
 
-pub fn avg_rate_text(result: &RecommendResult, confidence: f32) -> String {
-    if result.avg_rate >= 0.0 {
-        format!("{:.2}%", result.avg_rate)
-    } else {
-        format!("신뢰도 {:.0}%", confidence * 100.0)
-    }
+pub fn avg_rate_text(result: &RecommendResult) -> String {
+    format!("{:.2}%", f64::max(result.avg_rate, 0.0))
 }
 
 pub fn pattern_count_text(result: &RecommendResult) -> String {

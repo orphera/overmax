@@ -119,8 +119,6 @@ pub fn normalize_settings(settings: &mut Value) {
 
     for (section, key) in [
         ("window_tracker", "poll_interval_sec"),
-        ("screen_capture", "ocr_interval_sec"),
-        ("jacket_matcher", "match_interval_sec"),
     ] {
         if let Some(Value::Object(sec)) = map.get_mut(section) {
             if let Some(val) = sec.get(key).and_then(|v| v.as_f64()) {

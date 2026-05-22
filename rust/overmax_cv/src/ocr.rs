@@ -1,7 +1,7 @@
-use crate::image::{resize_bilinear_u8, to_gray};
+use crate::image::resize_bilinear_u8;
 
 pub fn preprocess_bgra(data: &[u8], width: usize, height: usize, force_invert: bool) -> Vec<u8> {
-    let gray = to_gray(data, 4);
+    let gray = to_gray_ocr(data, 4);
     let upscaled = resize_bilinear_u8(&gray, width, height, width * 3, height * 3);
     let threshold = otsu_threshold(&upscaled);
     let bg_mean = mean_u8(&upscaled);
@@ -10,6 +10,17 @@ pub fn preprocess_bgra(data: &[u8], width: usize, height: usize, force_invert: b
     let binary = threshold_image(&upscaled, threshold, use_invert);
     let padded = pad_gray(&binary, width * 3, height * 3, 10);
     encode_bmp_gray(&padded, width * 3 + 20, height * 3 + 20)
+}
+
+fn to_gray_ocr(data: &[u8], channels: usize) -> Vec<u8> {
+    if channels == 1 {
+        return data.to_vec();
+    }
+    // R 채널(BGRA에서 index 2)을 추출하여 어두운 청회색/보라색 기어 배경 대비
+    // 붉은색/베이지색/노란색/흰색 글씨의 명암(Contrast)을 극대화합니다.
+    data.chunks_exact(channels)
+        .map(|pixel| pixel[2])
+        .collect()
 }
 
 fn mean_u8(data: &[u8]) -> f32 {

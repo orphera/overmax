@@ -17,7 +17,7 @@
   },
   "jacket_matcher": {
     "db_path": "cache/image_index.db",
-    "similarity_threshold": 0.85
+    "similarity_threshold": 0.75
   },
   "app_update": {
     "enabled": true,

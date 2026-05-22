@@ -237,17 +237,57 @@ fn draw_header(
                 });
             });
             ui.add_space(px.header_meta_gap());
-            ui.with_layout(Layout::top_down(Align::Center), |ui| {
-                ui.add(
-                    Label::new(
-                        RichText::new(meta_text(state, pattern_tabs))
-                            .color(Theme::TEXT_ACCENT)
-                            .font(FontId::proportional(10.0 * px.scale))
-                            .strong(),
-                    )
-                    .selectable(false),
-                );
-            });
+            ui.with_layout(
+                Layout::left_to_right(Align::Center).with_main_align(Align::Center),
+                |ui| {
+                    let mut has_badge = false;
+                    if let Some(ctx) = &state.context {
+                        if ctx.rate > 0.0 {
+                            draw_mini_badge(
+                                ui,
+                                &format!("{:.2}%", ctx.rate),
+                                Theme::TAB_INACTIVE_BG,
+                                Theme::OK,
+                                px.scale,
+                            );
+                            has_badge = true;
+                        }
+                        if ctx.is_max_combo {
+                            if has_badge {
+                                ui.add_space(3.0 * px.scale);
+                            }
+                            draw_mini_badge(
+                                ui,
+                                "MAX COMBO",
+                                Theme::TAB_INACTIVE_BG,
+                                Theme::TEXT_ACCENT,
+                                px.scale,
+                            );
+                            has_badge = true;
+                        }
+                    }
+
+                    if has_badge {
+                        ui.add_space(4.0 * px.scale);
+                        ui.label(
+                            RichText::new("|")
+                                .color(Theme::TEXT_MUTED)
+                                .font(FontId::proportional(10.0 * px.scale)),
+                        );
+                        ui.add_space(4.0 * px.scale);
+                    }
+
+                    ui.add(
+                        Label::new(
+                            RichText::new(meta_text(state, pattern_tabs))
+                                .color(Theme::TEXT_ACCENT)
+                                .font(FontId::proportional(10.0 * px.scale))
+                                .strong(),
+                        )
+                        .selectable(false),
+                    );
+                },
+            );
         });
 
     let drag_rect = drag_rect_excluding_button(header.response.rect, settings_button_rect);
@@ -262,6 +302,27 @@ fn draw_header(
     if drag_response.drag_stopped() {
         actions.restore_game_focus = true;
     }
+}
+
+fn draw_mini_badge(
+    ui: &mut egui::Ui,
+    text: &str,
+    bg_color: Color32,
+    text_color: Color32,
+    scale: f32,
+) {
+    Frame::new()
+        .fill(bg_color)
+        .corner_radius(CornerRadius::same((4.0 * scale) as u8))
+        .inner_margin(Margin::symmetric((5.0 * scale) as i8, (2.0 * scale) as i8))
+        .show(ui, |ui| {
+            ui.label(
+                RichText::new(text)
+                    .color(text_color)
+                    .font(FontId::proportional(9.0 * scale))
+                    .strong(),
+            );
+        });
 }
 
 fn drag_rect_excluding_button(header: Rect, button: Option<Rect>) -> Rect {

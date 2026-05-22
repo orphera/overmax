@@ -200,7 +200,6 @@ fn draw_header(
     actions: &mut OverlayActions,
     px: &Px,
 ) {
-    ui.spacing_mut().interact_size.y = 0.0;
     let mut settings_button_rect = None;
     let header = Frame::new()
         .fill(Theme::HEADER_BG)
@@ -237,10 +236,10 @@ fn draw_header(
                     }
                 });
             });
-            let mut has_badge = false;
+            let mut rate = 0.0;
             let mut is_perfect = false;
             let mut is_max_combo = false;
-            let mut rate = 0.0;
+            let mut has_badge = false;
             if let Some(ctx) = &state.context {
                 rate = ctx.rate;
                 is_perfect = rate >= 100.0;
@@ -250,63 +249,95 @@ fn draw_header(
 
             ui.add_space(px.header_meta_gap());
 
+            let text_str = meta_text(state, pattern_tabs);
+
             if has_badge {
-                ui.with_layout(
-                    Layout::left_to_right(Align::Center).with_main_align(Align::Center),
-                    |ui| {
-                        ui.spacing_mut().interact_size.y = 0.0;
-                        ui.spacing_mut().item_spacing.y = 0.0;
+                let scale = px.scale;
+                let mut total_width = 0.0;
 
-                        let mut drew_rate = false;
-                        if rate > 0.0 {
-                            draw_mini_badge(
-                                ui,
-                                &format!("{:.2}%", rate),
-                                Theme::TAB_INACTIVE_BG,
-                                Theme::OK,
-                                px.scale,
-                            );
-                            drew_rate = true;
-                        }
+                let mut has_rate = false;
+                let rate_text = if rate > 0.0 {
+                    let s = format!("{:.2}%", rate);
+                    total_width += (s.len() as f32 * 5.2 + 8.0) * scale;
+                    has_rate = true;
+                    Some(s)
+                } else {
+                    None
+                };
 
-                        if is_max_combo {
-                            if drew_rate {
-                                ui.add_space(3.0 * px.scale);
-                            }
-                            let combo_text = if is_perfect { "P" } else { "M" };
-                            draw_mini_badge(
-                                ui,
-                                combo_text,
-                                Theme::TAB_INACTIVE_BG,
-                                Theme::TEXT_ACCENT,
-                                px.scale,
-                            );
-                        }
+                let combo_text = if is_max_combo {
+                    let s = if is_perfect { "P" } else { "M" };
+                    if has_rate {
+                        total_width += 3.0 * scale;
+                    }
+                    total_width += (s.len() as f32 * 5.2 + 8.0) * scale;
+                    Some(s)
+                } else {
+                    None
+                };
 
-                        ui.add_space(4.0 * px.scale);
-                        ui.label(
-                            RichText::new("|")
-                                .color(Theme::TEXT_MUTED)
-                                .font(FontId::proportional(10.0 * px.scale)),
+                total_width += 10.0 * scale;
+
+                let font_meta = FontId::proportional(10.0 * scale);
+                let galley_meta = ui.painter().layout_no_wrap(text_str.clone(), font_meta, Theme::TEXT_ACCENT);
+                total_width += galley_meta.size().x;
+
+                let parent_width = ui.available_width();
+                let start_space = ((parent_width - total_width) / 2.0).max(0.0);
+
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    ui.spacing_mut().interact_size.y = 0.0;
+
+                    ui.add_space(start_space);
+
+                    if let Some(r_txt) = &rate_text {
+                        draw_mini_badge(
+                            ui,
+                            r_txt,
+                            Theme::TAB_INACTIVE_BG,
+                            Theme::OK,
+                            scale,
                         );
-                        ui.add_space(4.0 * px.scale);
+                    }
 
-                        ui.add(
-                            Label::new(
-                                RichText::new(meta_text(state, pattern_tabs))
-                                    .color(Theme::TEXT_ACCENT)
-                                    .font(FontId::proportional(10.0 * px.scale))
-                                    .strong(),
-                            )
-                            .selectable(false),
+                    if let Some(c_txt) = &combo_text {
+                        if has_rate {
+                            ui.add_space(3.0 * scale);
+                        }
+                        draw_mini_badge(
+                            ui,
+                            c_txt,
+                            Theme::TAB_INACTIVE_BG,
+                            Theme::TEXT_ACCENT,
+                            scale,
                         );
-                    },
-                );
+                    }
+
+                    ui.add_space(4.0 * scale);
+                    ui.label(
+                        RichText::new("|")
+                            .color(Theme::TEXT_MUTED)
+                            .font(FontId::proportional(10.0 * scale)),
+                    );
+                    ui.add_space(4.0 * scale);
+
+                    ui.add(
+                        Label::new(
+                            RichText::new(text_str)
+                                .color(Theme::TEXT_ACCENT)
+                                .font(FontId::proportional(10.0 * scale))
+                                .strong(),
+                        )
+                        .selectable(false),
+                    );
+                });
             } else {
                 ui.with_layout(Layout::top_down(Align::Center), |ui| {
                     ui.add(
                         Label::new(
-                            RichText::new(meta_text(state, pattern_tabs))
+                            RichText::new(text_str)
                                 .color(Theme::TEXT_ACCENT)
                                 .font(FontId::proportional(10.0 * px.scale))
                                 .strong(),

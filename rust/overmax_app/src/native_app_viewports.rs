@@ -56,6 +56,7 @@ impl NativeApp {
         let lines = self.debug_state.log_lines.clone();
         let paused = self.debug_state.paused.clone();
         let filters = self.debug_state.filters.clone();
+        let rate_ocr = self.debug_state.rate_ocr.clone();
         let title = self.debug_title();
         ctx.show_viewport_deferred(
             native_helpers::vp_debug(),
@@ -76,6 +77,7 @@ impl NativeApp {
                     &lines,
                     &paused,
                     &filters,
+                    &rate_ocr,
                 );
                 debug_ui::close_if_requested(ctx, &open);
             },

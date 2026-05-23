@@ -8,12 +8,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::overlay_theme::{apply_secondary_window_style, Theme};
+use crate::ocr_engine::OcrTelemetry;
 
 pub fn push_log(lines: &Arc<Mutex<VecDeque<String>>>, max_lines: usize, line: String) {
     let Ok(mut g) = lines.lock() else {
         return;
     };
-    while g.len() >= max_lines {
+    if g.len() >= max_lines {
         g.pop_front();
     }
     g.push_back(line);
@@ -26,11 +27,13 @@ pub fn render_debug(
     lines: &Arc<Mutex<VecDeque<String>>>,
     paused: &Arc<AtomicBool>,
     filters: &Arc<Mutex<std::collections::HashMap<String, bool>>>,
+    rate_ocr: &Arc<Mutex<Option<OcrTelemetry>>>,
 ) {
     apply_secondary_window_style(ctx);
 
     if class == ViewportClass::Embedded {
         egui::Window::new(title).show(ctx, |ui| {
+            render_ocr_telemetry(ui, rate_ocr);
             render_controls(ui, lines, paused, filters);
             ui.add_space(8.0);
             log_scroll(ui, lines, filters);
@@ -60,11 +63,32 @@ pub fn render_debug(
                 });
                 ui.add_space(16.0);
 
+                render_ocr_telemetry(ui, rate_ocr);
                 render_controls(ui, lines, paused, filters);
                 ui.add_space(16.0);
 
                 log_scroll(ui, lines, filters);
             });
+    }
+}
+
+fn render_ocr_telemetry(ui: &mut egui::Ui, rate_ocr: &Arc<Mutex<Option<OcrTelemetry>>>) {
+    let ocr_info = if let Ok(g) = rate_ocr.lock() { g.clone() } else { None };
+    if let Some(info) = ocr_info {
+        ui.group(|ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Rate OCR Status:").strong().color(Theme::TEXT_ACCENT));
+                ui.add_space(8.0);
+                ui.label(RichText::new(format!("Text: \"{}\"", info.rate_text)).color(Theme::TEXT_PRIMARY));
+                ui.separator();
+                ui.label(RichText::new(format!("Threshold: {}", info.threshold)).color(Theme::TEXT_PRIMARY));
+                ui.separator();
+                ui.label(RichText::new(format!("BgMean: {:.1}", info.bg_mean)).color(Theme::TEXT_PRIMARY));
+                ui.separator();
+                ui.label(RichText::new(format!("Inverted: {}", info.use_invert)).color(Theme::TEXT_PRIMARY));
+            });
+        });
+        ui.add_space(8.0);
     }
 }
 

@@ -161,6 +161,7 @@ impl DetectionWorker {
                 image_db_ready: false,
                 jacket_status: JacketMatchStatus::NotSongSelect,
                 game_rect: None,
+                ocr_telemetry: None,
             });
         }
         self.was_found = false;

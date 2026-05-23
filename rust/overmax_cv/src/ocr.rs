@@ -1,30 +1,104 @@
 use crate::image::resize_bilinear_u8;
 
 pub fn preprocess_bgra(data: &[u8], width: usize, height: usize, force_invert: bool) -> Vec<u8> {
+    preprocess_bgra_with_telemetry(data, width, height, force_invert).0
+}
+
+pub fn preprocess_bgra_with_telemetry(
+    data: &[u8],
+    width: usize,
+    height: usize,
+    force_invert: bool,
+) -> (Vec<u8>, u8, f32, bool) {
     let gray = to_gray_ocr(data, 4);
     let upscaled = resize_bilinear_u8(&gray, width, height, width * 3, height * 3);
-    let threshold = otsu_threshold(&upscaled);
-    let bg_mean = mean_u8(&upscaled);
-    let normal_is_dark = bg_mean < 128.0;
-    let use_invert = if force_invert { normal_is_dark } else { !normal_is_dark };
-    let binary = threshold_image(&upscaled, threshold, use_invert);
+    let blurred = box_blur_3x3(&upscaled, width * 3, height * 3);
+    let threshold = otsu_threshold(&blurred);
+    let bg_mean = calculate_border_mean(&blurred, width * 3, height * 3);
+    
+    // 배경(테두리) 밝기가 오츠 임계값 이하면 (어두운 배경 + 밝은 글씨),
+    // "흰 배경에 검은 글씨"로 만들기 위해 반전(invert)을 수행합니다.
+    let normal_is_dark = bg_mean <= threshold as f32;
+    let use_invert = if force_invert { !normal_is_dark } else { normal_is_dark };
+    
+    let binary = threshold_image(&blurred, threshold, use_invert);
     let padded = pad_gray(&binary, width * 3, height * 3, 10);
-    encode_bmp_gray(&padded, width * 3 + 20, height * 3 + 20)
+    let bmp = encode_bmp_gray(&padded, width * 3 + 20, height * 3 + 20);
+    (bmp, threshold, bg_mean, use_invert)
 }
 
 fn to_gray_ocr(data: &[u8], channels: usize) -> Vec<u8> {
     if channels == 1 {
         return data.to_vec();
     }
-    // R 채널(BGRA에서 index 2)을 추출하여 어두운 청회색/보라색 기어 배경 대비
-    // 붉은색/베이지색/노란색/흰색 글씨의 명암(Contrast)을 극대화합니다.
+    // 표준 ITU-R BT.601 가중치를 적용한 휘도(Luminance) 기반 그레이스케일 변환
     data.chunks_exact(channels)
-        .map(|pixel| pixel[2])
+        .map(|pixel| {
+            ((77 * u16::from(pixel[2]) + 150 * u16::from(pixel[1]) + 29 * u16::from(pixel[0]) + 128) >> 8) as u8
+        })
         .collect()
 }
 
-fn mean_u8(data: &[u8]) -> f32 {
-    data.iter().map(|value| f32::from(*value)).sum::<f32>() / data.len() as f32
+fn box_blur_3x3(data: &[u8], width: usize, height: usize) -> Vec<u8> {
+    if width < 3 || height < 3 {
+        return data.to_vec();
+    }
+    let mut out = vec![0u8; data.len()];
+    
+    for y in 1..(height - 1) {
+        let prev_row = (y - 1) * width;
+        let curr_row = y * width;
+        let next_row = (y + 1) * width;
+        
+        for x in 1..(width - 1) {
+            let sum = data[prev_row + x - 1] as u32
+                + data[prev_row + x] as u32
+                + data[prev_row + x + 1] as u32
+                + data[curr_row + x - 1] as u32
+                + data[curr_row + x] as u32
+                + data[curr_row + x + 1] as u32
+                + data[next_row + x - 1] as u32
+                + data[next_row + x] as u32
+                + data[next_row + x + 1] as u32;
+            out[curr_row + x] = (sum / 9) as u8;
+        }
+    }
+    
+    for x in 0..width {
+        out[x] = data[x];
+        out[(height - 1) * width + x] = data[(height - 1) * width + x];
+    }
+    for y in 0..height {
+        out[y * width] = data[y * width];
+        out[y * width + (width - 1)] = data[y * width + (width - 1)];
+    }
+    
+    out
+}
+
+fn calculate_border_mean(data: &[u8], width: usize, height: usize) -> f32 {
+    if width == 0 || height == 0 {
+        return 0.0;
+    }
+    let mut sum = 0u64;
+    let mut count = 0u64;
+    
+    for x in 0..width {
+        sum += data[x] as u64;
+        sum += data[(height - 1) * width + x] as u64;
+        count += 2;
+    }
+    for y in 1..(height - 1) {
+        sum += data[y * width] as u64;
+        sum += data[y * width + (width - 1)] as u64;
+        count += 2;
+    }
+    
+    if count > 0 {
+        sum as f32 / count as f32
+    } else {
+        0.0
+    }
 }
 
 fn otsu_threshold(data: &[u8]) -> u8 {

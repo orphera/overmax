@@ -1,6 +1,6 @@
 use crate::frame_utils::{crop_roi, make_thumbnail, thumbnail_changed};
 use crate::hysteresis::HysteresisBuffer;
-use crate::ocr_engine::OcrDetector;
+use crate::ocr_engine::{OcrDetector, OcrTelemetry};
 use crate::play_state::PlayStateDetector;
 use crate::roi::RoiManager;
 use crate::screen_capture::CapturedFrame;
@@ -23,6 +23,7 @@ pub struct DetectionOutput {
     pub image_db_ready: bool,
     pub jacket_status: JacketMatchStatus,
     pub game_rect: Option<crate::window_tracker::WindowRect>,
+    pub ocr_telemetry: Option<OcrTelemetry>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -103,6 +104,7 @@ impl DetectionPipeline {
                 confidence,
                 GameSessionState::detecting(),
                 JacketMatchStatus::NotSongSelect,
+                None,
             );
         }
 
@@ -114,15 +116,16 @@ impl DetectionPipeline {
                 confidence,
                 GameSessionState::detecting(),
                 JacketMatchStatus::Leaving,
+                None,
             );
         }
 
         let jacket_status = self.update_song_id_from_jacket(frame, now);
-        let state = self
+        let (state, telemetry) = self
             .play_state
             .detect(frame, &self.rois, self.current_song_id, &self.ocr);
         
-        self.output(logo_detected, true, false, confidence, state, jacket_status)
+        self.output(logo_detected, true, false, confidence, state, jacket_status, telemetry)
     }
 
     fn detect_logo_if_due(&mut self, frame: &CapturedFrame, now: f64) -> SceneType {
@@ -222,6 +225,7 @@ impl DetectionPipeline {
         confidence: f32,
         state: GameSessionState,
         jacket_status: JacketMatchStatus,
+        ocr_telemetry: Option<OcrTelemetry>,
     ) -> DetectionOutput {
         DetectionOutput {
             logo_detected,
@@ -233,6 +237,7 @@ impl DetectionPipeline {
             image_db_ready: self.image_db.is_ready(),
             jacket_status,
             game_rect: None,
+            ocr_telemetry,
         }
     }
 }

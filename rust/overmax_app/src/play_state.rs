@@ -1,6 +1,6 @@
 use crate::frame_utils::crop_roi;
 use crate::frame_utils::region_mean_bgr;
-use crate::ocr_engine::OcrDetector;
+use crate::ocr_engine::{OcrDetector, OcrTelemetry};
 use crate::roi::RoiManager;
 use crate::screen_capture::CapturedFrame;
 use overmax_core::{GameSessionState, PlayContext};
@@ -44,17 +44,20 @@ impl PlayStateDetector {
         rois: &RoiManager,
         song_id: Option<u32>,
         ocr: &OcrDetector,
-    ) -> GameSessionState {
+    ) -> (GameSessionState, Option<OcrTelemetry>) {
         let mode = detect_button_mode(frame, rois);
         let (diff, confident) = detect_difficulty(frame, rois);
         let is_max_combo = detect_max_combo(frame, rois);
 
+        let mut telemetry = None;
         let context = if let (Some(sid), Some(m), Some(d)) = (song_id, mode, diff) {
             if confident {
                 let mut rate = 0.0;
                 if let Some(rate_roi) = rois.get_roi("rate") {
                     if let Some(rate_img) = crop_roi(frame, rate_roi) {
-                        rate = ocr.detect_rate(&rate_img).0.unwrap_or(0.0);
+                        let (r_val, _txt, t_val) = ocr.detect_rate(&rate_img);
+                        rate = r_val.unwrap_or(0.0);
+                        telemetry = t_val;
                     }
                 }
 
@@ -83,13 +86,13 @@ impl PlayStateDetector {
                 is_stable: true,
             };
             self.last_stable_state = Some(state.clone());
-            return state;
+            return (state, telemetry);
         }
 
-        GameSessionState {
+        (GameSessionState {
             context,
             is_stable: false,
-        }
+        }, telemetry)
     }
 
     fn push_raw(&mut self, raw: RawPlayState) {
@@ -201,9 +204,9 @@ mod tests {
         rois.set_scene(SceneType::Freestyle);
 
         let ocr = crate::ocr_engine::OcrDetector::new();
-        assert!(!detector.detect(&frame, &rois, Some(7), &ocr).is_stable);
-        assert!(!detector.detect(&frame, &rois, Some(7), &ocr).is_stable);
-        assert!(detector.detect(&frame, &rois, Some(7), &ocr).is_stable);
+        assert!(!detector.detect(&frame, &rois, Some(7), &ocr).0.is_stable);
+        assert!(!detector.detect(&frame, &rois, Some(7), &ocr).0.is_stable);
+        assert!(detector.detect(&frame, &rois, Some(7), &ocr).0.is_stable);
     }
 
     fn blank_frame() -> CapturedFrame {

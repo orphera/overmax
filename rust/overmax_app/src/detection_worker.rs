@@ -53,6 +53,10 @@ struct DetectionWorker {
     was_found: bool,
     is_foreground: bool,
     ctx_holder: std::sync::Arc<std::sync::Mutex<Option<eframe::egui::Context>>>,
+    last_song_id: Option<u32>,
+    last_is_song_select: bool,
+    last_logo_detected: bool,
+    last_jacket_status: JacketMatchStatus,
 }
 
 impl DetectionWorker {
@@ -76,6 +80,10 @@ impl DetectionWorker {
             was_found: false,
             is_foreground: false,
             ctx_holder,
+            last_song_id: None,
+            last_is_song_select: false,
+            last_logo_detected: false,
+            last_jacket_status: JacketMatchStatus::NotSongSelect,
         }
     }
 
@@ -137,8 +145,21 @@ impl DetectionWorker {
                 let mut out = pipeline.detect(&frame, self.start.elapsed().as_secs_f64());
                 out.game_rect = Some(rect);
                 self.log_detection_summary(&out);
+                
+                let state_changed = out.current_song_id != self.last_song_id
+                    || out.is_song_select != self.last_is_song_select
+                    || out.logo_detected != self.last_logo_detected
+                    || std::mem::discriminant(&out.jacket_status) != std::mem::discriminant(&self.last_jacket_status);
+
+                self.last_song_id = out.current_song_id;
+                self.last_is_song_select = out.is_song_select;
+                self.last_logo_detected = out.logo_detected;
+                self.last_jacket_status = out.jacket_status.clone();
+
                 let _ = self.detection_tx.send(out);
-                self.request_repaint();
+                if state_changed {
+                    self.request_repaint();
+                }
             }
             Err(e) => self.log_detection_throttled(format!("[Detection] capture failed: {e}")),
         }

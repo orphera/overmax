@@ -708,6 +708,7 @@ impl NativeApp {
         
         std::thread::spawn(move || {
             let buttons = if button == 0 { vec![4, 5, 6, 8] } else { vec![button] };
+            let mut any_success = false;
             for b in buttons {
                 debug_ui::push_log(
                     &log_lines,
@@ -731,12 +732,15 @@ impl NativeApp {
                                 format!("[VArchiveClient] 캐시 저장 완료 ({}B)", b),
                             );
                             let _ = tx.send((v_id.clone(), b, Ok(1)));
+                            any_success = true;
                         }
                     },
                     Err(e) => {
                         let _ = tx.send((v_id.clone(), b, Err(e)));
                     }
                 }
+            }
+            if any_success {
                 ctx.request_repaint();
             }
         });

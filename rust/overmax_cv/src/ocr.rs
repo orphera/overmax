@@ -1,14 +1,24 @@
 use crate::image::resize_bilinear_u8;
 
-pub fn preprocess_logo_bgra(data: &[u8], width: usize, height: usize, force_invert: bool) -> Vec<u8> {
+pub fn preprocess_logo_bgra(
+    data: &[u8],
+    width: usize,
+    height: usize,
+    force_invert: bool,
+    binarize: bool,
+) -> Vec<u8> {
     let gray = to_gray_ocr(data, 4);
     let upscaled = resize_bilinear_u8(&gray, width, height, width * 3, height * 3);
-    let threshold = otsu_threshold(&upscaled);
-    let bg_mean = mean_u8(&upscaled);
-    let normal_is_dark = bg_mean < 128.0;
-    let use_invert = if force_invert { normal_is_dark } else { !normal_is_dark };
-    let binary = threshold_image(&upscaled, threshold, use_invert);
-    let padded = pad_gray(&binary, width * 3, height * 3, 10);
+    let pixels = if binarize {
+        let threshold = otsu_threshold(&upscaled);
+        let bg_mean = mean_u8(&upscaled);
+        let normal_is_dark = bg_mean < 128.0;
+        let use_invert = if force_invert { normal_is_dark } else { !normal_is_dark };
+        threshold_image(&upscaled, threshold, use_invert)
+    } else {
+        upscaled
+    };
+    let padded = pad_gray(&pixels, width * 3, height * 3, 10);
     encode_bmp_gray(&padded, width * 3 + 20, height * 3 + 20)
 }
 

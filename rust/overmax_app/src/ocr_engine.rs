@@ -4,6 +4,9 @@ use windows::Graphics::Imaging::BitmapDecoder;
 use windows::Media::Ocr::OcrEngine;
 use windows::Storage::Streams::{DataWriter, InMemoryRandomAccessStream};
 
+const KEYWORD_FREESTYLE: &str = "FREESTYLE";
+const KEYWORD_ONLINE: &str = "ONLINE";
+
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct OcrTelemetry {
@@ -32,42 +35,63 @@ impl OcrDetector {
     }
     #[allow(unused_assignments)]
     pub fn detect_logo(&self, logo: &ImageRegion) -> (SceneType, String, String) {
-        let features = match overmax_cv::compute_image_features(
-            &logo.bgra,
-            logo.width as usize,
-            logo.height as usize,
-            4,
-        ) {
-            Ok((_, _, _, hog)) => hog,
-            Err(_) => return (SceneType::Unknown, String::new(), String::new()),
+        // Pass 1: Grayscale (no binarization) - extremely robust on bright/fluctuating backgrounds
+        let mut text = self.engine.recognize_logo(logo, false, false).unwrap_or_default();
+        let mut normalized = normalize_alnum(&text);
+
+        let mut scene = if is_logo_keyword_match(&normalize_alnum(KEYWORD_FREESTYLE), &normalized) {
+            SceneType::Freestyle
+        } else if is_logo_keyword_match(&normalize_alnum(KEYWORD_ONLINE), &normalized) {
+            SceneType::Online
+        } else {
+            SceneType::Unknown
         };
 
-        let sim_freestyle = cosine_similarity(&features, &crate::logo_templates::TEMPLATE_FREESTYLE_HOG);
-        let sim_online = cosine_similarity(&features, &crate::logo_templates::TEMPLATE_ONLINE_HOG);
-
-        // BGA 동영상 노이즈가 겹쳐 흐려져도 로고 형상을 안전하게 잡을 수 있도록 매칭 임계치를 0.80으로 정의합니다.
-        let threshold = 0.80;
-        let mut best_scene = SceneType::Unknown;
-        let mut best_sim = 0.0;
-
-        if sim_freestyle >= threshold {
-            best_scene = SceneType::Freestyle;
-            best_sim = sim_freestyle;
+        // Pass 2: Fallback to binarized normal
+        if scene == SceneType::Unknown {
+            if let Ok(t) = self.engine.recognize_logo(logo, false, true) {
+                let norm = normalize_alnum(&t);
+                let sc = if is_logo_keyword_match(&normalize_alnum(KEYWORD_FREESTYLE), &norm) {
+                    SceneType::Freestyle
+                } else if is_logo_keyword_match(&normalize_alnum(KEYWORD_ONLINE), &norm) {
+                    SceneType::Online
+                } else {
+                    SceneType::Unknown
+                };
+                if sc != SceneType::Unknown {
+                    scene = sc;
+                    text = t;
+                    normalized = norm;
+                }
+            }
         }
 
-        if sim_online >= threshold && sim_online > best_sim {
-            best_scene = SceneType::Online;
-            best_sim = sim_online;
+        // Pass 3: Fallback to binarized inverted (useful for bright BGA flashes that invert the threshold)
+        if scene == SceneType::Unknown {
+            if let Ok(t) = self.engine.recognize_logo(logo, true, true) {
+                let norm = normalize_alnum(&t);
+                let sc = if is_logo_keyword_match(&normalize_alnum(KEYWORD_FREESTYLE), &norm) {
+                    SceneType::Freestyle
+                } else if is_logo_keyword_match(&normalize_alnum(KEYWORD_ONLINE), &norm) {
+                    SceneType::Online
+                } else {
+                    SceneType::Unknown
+                };
+                if sc != SceneType::Unknown {
+                    scene = sc;
+                    text = t;
+                    normalized = norm;
+                }
+            }
         }
 
-        let label = match best_scene {
+        let label = match scene {
             SceneType::Freestyle => "FREESTYLE".to_string(),
             SceneType::Online => "ONLINE".to_string(),
             _ => "UNKNOWN".to_string(),
         };
 
-        let text = format!("HOG Matching (Free: {:.3}, Online: {:.3})", sim_freestyle, sim_online);
-        (best_scene, text, label)
+        (scene, text, label)
     }
 
     pub fn detect_rate(&self, rate: &ImageRegion) -> (Option<f32>, String, Option<OcrTelemetry>) {
@@ -122,6 +146,21 @@ impl WindowsOcrEngine {
 
     fn is_available(&self) -> bool {
         self.engine.is_some()
+    }
+
+    fn recognize_logo(&self, image: &ImageRegion, force_invert: bool, binarize: bool) -> Result<String, String> {
+        let Some(engine) = &self.engine else {
+            return Ok(String::new());
+        };
+        let bmp = overmax_cv::preprocess_ocr_bgra(
+            &image.bgra,
+            image.width as usize,
+            image.height as usize,
+            force_invert,
+            binarize,
+        )
+        .map_err(|e| e.to_string())?;
+        recognize_bmp(engine, &bmp).map(|text| text.trim().to_string())
     }
 
     fn recognize_with_telemetry(
@@ -210,7 +249,6 @@ fn parse_rate_text(text: &str) -> Option<f32> {
     (0.0..=100.0).contains(&value).then_some(value)
 }
 
-#[cfg(test)]
 fn normalize_alnum(text: &str) -> String {
     text.chars()
         .filter(|ch| ch.is_ascii_alphanumeric())
@@ -218,7 +256,6 @@ fn normalize_alnum(text: &str) -> String {
         .collect()
 }
 
-#[cfg(test)]
 fn is_logo_keyword_match(keyword: &str, normalized_ocr: &str) -> bool {
     if keyword.is_empty() || normalized_ocr.is_empty() {
         return false;
@@ -236,13 +273,11 @@ fn is_logo_keyword_match(keyword: &str, normalized_ocr: &str) -> bool {
     sequence_ratio(keyword, normalized_ocr) >= 0.72
 }
 
-#[cfg(test)]
 fn sequence_ratio(left: &str, right: &str) -> f32 {
     let lcs = lcs_len(left.as_bytes(), right.as_bytes()) as f32;
     2.0 * lcs / (left.len() + right.len()) as f32
 }
 
-#[cfg(test)]
 fn lcs_len(left: &[u8], right: &[u8]) -> usize {
     let mut prev = vec![0; right.len() + 1];
     let mut curr = vec![0; right.len() + 1];
@@ -291,21 +326,4 @@ mod tests {
         assert!(is_logo_keyword_match("ONLINE", "ONL1NE"));
         assert!(!is_logo_keyword_match("FREESTYLE", "MISSION"));
     }
-}
-
-fn dot(left: &[f32], right: &[f32]) -> f32 {
-    left.iter().zip(right).map(|(a, b)| a * b).sum()
-}
-
-fn vector_norm(values: &[f32]) -> f32 {
-    values.iter().map(|value| value * value).sum::<f32>().sqrt()
-}
-
-fn cosine_similarity(left: &[f32], right: &[f32]) -> f32 {
-    let norm_l = vector_norm(left);
-    let norm_r = vector_norm(right);
-    if norm_l <= 0.0 || norm_r <= 0.0 {
-        return 0.0;
-    }
-    dot(left, right) / (norm_l * norm_r)
 }

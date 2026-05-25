@@ -10,7 +10,6 @@ use overmax_data::ImageIndexDb;
 const JACKET_MATCH_INTERVAL: f64 = 0.25;
 const JACKET_CHANGE_THRESHOLD: f32 = 2.5;
 const JACKET_FORCE_RECHECK_SEC: f64 = 2.0;
-const LOGO_OCR_COOLDOWN_SEC: f64 = 1.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct DetectionOutput {
@@ -76,8 +75,11 @@ impl DetectionPipeline {
     }
 
     pub fn detect(&mut self, frame: &CapturedFrame, now: f64) -> DetectionOutput {
-        let scene = self.detect_logo_if_due(frame, now);
-        self.process_frame_with_logo(frame, scene, now)
+        if let Some(scene) = self.detect_logo_if_due(frame, now) {
+            self.process_frame_with_logo(frame, scene, now)
+        } else {
+            self.process_frame_cached(frame, now)
+        }
     }
 
     pub fn process_frame_with_logo(
@@ -93,7 +95,30 @@ impl DetectionPipeline {
             self.rois.set_scene(scene);
         }
 
-        let (is_song_select, is_leaving, confidence) = self.hysteresis.update(logo_detected);
+        self.hysteresis.update(logo_detected);
+        self.process_frame_shared(frame, logo_detected, now)
+    }
+
+    pub fn process_frame_cached(
+        &mut self,
+        frame: &CapturedFrame,
+        now: f64,
+    ) -> DetectionOutput {
+        self.rois.update_window_size(frame.width, frame.height);
+        
+        let logo_detected = self.last_logo_scene != SceneType::Unknown;
+        self.process_frame_shared(frame, logo_detected, now)
+    }
+
+    fn process_frame_shared(
+        &mut self,
+        frame: &CapturedFrame,
+        logo_detected: bool,
+        now: f64,
+    ) -> DetectionOutput {
+        let is_song_select = self.hysteresis.is_active;
+        let is_leaving = self.hysteresis.is_leaving;
+        let confidence = self.hysteresis.confidence;
 
         if !is_song_select {
             self.reset_on_screen_exit();
@@ -128,21 +153,30 @@ impl DetectionPipeline {
         self.output(logo_detected, true, false, confidence, state, jacket_status, telemetry)
     }
 
-    fn detect_logo_if_due(&mut self, frame: &CapturedFrame, now: f64) -> SceneType {
-        if now - self.last_logo_ocr_ts < LOGO_OCR_COOLDOWN_SEC {
-            return self.last_logo_scene;
+    fn detect_logo_if_due(&mut self, frame: &CapturedFrame, now: f64) -> Option<SceneType> {
+        let cooldown = if self.last_logo_scene == SceneType::Unknown {
+            0.2
+        } else {
+            1.0
+        };
+
+        if now - self.last_logo_ocr_ts < cooldown {
+            return None;
         }
+
         let Some(logo) = self
             .rois
             .get_roi("logo")
             .and_then(|roi| crop_roi(frame, roi))
         else {
             self.last_logo_scene = SceneType::Unknown;
-            return SceneType::Unknown;
+            self.last_logo_ocr_ts = now;
+            return Some(SceneType::Unknown);
         };
+        
         self.last_logo_scene = self.ocr.detect_logo(&logo).0;
         self.last_logo_ocr_ts = now;
-        self.last_logo_scene
+        Some(self.last_logo_scene)
     }
 
     fn update_song_id_from_jacket(&mut self, frame: &CapturedFrame, now: f64) -> JacketMatchStatus {

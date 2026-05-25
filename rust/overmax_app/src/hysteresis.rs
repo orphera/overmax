@@ -8,7 +8,7 @@ pub struct HysteresisBuffer {
     off_ratio: f32,
     off_min_samples: usize,
     history: VecDeque<bool>,
-    is_active: bool,
+    pub is_active: bool,
     pub is_leaving: bool,
     pub confidence: f32,
     pub hit_count: usize,

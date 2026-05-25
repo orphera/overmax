@@ -244,7 +244,7 @@ fn draw_header(
                 rate = ctx.rate;
                 is_perfect = rate >= 100.0;
                 is_max_combo = ctx.is_max_combo;
-                has_badge = rate > 0.0 || is_max_combo;
+                has_badge = rate > 0.0;
             }
 
             ui.add_space(px.header_meta_gap());

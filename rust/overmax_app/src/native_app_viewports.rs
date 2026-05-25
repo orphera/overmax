@@ -335,9 +335,8 @@ impl eframe::App for NativeApp {
             }
         }
 
-        let mut_self = unsafe { &mut *(self as *const Self as *mut Self) };
-        mut_self.prev_overlay_on = overlay_on;
-        mut_self.prev_scale = scale;
+        self.prev_overlay_on = overlay_on;
+        self.prev_scale = scale;
 
         let _visible_size = Vec2::new(overlay_ui::BASE_WIDTH * scale, overlay_ui::BASE_HEIGHT * scale);
         let _hidden_size = Vec2::new(1.0, 1.0);

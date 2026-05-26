@@ -91,127 +91,24 @@
 
 ---
 
-# Code Philosophy
+# Engineering Taste
 
-## 1. Size & Structure Constraints (Hard Rules)
+변경 전에 `ENGINEERING_TASTE.md`를 읽는다.
 
-- **Function length ≤ 50 lines**
-  - 한 번에 이해 가능한 단위 유지
+중요:
 
-- **File size ≤ 500 lines**
-  - 초과 시 반드시 분리
+- 소유자의 엔지니어링 취향을 반영한다.
+- 기발함보다는 예측 가능성을 우선한다.
+- 수정 범위는 엄격하게 제한한다.
+- 작고 검토 가능한 변경사항을 선호한다.
+- 관련 없는 시스템을 리팩토링 하지 않는다.
+- 강력한 이유 없이는 작동 중인 코드를 재작성하지 않는다.
+- 자주 중단하고 보고한다.
 
-- **One primary class per file**
-  - 보조 클래스/함수는 허용하되, “주 책임”은 하나만 유지
+기본 동작:
 
-- **~10 functions per file (soft limit)**
-  - 초과 시 구조 재검토
+Small change → report → wait.
 
-> These limits exist to reduce cognitive load and improve long-term maintainability.
+하지 않아야 할 것:
 
----
-
-## 2. Readability Standard (Core Principle)
-
-코드는 다음 조건을 만족해야 한다:
-
-- **훈련된 사람이 빠르게 스캔해서 이해 가능할 것**
-- 함수 하나는 아래 질문에 즉시 답할 수 있어야 한다:
-  - 무엇을 하는가?
-  - 왜 존재하는가?
-
-### Guidelines
-
-- 네이밍만으로 의도를 설명할 수 있어야 한다
-- 주석은 “무엇”이 아니라 **“왜”**를 설명할 때만 사용
-- 코드 흐름은 위에서 아래로 자연스럽게 읽혀야 한다
-
----
-
-## 3. Decomposition Rules
-
-다음 조건 중 하나라도 만족하면 **반드시 분리**:
-
-- 함수가 50줄 초과
-- 서로 다른 추상화 레벨이 혼재됨  
-  (예: 비즈니스 로직 + low-level 처리)
-- 동일 패턴이 2회 이상 반복됨
-
-### Heuristic
-
-> “한 눈에 안 들어오면 이미 너무 크다”
-
----
-
-## 4. Decomposition Guardrail (Important)
-
-> **분해는 가독성을 개선할 때만 수행한다.**
-
-다음은 금지한다:
-
-- 단순히 줄 수를 줄이기 위한 함수 분리
-- 흐름을 끊는 과도한 abstraction
-- 의미 없는 wrapper/helper 함수 남발
-
-목표는 “작게 나누는 것”이 아니라  
-**“이해하기 쉽게 만드는 것”**이다.
-
----
-
-## 5. Complexity Guidelines
-
-- **Cyclomatic complexity ≤ 10 권장**
-- 중첩 depth는 3 이상 지양
-
-복잡도가 증가할 경우:
-
-- early return 사용
-- 조건문 분해
-- 전략 패턴 또는 매핑 구조 고려
-
----
-
-## 6. Exceptions (Explicitly Allowed)
-
-다음 경우에는 규칙을 완화할 수 있다:
-
-- 성능 최적화가 필요한 hot path
-- 외부 API / 프로토콜과 1:1 대응되는 코드
-- auto-generated 코드
-
-단, 반드시:
-
-- 이유를 주석으로 명시
-- 영향 범위를 최소화
-
----
-
-## 7. Review Criteria (Enforcement)
-
-PR 리뷰 시 다음을 확인한다:
-
-- [ ] 함수 길이 제한 준수 여부
-- [ ] 파일 크기 제한 준수 여부
-- [ ] 단일 책임 원칙 유지 여부
-- [ ] 30초 내 이해 가능한가
-- [ ] 과도한 분해 또는 부족한 분해 여부
-
----
-
-## 8. Anti-Patterns
-
-다음 패턴은 지양한다:
-
-- “나중에 나눌 예정” 상태로 커밋
-- 의미 없는 유틸 함수 분리
-- 지나치게 generic한 abstraction
-- 한 함수에서 여러 책임 수행
-- 읽기 흐름을 끊는 과도한 함수 호출 체인
-
----
-
-## 9. Philosophy Summary
-
-- 작게 나누되, **의미 있게 나눈다**
-- 규칙보다 중요한 것은 **읽는 경험**
-- 코드는 작성하는 것이 아니라 **읽히는 것**
+Large autonomous rewrite.

@@ -28,7 +28,8 @@ fn is_mouse_over_overlay(ctx: &egui::Context, last_painted_rect: Option<egui::Re
     unsafe {
         windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pos);
     }
-    let mouse_pos = egui::pos2(pos.x as f32, pos.y as f32);
+    let ppi = ctx.pixels_per_point();
+    let mouse_pos = egui::pos2(pos.x as f32 / ppi, pos.y as f32 / ppi);
     if let Some(paint_rect) = last_painted_rect {
         let global_paint_rect = paint_rect.translate(rect.min.to_vec2());
         global_paint_rect.contains(mouse_pos)

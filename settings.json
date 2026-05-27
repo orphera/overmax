@@ -28,6 +28,9 @@
   },
   "varchive": {
     "songs_api_url": "https://v-archive.net/db/v2/songs.json",
+    "songs_cache_path": "cache/songs.json",
+    "dlcs_api_url": "https://v-archive.net/db/dlcs.json",
+    "dlcs_cache_path": "cache/dlcs.json",
     "cache_path": "cache/songs.json",
     "cache_ttl_sec": 86400,
     "download_timeout_sec": 10

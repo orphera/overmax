@@ -278,6 +278,9 @@ impl NativeApp {
         record_manager.refresh();
 
         let mut varchive_db = VArchiveDB::new();
+        let dlcs_path = root.join(compat.dlcs_json);
+        let _ = varchive_db.load_dlcs_from_file(&dlcs_path);
+
         let songs_path = root.join(compat.songs_json);
         if let Err(e) = varchive_db.load_from_file(&songs_path) {
             let _ = log_tx.send(format!("[VArchive] songs load failed: {e}"));
@@ -291,6 +294,7 @@ impl NativeApp {
 
         let sheet_meta = Arc::new(PatternSheetMeta::load_cache(
             root.join("cache").join("pattern_meta.json"),
+            &varchive_db,
         ));
 
         let steam0 = {

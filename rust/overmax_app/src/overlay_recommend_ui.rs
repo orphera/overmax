@@ -28,6 +28,7 @@ pub struct PatternTabInfo {
     pub gold: String,
     pub note: String,
     pub assist_key: String,
+    pub keypart: bool,
 }
 
 pub fn draw_diff_tabs(
@@ -333,6 +334,7 @@ mod tests {
             gold: String::new(),
             note: String::new(),
             assist_key: String::new(),
+            keypart: false,
         };
 
         assert_eq!(pattern_label(Some(&pattern)), "12.3");

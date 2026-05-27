@@ -9,6 +9,7 @@ use std::time::{Duration, SystemTime};
 
 const USER_AGENT_VALUE: &str = concat!("overmax-rs/", env!("CARGO_PKG_VERSION"));
 const SONGS_API_FALLBACK: &str = "https://v-archive.net/db/v2/songs.json";
+const DLCS_API_FALLBACK: &str = "https://v-archive.net/db/dlcs.json";
 const PATTERN_META_CACHE: &str = "cache/pattern_meta.json";
 const IMAGE_DB_OWNER: &str = "orphera";
 const IMAGE_DB_REPO: &str = "overmax-image-db";
@@ -28,7 +29,22 @@ type LogFn<'a> = &'a mut dyn FnMut(String);
 
 pub fn refresh_startup_caches(root: &Path, settings: &Value, log: LogFn<'_>) {
     refresh_songs_json(root, settings, &mut *log);
-    refresh_pattern_meta(root, &mut *log);
+    refresh_dlcs_json(root, settings, &mut *log);
+
+    // Load VArchiveDB dynamically to map CSV rows to song IDs
+    let compat = overmax_data::compatibility::DataCompatibility::current();
+    let songs_path = root.join(compat.songs_json);
+    let dlcs_path = root.join(compat.dlcs_json);
+    let mut varchive_db = overmax_data::varchive::VArchiveDB::new();
+    
+    // Load dlcs first if available
+    let _ = varchive_db.load_dlcs_from_file(&dlcs_path);
+
+    if let Err(e) = varchive_db.load_from_file(&songs_path) {
+        log(format!("[Cache] songs.json 로드 실패 (패턴 메타 매칭용): {e}"));
+    }
+
+    refresh_pattern_meta(root, &varchive_db, &mut *log);
     refresh_image_index(root, settings, &mut *log);
 }
 
@@ -57,19 +73,44 @@ fn refresh_songs_json(root: &Path, settings: &Value, log: LogFn<'_>) {
     }
 }
 
-fn refresh_pattern_meta(root: &Path, log: LogFn<'_>) {
+fn refresh_dlcs_json(root: &Path, settings: &Value, log: LogFn<'_>) {
+    let path = root.join(setting_str(
+        settings,
+        "varchive",
+        "dlcs_cache_path",
+        "cache/dlcs.json",
+    ));
+    let ttl = setting_u64(settings, "varchive", "cache_ttl_sec", DAY.as_secs());
+    if !is_stale(&path, Duration::from_secs(ttl)) {
+        return;
+    }
+    let url = setting_str(settings, "varchive", "dlcs_api_url", DLCS_API_FALLBACK);
+    let timeout = setting_u64(settings, "varchive", "download_timeout_sec", 10);
+    match download_bytes(url, Duration::from_secs(timeout)) {
+        Ok(bytes) => {
+            if let Err(e) = write_atomic(&path, &bytes) {
+                log(format!("[Cache] dlcs.json 저장 실패: {e}"));
+            } else {
+                log("[Cache] dlcs.json 갱신 완료".into());
+            }
+        }
+        Err(e) => log(format!("[Cache] dlcs.json 갱신 실패: {e}")),
+    }
+}
+
+fn refresh_pattern_meta(root: &Path, varchive_db: &overmax_data::varchive::VArchiveDB, log: LogFn<'_>) {
     let path = root.join(PATTERN_META_CACHE);
     if !is_stale(&path, DAY) {
         return;
     }
-    let mut items = serde_json::Map::new();
+    let mut items = std::collections::HashMap::new();
     for (mode, gid) in SHEET_GIDS {
         match download_text(&sheet_csv_url(gid), Duration::from_secs(10)) {
-            Ok(csv) => merge_sheet_meta(&mut items, mode, &csv),
+            Ok(csv) => merge_sheet_meta(&mut items, mode, &csv, varchive_db),
             Err(e) => log(format!("[Cache] pattern meta {mode} 갱신 실패: {e}")),
         }
     }
-    let Ok(text) = serde_json::to_vec_pretty(&Value::Object(items)) else {
+    let Ok(text) = serde_json::to_vec_pretty(&items) else {
         return;
     };
     if let Err(e) = write_atomic(&path, &text) {
@@ -228,7 +269,12 @@ fn sheet_csv_url(gid: &str) -> String {
     format!("https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&gid={gid}")
 }
 
-fn merge_sheet_meta(items: &mut serde_json::Map<String, Value>, mode: &str, csv: &str) {
+fn merge_sheet_meta(
+    items: &mut std::collections::HashMap<String, overmax_data::PatternSheetMetaItem>,
+    mode: &str,
+    csv: &str,
+    varchive_db: &overmax_data::varchive::VArchiveDB,
+) {
     let rows = parse_csv(csv);
     let Some(headers) = rows.first() else {
         return;
@@ -241,16 +287,27 @@ fn merge_sheet_meta(items: &mut serde_json::Map<String, Value>, mode: &str, csv:
             continue;
         }
         let meta = pattern_meta_value(mode, &values);
-        if meta.as_object().is_some_and(|m| {
-            m.values()
-                .any(|v| v.as_str().is_some_and(|s| !s.is_empty()))
-        }) {
-            items.insert(format!("{mode}|{}|{}", norm(&title), norm(&diff)), meta);
+        let has_content = !meta.gold.is_empty()
+            || !meta.note.is_empty()
+            || !meta.assist_key.is_empty()
+            || meta.keypart;
+            
+        if has_content {
+            let level_str = pick(&values, &["레벨", "Level"]);
+            let level = level_str.parse::<f64>().map(|f| f as u32).ok();
+            let category = pick(&values, &["카테고리", "Category"]);
+            let note = pick(&values, &["비고", "Note"]);
+
+            if let Some(song) = varchive_db.find_best_match(&title, mode, &diff, level, &category, &note) {
+                items.insert(format!("{}|{mode}|{}", song.title, norm(&diff)), meta);
+            } else {
+                items.insert(format!("{}|{mode}|{}", norm(&title), norm(&diff)), meta);
+            }
         }
     }
 }
 
-fn pattern_meta_value(mode: &str, values: &HashMap<String, String>) -> Value {
+fn pattern_meta_value(mode: &str, values: &HashMap<String, String>) -> overmax_data::PatternSheetMetaItem {
     let raw_gold = pick(values, &["황배 여부", "황배여부"]);
     let gold = if raw_gold.is_empty() {
         String::new()
@@ -264,18 +321,13 @@ fn pattern_meta_value(mode: &str, values: &HashMap<String, String>) -> Value {
         "랜덤".to_string()
     };
 
-    let mut note = pick(values, &["비고", "Note"]);
+    let note = pick(values, &["비고", "Note"]);
     let mut keypart = false;
 
     if mode == "8B" {
         let raw_keypart = pick(values, &["키파트 위주", "키파트위주"]);
         if !raw_keypart.is_empty() {
             keypart = true;
-            if note.is_empty() {
-                note = "키파트 위주 패턴".to_string();
-            } else {
-                note = format!("{} | 키파트 위주 패턴", note);
-            }
         }
     }
 
@@ -290,12 +342,12 @@ fn pattern_meta_value(mode: &str, values: &HashMap<String, String>) -> Value {
         raw_assist
     };
 
-    json!({
-        "gold": gold,
-        "note": note,
-        "keypart": keypart,
-        "assist_key": assist_key,
-    })
+    overmax_data::PatternSheetMetaItem {
+        gold,
+        note,
+        assist_key,
+        keypart,
+    }
 }
 
 fn pick(values: &HashMap<String, String>, keys: &[&str]) -> String {
@@ -367,16 +419,40 @@ mod tests {
 
     #[test]
     fn sheet_meta_merge_matches_python_cache_shape() {
-        let mut items = serde_json::Map::new();
+        let mut db = overmax_data::varchive::VArchiveDB::new();
+        db.songs.push(overmax_data::varchive::Song {
+            title: "1".into(),
+            name: "Love ☆ Panic".into(),
+            composer: "ESTi".into(),
+            dlc_code: "".into(),
+            patterns: [
+                ("5B".to_string(), [
+                    ("SC".to_string(), overmax_data::varchive::PatternInfo {
+                        level: Some(12),
+                        floor: None,
+                        floor_name: None,
+                        rating: None,
+                    })
+                ].into_iter().collect())
+            ].into_iter().collect(),
+        });
+
+        let mut items = std::collections::HashMap::new();
         merge_sheet_meta(
             &mut items,
             "5B",
             "곡명,난이도,황배 여부,비고,보조 키 여부\nLove ☆ Panic,SC,O,개인차,❌\n",
+            &db,
         );
 
         assert_eq!(
-            items.get("5B|love☆panic|sc").unwrap(),
-            &json!({"gold": "정배", "note": "개인차", "keypart": false, "assist_key": "사용"})
+            items.get("1|5B|sc").unwrap(),
+            &overmax_data::PatternSheetMetaItem {
+                gold: "정배".into(),
+                note: "개인차".into(),
+                assist_key: "사용".into(),
+                keypart: false,
+            }
         );
     }
 }

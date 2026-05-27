@@ -489,6 +489,9 @@ fn meta_text(state: &GameSessionState, pattern_tabs: &[PatternTabInfo]) -> Strin
     if !pattern.assist_key.is_empty() {
         badges.push(format!("보조:{}", pattern.assist_key));
     }
+    if pattern.keypart {
+        badges.push("키파트 위주 패턴".to_string());
+    }
     if !pattern.note.is_empty() {
         badges.push(pattern.note.clone());
     }
@@ -540,6 +543,7 @@ mod tests {
             gold: "O".into(),
             note: "개인차".into(),
             assist_key: "Y".into(),
+            keypart: false,
         }];
 
         assert_eq!(meta_text(&state, &patterns), "황배:O | 보조:Y | 개인차");
@@ -604,6 +608,7 @@ mod tests {
             gold: "O".into(),
             note: "개인차".into(),
             assist_key: "Y".into(),
+            keypart: false,
         }];
 
         for scale in scales {

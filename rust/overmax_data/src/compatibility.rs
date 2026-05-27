@@ -4,6 +4,7 @@ pub struct DataCompatibility {
     pub record_db: &'static str,
     pub image_index_db: &'static str,
     pub songs_json: &'static str,
+    pub dlcs_json: &'static str,
 }
 
 impl DataCompatibility {
@@ -13,6 +14,7 @@ impl DataCompatibility {
             record_db: "cache/record.db",
             image_index_db: "cache/image_index.db",
             songs_json: "cache/songs.json",
+            dlcs_json: "cache/dlcs.json",
         }
     }
 }
@@ -29,5 +31,6 @@ mod tests {
         assert_eq!(compat.record_db, "cache/record.db");
         assert_eq!(compat.image_index_db, "cache/image_index.db");
         assert_eq!(compat.songs_json, "cache/songs.json");
+        assert_eq!(compat.dlcs_json, "cache/dlcs.json");
     }
 }

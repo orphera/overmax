@@ -53,9 +53,9 @@ pub enum Difficulty {
 impl Difficulty {
     pub fn from_str(s: &str) -> Option<Self> {
         match s.trim().to_uppercase().as_str() {
-            "NM" => Some(Self::NM),
-            "HD" => Some(Self::HD),
-            "MX" => Some(Self::MX),
+            "NM" | "NORMAL" => Some(Self::NM),
+            "HD" | "HARD" => Some(Self::HD),
+            "MX" | "MAXIMUM" => Some(Self::MX),
             "SC" => Some(Self::SC),
             _ => None,
         }

@@ -2,8 +2,47 @@ import os
 import sys
 import json
 import csv
+import time
 import urllib.request
 from collections import defaultdict
+
+CSV_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".csv_cache")
+CSV_CACHE_TTL = 60 * 60 * 24  # 24시간
+
+DIFF_ALIASES = {
+    "NORMAL": "NM",
+    "HARD": "HD",
+    "MAXIMUM": "MX",
+    "SC": "SC",
+    "NM": "NM",
+    "HD": "HD",
+    "MX": "MX",
+}
+
+def normalize_diff(diff):
+    """표준 난이도(NM/HD/MX/SC)만 인식하고, DPC/FX/REDESIGN 등 특수 난이도는 None을 반환한다."""
+    return DIFF_ALIASES.get(diff.strip().upper())
+
+def fetch_csv(mode, gid, sheet_id):
+    """CSV를 다운로드하되, 24시간 내 캐시가 있으면 캐시를 사용한다."""
+    os.makedirs(CSV_CACHE_DIR, exist_ok=True)
+    cache_path = os.path.join(CSV_CACHE_DIR, f"{mode}.csv")
+
+    if os.path.exists(cache_path):
+        age = time.time() - os.path.getmtime(cache_path)
+        if age < CSV_CACHE_TTL:
+            print(f"Using cached {mode} sheet CSV (age: {int(age // 60)}m)")
+            with open(cache_path, encoding='utf-8') as f:
+                return f.read()
+
+    print(f"Downloading {mode} sheet CSV...")
+    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&gid={gid}"
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req, timeout=15) as response:
+        content = response.read().decode('utf-8')
+    with open(cache_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+    return content
 
 # Simple implementation of normalized Damerau-Levenshtein distance in Python
 def normalized_damerau_levenshtein(s1, s2):
@@ -238,17 +277,10 @@ def main():
     duplicates_resolved = defaultdict(list)
 
     for mode, gid in gids.items():
-        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&gid={gid}"
-        print(f"Downloading {mode} sheet CSV...")
         try:
-            req = urllib.request.Request(
-                url, 
-                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-            )
-            with urllib.request.urlopen(req, timeout=10) as response:
-                csv_content = response.read().decode('utf-8')
+            csv_content = fetch_csv(mode, gid, sheet_id)
         except Exception as e:
-            print(f"Failed to download {mode} sheet: {e}")
+            print(f"Failed to fetch {mode} sheet: {e}")
             sys.exit(1)
 
         reader = csv.reader(csv_content.splitlines())
@@ -288,10 +320,15 @@ def main():
                 failures.append(f"{mode} {title} {diff} (Lv {level}): Song match failed in DB")
                 continue
                 
-            song_id = matched_song["title"]
+            song_id = str(matched_song["title"])
             composer = matched_song["composer"]
 
-            cache_key = (song_id, mode, diff.upper())
+            norm_diff = normalize_diff(diff)
+            if norm_diff is None:
+                # DPC/FX/REDESIGN 등 특수 난이도 — Rust와 동일하게 skip
+                continue
+
+            cache_key = (song_id, mode, norm_diff)
 
             if cache_key not in meta_cache:
                 failures.append(f"{mode} {title} {diff} (Lv {level}) [song_id={song_id}]: Not found in pattern_meta.json")

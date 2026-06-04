@@ -33,7 +33,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 ## Workspace Crate 구조
 - `overmax_app`: 메인 애플리케이션 (`egui/winit` 기반 GUI, 화면 캡처 루프, 디텍션 워커, 앱/DB 자가 업데이트)
 - `overmax_core`: 공통 데이터 모델 및 핵심 상태 구조체 (`GameSessionState`, `PlayContext`, `SceneType`)
-- `overmax_data`: 설정 파싱, SQLite DB (`RecordDB`), V-Archive API 클라이언트, 추천 정렬 로직
+- `overmax_data`: 설정 파싱, SQLite DB (`RecordDB`), V-Archive API 클라이언트, 추천 정렬 로직 및 유사도 검색 알고리즘
 - `overmax_cv`: 이미지 매칭(HOG, Perceptual Hash), OCR 전처리(Grayscale, Upscale, Otsu 이진화, 컬러 패스 등)
 
 ## 데이터 흐름 및 스레드 구조
@@ -67,7 +67,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 
 ## 2. 곡 인식 (Song Recognition)
 - **재킷 이미지 매칭**: `ImageIndexDb`를 통해 캡처된 재킷 영역과 미리 색인된 곡 재킷의 유사도를 계산.
-- **Rust Native CV**: OpenCV 종속성을 완전히 걷어내고 `overmax_cv`를 통해 Perceptual Hash + HOG 방식을 구현. 795개 재킷 기준 100% 동일한 Top-1 매칭 및 높은 HOG Cosine 유사도(평균 0.996) 확보.
+- **Rust Native CV**: `overmax_cv`를 통해 Perceptual Hash + HOG 방식을 사용한 재킷 매칭 및 검색 지원.
 
 ## 3. 원자적 상태 감지 및 안정화 (Atomic Play Context Sync)
 - **PlayState 감지**:
@@ -85,11 +85,12 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 # UI & UX Features
 
 - **egui/winit 멀티 뷰포트**: 네이티브 타이틀바가 없는 투명 오버레이 구현.
-- **오버레이 드래그 & 스냅**: 마우스 드래그를 통한 위치 이동 및 모니터 경계 스냅 지원. 마우스 드래그 종료 시 자동으로 DJMAX RESPECT V 게임 창으로 포커스(foreground)를 복원하여 플레이 방해를 최소화.
+- **오버레이 드래그 & 스냅**: 마우스 드래그를 통한 위치 이동 및 모니터 경계 스냅 지원. 마우스 드래그 종료 시 자동으로 DJMAX RESPECT V 게임 창으로 포커스(foreground)를 복원하여 플레이 방해를 최소화. High-DPI 디스플레이 환경에서 DPI 대응 스케일링 보정 처리 반영.
 - **스케일 프리셋**: S / M / L / XL 4단계 스케일 프리셋 지원 및 `settings.user.json` 저장. egui 렌더링 시 버튼 크기 고정 및 패딩 보정을 통해 UI Jitter(흔들림)를 방지.
 - **V-Archive 연동 및 기록 동기화**:
   - V-Archive API를 통한 플레이 데이터 패치/자동 갱신.
   - 로컬 DB에만 존재하는 갱신 후보 데이터를 스캔하여 V-Archive 웹서버에 일괄 등록/삭제 지원 (`SyncWindow`).
+- **실시간 신기록 및 간편 업로드 알림**: 플레이 중 감지된 Rate가 V-Archive 기존 기록보다 높을 경우, 오버레이 헤더 내 단독 업로드 버튼(⬆) 활성화 및 상태 표시 램프 기능 지원.
 
 ---
 
@@ -111,20 +112,15 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 
 # Future Focus
 
-1. **pattern_meta 키(Key) 체계 및 유사 곡 검색 구축**:
-   - `pattern_meta`의 기존 Key 구조(`mode|title|diff`)는 제목 중복 문제에 취약함.
-   - `songs.json` 내에서 곡명 외 다른 패턴 메타 데이터(버튼, 난이도 등)를 종합 비교해 가장 매칭률이 높은 유사 곡을 찾고 `song_id` 기반 Key(`mode|song_id|diff`)로 마이그레이션하는 유사도 검색 알고리즘 신설.
-2. **라이트모드 (Lite Mode) 추가**:
-   - 추천 탭을 숨기고 현재 곡의 비공식 난이도 및 선택된 패턴의 핵심 메타 정보만 집중 노출하는 모드.
-   - 래더 매칭 등에서 빠르게 상대 패턴 정보를 파악하고 준비하는 용도로 활용 가능.
-3. **V-Archive 기록 갱신 실시간 알림**:
-   - 감지된 Rate가 V-Archive 로컬 캐시/서버 기록보다 높을 경우 신기록 달성 알림(Toast/Notification 등) 제공.
-4. **감지 씬(Scene) 다양화**:
-   - FREESTYLE 및 ONLINE 매칭 대기방 외에도 래더 매칭 씬이나 결과 화면 등 감지 가능 범위를 추가 확장.
-5. **전체화면(Fullscreen) 호환성 검증**:
+1. **라이트모드 (Lite Mode) 추가**:
+   - 추천 탭을 숨기고 현재 곡의 비공식 난이도 및 선택된 패턴의 핵심 메타 정보만 집중 노출하는 모드 추가 (`settings.user.json` 및 `overlay_ui.rs` 구현).
+2. **감지 씬(Scene) 다양화**:
+   - FREESTYLE 및 ONLINE 대기방 외에도 래더 매칭 씬이나 결과 화면 등 감지 가능 범위를 추가 확장 (`SceneType::LadderMatch` 등).
+3. **전체화면(Fullscreen) 호환성 검증**:
    - DJMAX RESPECT V를 전체화면 모드로 구동할 때의 캡처 루프 및 winit 투명 오버레이 렌더링 호환성 조사 및 대응.
-6. **OBS 방송 송출용 화면 모드 (OBS Mode)**:
+4. **OBS 방송 송출용 화면 모드 (OBS Mode)**:
    - 인터넷 방송 스트리머들을 위해 크로마키(Chroma key) 전용 스킨이나 OBS에서 캡처/배치가 편리한 방송 특화 레이아웃 모드 지원.
-7. **V-Archive 클라이언트 완전 대체 (장기 목표)**:
+5. **V-Archive 클라이언트 완전 대체 (장기 목표)**:
    - 공식 데스크톱 클라이언트의 도움 없이 Overmax 자체 앱 내에서 플레이 기록 수집부터 V-Archive 연동 및 백업 업로드까지 전담하는 올인원 클라이언트 구현.
-
+6. **HOG 피처 데이터베이스 갱신 및 재빌드**:
+   - 로컬 이미지 왜곡으로 인한 HOG 유사도 저하 근본 해결 및 매칭 임계치를 기존 값(`0.85`)으로 원복하기 위한 피처 일괄 갱신.

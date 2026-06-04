@@ -1,40 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod cache_update;
-mod capture_engine;
-mod debug_ui;
-mod detection_pipeline;
-mod detection_worker;
-mod frame_utils;
-mod hysteresis;
-mod native_app;
-mod native_app_commands;
-mod native_app_log;
-mod native_app_recommend;
-mod native_app_viewports;
-mod native_helpers;
-mod ocr_engine;
-mod logo_templates;
-mod overlay_recommend_ui;
-mod overlay_theme;
-mod overlay_ui;
-mod play_state;
-mod roi;
-mod screen_capture;
-mod settings_ui;
-mod single_instance;
-mod steam_session;
-mod sync_ui;
-#[cfg(target_os = "windows")]
-mod tray_icon;
-mod ui_command;
-mod updater;
-mod varchive_upload;
-mod window_tracker;
-
 #[cfg(target_os = "windows")]
 fn main() {
-    if let Err(err) = native_app::run_native_app() {
+    if let Err(err) = overmax_app::native_app::run_native_app() {
         eprintln!("overmax-rs failed: {err}");
         std::process::exit(1);
     }

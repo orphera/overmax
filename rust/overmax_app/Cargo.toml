@@ -4,6 +4,10 @@ version = "0.2.2"
 edition.workspace = true
 license.workspace = true
 
+[lib]
+name = "overmax_app"
+path = "src/lib.rs"
+
 [[bin]]
 name = "overmax-rs"
 path = "src/main.rs"

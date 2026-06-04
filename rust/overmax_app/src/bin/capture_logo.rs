@@ -4,22 +4,11 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-#[path = "../window_tracker.rs"]
-mod window_tracker;
-#[path = "../capture_engine.rs"]
-mod capture_engine;
-#[path = "../screen_capture.rs"]
-mod screen_capture;
-#[path = "../roi.rs"]
-mod roi;
-#[path = "../frame_utils.rs"]
-mod frame_utils;
-
-use window_tracker::WindowTracker;
-use capture_engine::CaptureEngine;
-use screen_capture::GdiCaptureEngine;
-use roi::RoiManager;
-use frame_utils::crop_roi;
+use overmax_app::window_tracker::WindowTracker;
+use overmax_app::capture_engine::CaptureEngine;
+use overmax_app::screen_capture::GdiCaptureEngine;
+use overmax_app::roi::RoiManager;
+use overmax_app::frame_utils::crop_roi;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -157,7 +146,7 @@ fn main() {
     };
     
     if let Err(e) = fs::write(&target_path, updated_content) {
-        eprintln!("에러: 파일 쓰기 실패: {}", e);
+        eprintln!("%러: 파일 쓰기 실패: {}", e);
         std::process::exit(1);
     }
     

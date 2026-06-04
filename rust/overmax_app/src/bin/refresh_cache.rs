@@ -1,8 +1,7 @@
 use std::path::Path;
 use serde_json::Value;
 
-#[path = "../cache_update.rs"]
-mod cache_update;
+use overmax_app::cache_update;
 
 fn main() {
     // Current directory is C:\Users\jeongwoong\dev\overmax\rust when run from cargo

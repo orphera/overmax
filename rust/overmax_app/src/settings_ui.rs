@@ -105,6 +105,19 @@ fn overlay_section(ui: &mut egui::Ui, draft: &mut Value) {
             overlay.insert("base_opacity".into(), serde_json::json!(opacity));
         }
     });
+
+    ui.add_space(Theme::ROW_SPACING);
+
+    form_row(ui, "라이트모드", |ui| {
+        let mut lite_mode = overlay
+            .get("lite_mode")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+            
+        if ui.checkbox(&mut lite_mode, "추천 숨기기 및 레이아웃 축소").changed() {
+            overlay.insert("lite_mode".into(), serde_json::json!(lite_mode));
+        }
+    });
 }
 
 fn varchive_tab(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContext) {

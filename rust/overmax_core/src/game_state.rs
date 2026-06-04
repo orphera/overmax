@@ -21,6 +21,7 @@ pub struct PlayContext {
 pub struct GameSessionState {
     pub context: Option<PlayContext>,
     pub is_stable: bool,
+    pub is_fullscreen: bool,
 }
 
 impl GameSessionState {
@@ -28,6 +29,7 @@ impl GameSessionState {
         Self {
             context: None,
             is_stable: false,
+            is_fullscreen: false,
         }
     }
 
@@ -87,6 +89,7 @@ mod tests {
                 is_max_combo: false,
             }),
             is_stable: true,
+            is_fullscreen: false,
         };
 
         assert!(state.is_valid());
@@ -103,6 +106,7 @@ mod tests {
                 is_max_combo: false,
             }),
             is_stable: false,
+            is_fullscreen: false,
         };
 
         assert!(!state.is_valid());

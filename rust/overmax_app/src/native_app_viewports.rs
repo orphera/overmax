@@ -308,10 +308,21 @@ impl eframe::App for NativeApp {
             0.8
         };
 
+        // 라이트 모드 판정: 설정에서 명시적으로 활성화했거나 게임 세션이 전체화면일 때 강제 적용
+        let is_lite = if let Ok(m) = self.settings.merged.lock() {
+            m.get("lite_mode").and_then(|v| v.as_bool()).unwrap_or(false)
+        } else {
+            false
+        } || self.session.is_fullscreen;
+
+        let height = overlay_ui::BASE_HEIGHT;
+
         let game_found = self.game_rect.lock().map(|r| r.is_some()).unwrap_or(false);
         let overlay_on = game_found && self.confidence > 0.1;
 
-        if overlay_on != self.prev_overlay_on || (overlay_on && (scale - self.prev_scale).abs() > 0.001) {
+        if overlay_on != self.prev_overlay_on 
+            || (overlay_on && (scale - self.prev_scale).abs() > 0.001)
+        {
             debug_ui::push_log(
                 &self.debug_state.log_lines,
                 1000,
@@ -329,7 +340,7 @@ impl eframe::App for NativeApp {
             if overlay_on {
                 ctx.send_viewport_cmd(ViewportCommand::InnerSize(Vec2::new(
                     (overlay_ui::BASE_WIDTH * scale).ceil() + 2.0,
-                    (overlay_ui::BASE_HEIGHT * scale).ceil() + 2.0,
+                    (height * scale).ceil() + 2.0,
                 )));
             } else {
                 ctx.send_viewport_cmd(ViewportCommand::InnerSize(Vec2::new(1.0, 1.0)));
@@ -338,8 +349,9 @@ impl eframe::App for NativeApp {
 
         self.prev_overlay_on = overlay_on;
         self.prev_scale = scale;
+        self.prev_is_lite = is_lite;
 
-        let _visible_size = Vec2::new(overlay_ui::BASE_WIDTH * scale, overlay_ui::BASE_HEIGHT * scale);
+        let _visible_size = Vec2::new(overlay_ui::BASE_WIDTH * scale, height * scale);
         let _hidden_size = Vec2::new(1.0, 1.0);
 
         // 마우스가 오버레이 영역 위에 있을 때만 상호작용 가능하게 함 (보조창 조작을 위해)
@@ -394,6 +406,7 @@ impl eframe::App for NativeApp {
                         scale,
                         varchive_upload_needed: self.current_pattern_needs_upload(),
                         varchive_account_configured: self.is_varchive_account_configured(),
+                        lite_mode: is_lite,
                     },
                 );
 
@@ -537,8 +550,9 @@ impl NativeApp {
             // 캐시된 핸들은 유효하나 스타일이 풀린 경우: 바로 재적용 시도
             if unsafe { IsWindow(hwnd) } != 0 {
                 let style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) };
-                if (style & WS_EX_LAYERED as i32) == 0 {
-                    unsafe { SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED as i32) };
+                let target_style = style | WS_EX_LAYERED as i32 | WS_EX_NOACTIVATE as i32 | WS_EX_TOOLWINDOW as i32;
+                if style != target_style {
+                    unsafe { SetWindowLongW(hwnd, GWL_EXSTYLE, target_style) };
                 }
                 if unsafe { SetLayeredWindowAttributes(hwnd, 0, (opacity * 255.0) as u8, 0x00000002) } != 0 {
                     self.last_applied_opacity = Some(opacity);
@@ -557,8 +571,9 @@ impl NativeApp {
 
             unsafe {
                 let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
-                if (style & WS_EX_LAYERED as i32) == 0 {
-                    SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED as i32);
+                let target_style = style | WS_EX_LAYERED as i32 | WS_EX_NOACTIVATE as i32 | WS_EX_TOOLWINDOW as i32;
+                if style != target_style {
+                    SetWindowLongW(hwnd, GWL_EXSTYLE, target_style);
                 }
                 if SetLayeredWindowAttributes(hwnd, 0, (opacity * 255.0) as u8, 0x00000002) != 0 {
                     self.cached_hwnd = Some(hwnd as isize);

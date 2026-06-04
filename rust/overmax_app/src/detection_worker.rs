@@ -57,6 +57,7 @@ struct DetectionWorker {
     last_is_song_select: bool,
     last_logo_detected: bool,
     last_jacket_status: JacketMatchStatus,
+    last_is_fullscreen: bool,
 }
 
 impl DetectionWorker {
@@ -84,6 +85,7 @@ impl DetectionWorker {
             last_is_song_select: false,
             last_logo_detected: false,
             last_jacket_status: JacketMatchStatus::NotSongSelect,
+            last_is_fullscreen: false,
         }
     }
 
@@ -144,6 +146,7 @@ impl DetectionWorker {
             Ok(frame) => {
                 let mut out = pipeline.detect(&frame, self.start.elapsed().as_secs_f64());
                 out.game_rect = Some(rect);
+                out.state.is_fullscreen = tracker.is_fullscreen();
                 self.log_detection_summary(&out);
                 
                 let jacket_changed = match (&out.jacket_status, &self.last_jacket_status) {
@@ -155,12 +158,14 @@ impl DetectionWorker {
                 let state_changed = out.current_song_id != self.last_song_id
                     || out.is_song_select != self.last_is_song_select
                     || out.logo_detected != self.last_logo_detected
+                    || out.state.is_fullscreen != self.last_is_fullscreen
                     || jacket_changed;
 
                 self.last_song_id = out.current_song_id;
                 self.last_is_song_select = out.is_song_select;
                 self.last_logo_detected = out.logo_detected;
                 self.last_jacket_status = out.jacket_status.clone();
+                self.last_is_fullscreen = out.state.is_fullscreen;
 
                 let _ = self.detection_tx.send(out);
                 if state_changed {

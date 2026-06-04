@@ -60,5 +60,6 @@ fn build_state(input: FixtureState) -> GameSessionState {
     GameSessionState {
         context,
         is_stable: input.is_stable,
+        is_fullscreen: false,
     }
 }

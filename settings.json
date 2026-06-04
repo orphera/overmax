@@ -13,7 +13,8 @@
   },
   "overlay": {
     "base_opacity": 0.8,
-    "scale": 1.0
+    "scale": 1.0,
+    "lite_mode": false
   },
   "jacket_matcher": {
     "db_path": "cache/image_index.db",

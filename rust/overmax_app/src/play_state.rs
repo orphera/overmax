@@ -120,6 +120,7 @@ impl PlayStateDetector {
             let state = GameSessionState {
                 context: stable.context.clone(),
                 is_stable: true,
+                is_fullscreen: false, // will be overwritten/updated by detection worker
             };
             self.last_stable_state = Some(state.clone());
             return (state, telemetry);
@@ -128,6 +129,7 @@ impl PlayStateDetector {
         (GameSessionState {
             context,
             is_stable: false,
+            is_fullscreen: false,
         }, telemetry)
     }
 

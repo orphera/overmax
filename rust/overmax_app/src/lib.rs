@@ -1,5 +1,6 @@
 pub mod cache_update;
 pub mod capture_engine;
+pub mod dxgi_capture;
 pub mod debug_ui;
 pub mod detection_pipeline;
 pub mod detection_worker;

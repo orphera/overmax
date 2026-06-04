@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 pub const BASE_WIDTH: f32 = 360.0;
 pub const BASE_HEIGHT: f32 = 380.0;
+pub const LITE_BASE_HEIGHT: f32 = 140.0;
 
 #[derive(Default, Clone, Copy)]
 pub struct OverlayActions {
@@ -145,6 +146,7 @@ pub struct OverlayProps<'a> {
     pub scale: f32,
     pub varchive_upload_needed: bool,
     pub varchive_account_configured: bool,
+    pub lite_mode: bool,
 }
 
 pub fn draw_overlay_panel(
@@ -572,6 +574,7 @@ mod tests {
                 is_max_combo: false,
             }),
             is_stable: true,
+            is_fullscreen: false,
         };
         let patterns = vec![PatternTabInfo {
             diff: "SC".into(),
@@ -614,6 +617,7 @@ mod tests {
                 is_max_combo: false,
             }),
             is_stable: true,
+            is_fullscreen: false,
         };
 
         let state_normal_badge = GameSessionState {
@@ -625,6 +629,7 @@ mod tests {
                 is_max_combo: true,
             }),
             is_stable: true,
+            is_fullscreen: false,
         };
 
         let state_perfect_badge = GameSessionState {
@@ -636,6 +641,7 @@ mod tests {
                 is_max_combo: true,
             }),
             is_stable: true,
+            is_fullscreen: false,
         };
 
         let pattern_tabs = vec![PatternTabInfo {

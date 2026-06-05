@@ -121,7 +121,7 @@ pub fn restore_foreground_by_title(title: &str) -> bool {
     unsafe { windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd) != 0 }
 }
 
-fn find_hwnd_by_title(title: &[u16]) -> Option<windows_sys::Win32::Foundation::HWND> {
+pub fn find_hwnd_by_title(title: &[u16]) -> Option<windows_sys::Win32::Foundation::HWND> {
     let hwnd = unsafe {
         windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW(std::ptr::null(), title.as_ptr())
     };
@@ -144,7 +144,7 @@ fn client_rect_for_hwnd(hwnd: windows_sys::Win32::Foundation::HWND) -> Option<Wi
     (ok && out.is_valid()).then_some(out)
 }
 
-fn encode_wide(value: &str) -> Vec<u16> {
+pub fn encode_wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
 }
 

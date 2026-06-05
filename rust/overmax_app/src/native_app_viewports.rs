@@ -602,6 +602,24 @@ impl NativeApp {
         // 1. 캐싱된 핸들이 있고 투명도가 올바르게 유지되고 있다면 조기 반환
         if let Some(hwnd_val) = self.cached_hwnd {
             let hwnd = hwnd_val as HWND;
+
+            // 게임 창을 Owner로 지정하여 항상 오버레이가 게임 위에 렌더링되도록 보장
+            let game_title = if let Ok(m) = self.settings.merged.lock() {
+                game_window_title(&m).to_string()
+            } else {
+                "DJMAX RESPECT V".to_string()
+            };
+            let title_wide = window_tracker::encode_wide(&game_title);
+            if let Some(g_hwnd) = window_tracker::find_hwnd_by_title(&title_wide) {
+                unsafe {
+                    let current_owner = GetWindowLongPtrW(hwnd, GWL_HWNDPARENT) as HWND;
+                    if current_owner != g_hwnd {
+                        SetWindowLongPtrW(hwnd, GWL_HWNDPARENT, g_hwnd as isize);
+                        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+                    }
+                }
+            }
+
             if force_topmost {
                 unsafe {
                     SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
@@ -619,7 +637,7 @@ impl NativeApp {
                     unsafe { SetWindowLongW(hwnd, GWL_EXSTYLE, target_style) };
                 }
                 unsafe {
-                    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
                 }
                 if unsafe { SetLayeredWindowAttributes(hwnd, 0, (opacity * 255.0) as u8, 0x00000002) } != 0 {
                     self.last_applied_opacity = Some(opacity);
@@ -636,13 +654,26 @@ impl NativeApp {
                 format!("[Win32] 투명도 업데이트 시도: {:.2} (HWND: {:?})", opacity, hwnd),
             );
 
+            // 신규 오버레이 윈도우 감지 시 게임 창을 Owner로 연결
+            let game_title = if let Ok(m) = self.settings.merged.lock() {
+                game_window_title(&m).to_string()
+            } else {
+                "DJMAX RESPECT V".to_string()
+            };
+            let title_wide = window_tracker::encode_wide(&game_title);
+            if let Some(g_hwnd) = window_tracker::find_hwnd_by_title(&title_wide) {
+                unsafe {
+                    SetWindowLongPtrW(hwnd, GWL_HWNDPARENT, g_hwnd as isize);
+                }
+            }
+
             unsafe {
                 let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
                 let target_style = style | WS_EX_LAYERED as i32 | WS_EX_NOACTIVATE as i32 | WS_EX_TOOLWINDOW as i32 | WS_EX_TOPMOST as i32;
                 if style != target_style {
                     SetWindowLongW(hwnd, GWL_EXSTYLE, target_style);
                 }
-                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
                 if SetLayeredWindowAttributes(hwnd, 0, (opacity * 255.0) as u8, 0x00000002) != 0 {
                     self.cached_hwnd = Some(hwnd as isize);
                     self.last_applied_opacity = Some(opacity);

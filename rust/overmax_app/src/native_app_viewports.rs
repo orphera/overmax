@@ -502,7 +502,7 @@ impl NativeApp {
             return false;
         }
         let style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) };
-        let target_mask = WS_EX_LAYERED as i32 | WS_EX_NOACTIVATE as i32 | WS_EX_TOOLWINDOW as i32;
+        let target_mask = WS_EX_LAYERED as i32 | WS_EX_NOACTIVATE as i32 | WS_EX_TOOLWINDOW as i32 | WS_EX_TOPMOST as i32;
         if (style & target_mask) != target_mask {
             return false;
         }
@@ -569,9 +569,6 @@ impl NativeApp {
         // 1. 캐싱된 핸들이 있고 투명도가 올바르게 유지되고 있다면 조기 반환
         if let Some(hwnd_val) = self.cached_hwnd {
             let hwnd = hwnd_val as HWND;
-            unsafe {
-                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-            }
             if self.check_cached_window_opacity(hwnd, opacity) {
                 return true;
             }
@@ -579,9 +576,12 @@ impl NativeApp {
             // 캐시된 핸들은 유효하나 스타일이 풀린 경우: 바로 재적용 시도
             if unsafe { IsWindow(hwnd) } != 0 {
                 let style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) };
-                let target_style = style | WS_EX_LAYERED as i32 | WS_EX_NOACTIVATE as i32 | WS_EX_TOOLWINDOW as i32;
+                let target_style = style | WS_EX_LAYERED as i32 | WS_EX_NOACTIVATE as i32 | WS_EX_TOOLWINDOW as i32 | WS_EX_TOPMOST as i32;
                 if style != target_style {
                     unsafe { SetWindowLongW(hwnd, GWL_EXSTYLE, target_style) };
+                }
+                unsafe {
+                    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                 }
                 if unsafe { SetLayeredWindowAttributes(hwnd, 0, (opacity * 255.0) as u8, 0x00000002) } != 0 {
                     self.last_applied_opacity = Some(opacity);
@@ -600,7 +600,7 @@ impl NativeApp {
 
             unsafe {
                 let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
-                let target_style = style | WS_EX_LAYERED as i32 | WS_EX_NOACTIVATE as i32 | WS_EX_TOOLWINDOW as i32;
+                let target_style = style | WS_EX_LAYERED as i32 | WS_EX_NOACTIVATE as i32 | WS_EX_TOOLWINDOW as i32 | WS_EX_TOPMOST as i32;
                 if style != target_style {
                     SetWindowLongW(hwnd, GWL_EXSTYLE, target_style);
                 }

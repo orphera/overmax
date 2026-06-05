@@ -362,25 +362,9 @@ impl eframe::App for NativeApp {
             self.prev_passthrough = Some(passthrough);
         }
 
-        // Windows 전용: 전체 창 투명도 적용
-        #[cfg(target_os = "windows")]
-        {
-            if overlay_on {
-                let found = self.apply_window_opacity(opacity);
-                if !found {
-                    // 핸들을 못 찾았으면 로그에 한 번만 찍음
-                    static mut LOGGED: bool = false;
-                    unsafe {
-                        if !LOGGED {
-                            debug_ui::push_log(&self.debug_state.log_lines, self.max_log_lines(), format!("[Overlay] 투명도 조절용 창 핸들을 찾지 못함 (Opacity: {:.2})", opacity));
-                            LOGGED = true;
-                        }
-                    }
-                }
-            } else {
-                self.cached_hwnd = None;
-                self.last_applied_opacity = None;
-            }
+        let mut force_topmost = false;
+        if overlay_on && !self.prev_overlay_on {
+            force_topmost = true;
         }
 
         self.show_debug_viewport(ctx);
@@ -498,8 +482,39 @@ impl eframe::App for NativeApp {
                     self.handle_ui_command(command);
                     ctx.request_repaint();
                 }
+                if actions.restore_game_focus || actions.start_drag {
+                    force_topmost = true;
+                }
                 self.last_painted_rect = actions.response_rect;
             });
+
+        // Windows 전용: 전체 창 투명도 및 최상위 권한 적용
+        #[cfg(target_os = "windows")]
+        {
+            let now = ctx.input(|i| i.time);
+            static mut TOPMOST_TIMER: f64 = 0.0;
+            if overlay_on {
+                unsafe {
+                    if now - TOPMOST_TIMER > 1.0 {
+                        force_topmost = true;
+                        TOPMOST_TIMER = now;
+                    }
+                }
+                let found = self.apply_window_opacity(opacity, force_topmost);
+                if !found {
+                    static mut LOGGED: bool = false;
+                    unsafe {
+                        if !LOGGED {
+                            debug_ui::push_log(&self.debug_state.log_lines, self.max_log_lines(), format!("[Overlay] 투명도 조절용 창 핸들을 찾지 못함 (Opacity: {:.2})", opacity));
+                            LOGGED = true;
+                        }
+                    }
+                }
+            } else {
+                self.cached_hwnd = None;
+                self.last_applied_opacity = None;
+            }
+        }
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
@@ -581,12 +596,17 @@ impl NativeApp {
         data.found_hwnd
     }
 
-    fn apply_window_opacity(&mut self, opacity: f32) -> bool {
+    fn apply_window_opacity(&mut self, opacity: f32, force_topmost: bool) -> bool {
         use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
         // 1. 캐싱된 핸들이 있고 투명도가 올바르게 유지되고 있다면 조기 반환
         if let Some(hwnd_val) = self.cached_hwnd {
             let hwnd = hwnd_val as HWND;
+            if force_topmost {
+                unsafe {
+                    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                }
+            }
             if self.check_cached_window_opacity(hwnd, opacity) {
                 return true;
             }

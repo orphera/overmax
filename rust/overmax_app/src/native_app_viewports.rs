@@ -319,10 +319,10 @@ impl eframe::App for NativeApp {
             m.get("overlay")
                 .and_then(|o| o.get("lite_position"))
                 .and_then(|v| v.as_str())
-                .unwrap_or("bottom_right")
+                .unwrap_or("top_right")
                 .to_string()
         } else {
-            "bottom_right".to_string()
+            "top_right".to_string()
         };
 
         let height = if is_lite {
@@ -544,8 +544,6 @@ impl eframe::App for NativeApp {
                                     SWP_NOACTIVATE,
                                 );
                             }
-                            // 첫 위치 셋팅이 완료된 직후 창을 보이도록 지시
-                            ctx.send_viewport_cmd(ViewportCommand::Visible(true));
                         }
                     }
                 }
@@ -599,13 +597,10 @@ impl NativeApp {
             return false;
         }
         let style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) };
-        // WS_EX_TRANSPARENT (0x20) 비트는 egui가 Passthrough 제어를 위해 켜고 끄므로 검사 마스크에서 제외합니다.
         let target_mask = WS_EX_LAYERED as i32 | WS_EX_NOACTIVATE as i32 | WS_EX_TOOLWINDOW as i32 | WS_EX_TOPMOST as i32;
-        let masked_style = style & !WS_EX_TRANSPARENT as i32;
-        if (masked_style & target_mask) != target_mask {
+        if (style & target_mask) != target_mask {
             return false;
         }
-
         let mut alpha = 0u8;
         let mut flags = 0u32;
         let success = unsafe {
@@ -666,42 +661,38 @@ impl NativeApp {
     fn apply_window_opacity(&mut self, opacity: f32, force_topmost: bool) -> bool {
         use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-        // 1. 캐싱된 핸들이 있고 투명도가 이미 올바르게 적용되어 있다면 조기 반환
+        // 1. 캐싱된 핸들이 있고 투명도가 올바르게 유지되고 있다면 조기 반환
         if let Some(hwnd_val) = self.cached_hwnd {
             let hwnd = hwnd_val as HWND;
-            if unsafe { IsWindow(hwnd) } == 0 {
-                self.cached_hwnd = None;
-                self.last_applied_opacity = None;
+
+            // 게임 창을 Owner로 지정하여 항상 오버레이가 게임 위에 렌더링되도록 보장
+            let game_title = if let Ok(m) = self.settings.merged.lock() {
+                game_window_title(&m).to_string()
             } else {
-                // 게임 창을 Owner로 지정하여 항상 오버레이가 게임 위에 렌더링되도록 보장
-                let game_title = if let Ok(m) = self.settings.merged.lock() {
-                    game_window_title(&m).to_string()
-                } else {
-                    "DJMAX RESPECT V".to_string()
-                };
-                let title_wide = window_tracker::encode_wide(&game_title);
-                if let Some(g_hwnd) = window_tracker::find_hwnd_by_title(&title_wide) {
-                    unsafe {
-                        let current_owner = GetWindowLongPtrW(hwnd, GWL_HWNDPARENT) as HWND;
-                        if current_owner != g_hwnd {
-                            SetWindowLongPtrW(hwnd, GWL_HWNDPARENT, g_hwnd as isize);
-                            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-                        }
+                "DJMAX RESPECT V".to_string()
+            };
+            let title_wide = window_tracker::encode_wide(&game_title);
+            if let Some(g_hwnd) = window_tracker::find_hwnd_by_title(&title_wide) {
+                unsafe {
+                    let current_owner = GetWindowLongPtrW(hwnd, GWL_HWNDPARENT) as HWND;
+                    if current_owner != g_hwnd {
+                        SetWindowLongPtrW(hwnd, GWL_HWNDPARENT, g_hwnd as isize);
+                        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
                     }
                 }
+            }
 
-                if force_topmost {
-                    unsafe {
-                        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-                    }
+            if force_topmost {
+                unsafe {
+                    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                 }
-
-                // WS_EX_TRANSPARENT를 제외한 나머지 스타일과 layered 투명도가 유효하게 유지되고 있다면 조기 반환
-                if self.check_cached_window_opacity(hwnd, opacity) {
-                    return true;
-                }
-                
-                // 스타일이 깨진 경우 복원 시도
+            }
+            if self.check_cached_window_opacity(hwnd, opacity) {
+                return true;
+            }
+            
+            // 캐시된 핸들은 유효하나 스타일이 풀린 경우: 바로 재적용 시도
+            if unsafe { IsWindow(hwnd) } != 0 {
                 let style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) };
                 let target_style = style | WS_EX_LAYERED as i32 | WS_EX_NOACTIVATE as i32 | WS_EX_TOOLWINDOW as i32 | WS_EX_TOPMOST as i32;
                 if style != target_style {
@@ -710,7 +701,6 @@ impl NativeApp {
                 unsafe {
                     SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
                 }
-
                 if unsafe { SetLayeredWindowAttributes(hwnd, 0, (opacity * 255.0) as u8, 0x00000002) } != 0 {
                     self.last_applied_opacity = Some(opacity);
                     return true;

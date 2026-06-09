@@ -133,7 +133,7 @@ fn overlay_section(ui: &mut egui::Ui, draft: &mut Value) {
             let mut lite_position = overlay
                 .get("lite_position")
                 .and_then(|v| v.as_str())
-                .unwrap_or("bottom_right")
+                .unwrap_or("top_right")
                 .to_string();
                 
             let mut changed = false;

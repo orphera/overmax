@@ -15,7 +15,7 @@
     "base_opacity": 0.8,
     "scale": 1.0,
     "lite_mode": false,
-    "lite_position": "bottom_right"
+    "lite_position": "top_right"
   },
   "jacket_matcher": {
     "db_path": "cache/image_index.db",

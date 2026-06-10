@@ -417,11 +417,9 @@ impl eframe::App for NativeApp {
                 }
 
                 // 오버레이 창 드래그 처리
-                self.handle_window_drag(ctx, actions.start_drag, actions.drag_delta.is_some());
+                self.handle_window_drag(ctx, actions.start_drag);
 
                 if actions.restore_game_focus {
-                    self.drag_start_cursor = None;
-                    self.drag_start_win_pos = None;
 
                     let max_log_lines = self.max_log_lines();
                     if let Ok(mut settings) = self.settings.merged.lock() {
@@ -766,62 +764,9 @@ impl NativeApp {
         false
     }
 
-    fn handle_window_drag(&mut self, ctx: &egui::Context, start_drag: bool, drag_delta: bool) {
+    fn handle_window_drag(&mut self, ctx: &egui::Context, start_drag: bool) {
         if start_drag {
-            if let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
-                self.drag_start_win_pos = Some(rect.min);
-                #[cfg(target_os = "windows")]
-                {
-                    let mut pos = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
-                    unsafe {
-                        windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pos);
-                    }
-                    self.drag_start_cursor = Some((pos.x, pos.y));
-                }
-                #[cfg(not(target_os = "windows"))]
-                {
-                    if let Some(pos) = ctx.input(|i| i.pointer.latest_pos()) {
-                        self.drag_start_cursor = Some((pos.x as i32, pos.y as i32));
-                    }
-                }
-            }
-        }
-
-        if drag_delta {
-            if let (Some(start_win_pos), Some(start_cursor)) = (self.drag_start_win_pos, self.drag_start_cursor) {
-                #[cfg(target_os = "windows")]
-                {
-                    use windows_sys::Win32::UI::WindowsAndMessaging::*;
-                    let mut pos = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
-                    unsafe {
-                        GetCursorPos(&mut pos);
-                    }
-                    let ppi = ctx.pixels_per_point();
-                    let dx = (pos.x - start_cursor.0) as f32 / ppi;
-                    let dy = (pos.y - start_cursor.1) as f32 / ppi;
-                    let new_pos = start_win_pos + egui::vec2(dx, dy);
-
-                    if let Some(hwnd_val) = self.cached_hwnd {
-                        let hwnd = hwnd_val as HWND;
-                        let px = (new_pos.x * ppi) as i32;
-                        let py = (new_pos.y * ppi) as i32;
-                        unsafe {
-                            SetWindowPos(hwnd, HWND_TOPMOST, px, py, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
-                        }
-                    } else {
-                        ctx.send_viewport_cmd(ViewportCommand::OuterPosition(new_pos));
-                    }
-                }
-                #[cfg(not(target_os = "windows"))]
-                {
-                    if let Some(pos) = ctx.input(|i| i.pointer.latest_pos()) {
-                        let dx = pos.x - start_cursor.0 as f32;
-                        let dy = pos.y - start_cursor.1 as f32;
-                        let new_pos = start_win_pos + egui::vec2(dx, dy);
-                        ctx.send_viewport_cmd(ViewportCommand::OuterPosition(new_pos));
-                    }
-                }
-            }
+            ctx.send_viewport_cmd(ViewportCommand::StartDrag);
         }
     }
 }

@@ -253,8 +253,6 @@ pub struct NativeApp {
     #[cfg(target_os = "windows")]
     pub(crate) last_applied_opacity: Option<f32>,
     pub(crate) last_painted_rect: Option<egui::Rect>,
-    pub(crate) drag_start_cursor: Option<(i32, i32)>,
-    pub(crate) drag_start_win_pos: Option<egui::Pos2>,
 }
 
 impl NativeApp {
@@ -466,8 +464,6 @@ impl NativeApp {
             #[cfg(target_os = "windows")]
             last_applied_opacity: None,
             last_painted_rect: None,
-            drag_start_cursor: None,
-            drag_start_win_pos: None,
         };
 
         app.handle_auto_refresh();

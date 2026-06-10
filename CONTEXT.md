@@ -9,9 +9,10 @@
 Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선택된 곡의 난이도별 정보를 오버레이로 보여주는 도구이다.
 
 - **인식 방식**: 화면 캡처 + Rust 네이티브 CV 이미지 매칭 (`overmax_cv`) + OCR (Windows OCR)
-  - *캡처 엔진*: GDI 캡처 엔진 및 DXGI Desktop Duplication 캡처 엔진을 감싸는 `AdaptiveCaptureEngine` Facade 구성. 게임의 창/전체화면 상태에 따라 실시간 런타임 스위칭 및 GPU Lost 복구 기능 수행.
+  - *캡처 엔진*: GDI 캡처 엔진 및 DXGI Desktop Duplication 캡처 엔진을 감싸는 `AdaptiveCaptureEngine` Facade 구성. 게임이 전체화면(Borderless 포함)일 때만 DXGI 백엔드를 런타임에 동적으로 기동하여 CPU 부하를 해소하고, 창 모드에서는 GDI 캡처로 스위칭하며 불필요한 DXGI 리소스는 즉시 해제함.
 - **UI**: egui / winit (하드웨어 가속 활용 멀티 뷰포트 네이티브 UI)
   - 전체화면 포커스 차단 및 Z-Order 유지: 게임 윈도우 최소화 방지를 위해 `WS_EX_NOACTIVATE` 및 `WS_EX_TOOLWINDOW` 스타일을 주입하고, 게임 창을 오버레이 창의 Owner(`GWL_HWNDPARENT`)로 연결하여 전체 창 모드(Borderless Fullscreen) 플레이 시 드래그 앤 드롭 후 포커스가 게임으로 복귀해도 오버레이가 항상 최상단에 물리도록 보장함.
+  - 오버레이 스냅과 드래그 제어: 오버레이 고정 스냅(좌상/우상/좌하/우하단) 정책과 드래그 활성화 여부는 라이트 모드와 무관하게 `overlay.position.snap` 설정에 의해 직교적으로 통제됨. 스냅이 활성화되면 드래그가 잠기고, 수동("manual") 상태일 때는 일반/라이트 모드 관계없이 자유로운 드래그 이동이 가능하며 기존 "position.x/y" 좌표로 파일에 보존됨.
 - **데이터**: V-Archive DB (JSON) 및 로컬 기록 DB (SQLite)
 
 ---
@@ -20,6 +21,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 
 - 메모리 접근 / 프로세스 인젝션 금지 (화면 캡처 및 Win32 API 추적 방식 유지)
 - 인게임 성능 영향 최소화 (최우선 과제)
+- 자가 업데이트 및 락 제어: 업데이트 후 재시작 시 중복 실행 락(Named Mutex) 해제 지연으로 새 인스턴스가 조기 종료되는 것을 방지하기 위해, 부모 프로세스의 락 가드(`SingleInstanceGuard`)를 명시적으로 `drop()`한 후 새 프로세스를 spawn하고 기존 프로세스를 즉시 종료하는 안전한 재시작 워크플로우를 유지함.
 - Python 레거시 코드 완전 제거 및 순수 Rust 코드베이스로 전환 완료 (`rust/` workspace)
 - Windows 10 (버전 1809) / 11 64-bit 환경 전용 (Windows OCR API 및 Win32 API 의존성)
 - 기존 사용자 파일과의 호환성 유지:

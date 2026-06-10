@@ -315,14 +315,15 @@ impl eframe::App for NativeApp {
             false
         };
 
-        let lite_position = if let Ok(m) = self.settings.merged.lock() {
+        let snap_position = if let Ok(m) = self.settings.merged.lock() {
             m.get("overlay")
-                .and_then(|o| o.get("lite_position"))
+                .and_then(|o| o.get("position"))
+                .and_then(|p| p.get("snap"))
                 .and_then(|v| v.as_str())
-                .unwrap_or("top_right")
+                .unwrap_or("manual")
                 .to_string()
         } else {
-            "top_right".to_string()
+            "manual".to_string()
         };
 
         let height = if is_lite {
@@ -407,6 +408,7 @@ impl eframe::App for NativeApp {
                         varchive_upload_needed: self.current_pattern_needs_upload(),
                         varchive_account_configured: self.is_varchive_account_configured(),
                         lite_mode: is_lite,
+                        is_snap_manual: snap_position == "manual",
                     },
                 );
 
@@ -469,10 +471,14 @@ impl eframe::App for NativeApp {
                             if let Ok(mut draft) = self.settings.draft.lock() {
                                 let mut overlay = settings.get("overlay").cloned().unwrap_or_else(|| serde_json::json!({}));
                                 if let Some(overlay_obj) = overlay.as_object_mut() {
-                                    overlay_obj.insert("position".to_string(), serde_json::json!({
-                                        "x": rect.min.x as i32,
-                                        "y": rect.min.y as i32
-                                    }));
+                                    let mut position_map = overlay_obj
+                                        .get("position")
+                                        .and_then(|v| v.as_object())
+                                        .cloned()
+                                        .unwrap_or_default();
+                                    position_map.insert("x".to_string(), serde_json::json!(rect.min.x as i32));
+                                    position_map.insert("y".to_string(), serde_json::json!(rect.min.y as i32));
+                                    overlay_obj.insert("position".to_string(), serde_json::Value::Object(position_map));
                                 }
                                 settings["overlay"] = overlay.clone();
                                 draft["overlay"] = overlay;
@@ -507,7 +513,7 @@ impl eframe::App for NativeApp {
         // Windows 전용: 라이트 모드 구석 고정 위치 강제 적용
         #[cfg(target_os = "windows")]
         {
-            if overlay_on && is_lite {
+            if overlay_on && snap_position != "manual" {
                 if let Some(hwnd_val) = self.cached_hwnd {
                     if let Ok(g_rect_opt) = self.game_rect.lock() {
                         if let Some(g_rect) = *g_rect_opt {
@@ -518,7 +524,7 @@ impl eframe::App for NativeApp {
                             let overlay_h_px = (((height * scale).ceil() + 2.0) * ppi) as i32;
                             let margin_px = (16.0 * ppi) as i32;
                             
-                            let (px, py) = match lite_position.as_str() {
+                            let (px, py) = match snap_position.as_str() {
                                 "top_left" => {
                                     (g_rect.left + margin_px, g_rect.top + margin_px)
                                 }

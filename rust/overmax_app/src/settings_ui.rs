@@ -122,47 +122,81 @@ fn overlay_section(ui: &mut egui::Ui, draft: &mut Value) {
         }
     });
 
-    let lite_mode = overlay
-        .get("lite_mode")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
 
-    if lite_mode {
-        ui.add_space(Theme::ROW_SPACING);
-        form_row(ui, "라이트모드 위치", |ui| {
-            let mut lite_position = overlay
-                .get("lite_position")
-                .and_then(|v| v.as_str())
-                .unwrap_or("top_right")
-                .to_string();
-                
-            let mut changed = false;
-            ui.horizontal(|ui| {
-                ui.style_mut().spacing.item_spacing.x = 4.0;
-                ui.spacing_mut().button_padding = egui::vec2(4.0, 4.0);
-                for (label, val) in [
-                    ("좌상단", "top_left"),
-                    ("우상단", "top_right"),
-                    ("좌하단", "bottom_left"),
-                    ("우하단", "bottom_right"),
-                ] {
-                    let is_active = lite_position == val;
-                    let btn = egui::Button::new(RichText::new(label).size(Theme::FONT_SMALL).strong())
-                        .fill(if is_active { Theme::TAB_ACTIVE_BG } else { Theme::TAB_DIM_BG })
-                        .stroke(Stroke::new(1.0, Theme::STROKE))
-                        .corner_radius(egui::CornerRadius::same(Theme::R_SM))
-                        .wrap();
-                    if ui.add_sized(egui::vec2(65.0, Theme::CONTROL_HEIGHT), btn).clicked() {
-                        lite_position = val.to_string();
-                        changed = true;
-                    }
-                }
-            });
-            if changed {
-                overlay.insert("lite_position".into(), serde_json::json!(lite_position));
+    ui.add_space(Theme::ROW_SPACING);
+    form_row(ui, "오버레이 고정 위치", |ui| {
+        let mut position = overlay
+            .get("position")
+            .and_then(|v| v.as_object())
+            .cloned()
+            .unwrap_or_default();
+            
+        let mut snap = position
+            .get("snap")
+            .and_then(|v| v.as_str())
+            .unwrap_or("manual")
+            .to_string();
+            
+        let mut changed = false;
+        
+        // Render a visual monitor layout frame (280x120 black rect)
+        let (rect, _response) = ui.allocate_exact_size(egui::vec2(280.0, 120.0), egui::Sense::hover());
+        ui.painter().rect(
+            rect,
+            egui::CornerRadius::same(Theme::R_SM as u8),
+            egui::Color32::from_black_alpha(220),
+            egui::Stroke::new(1.0, Theme::STROKE),
+            egui::StrokeKind::Inside,
+        );
+
+        let btn_size = egui::vec2(65.0, 30.0);
+        let margin = 8.0;
+
+        let rect_tl = egui::Rect::from_min_size(
+            egui::pos2(rect.min.x + margin, rect.min.y + margin),
+            btn_size,
+        );
+        let rect_tr = egui::Rect::from_min_size(
+            egui::pos2(rect.max.x - btn_size.x - margin, rect.min.y + margin),
+            btn_size,
+        );
+        let rect_bl = egui::Rect::from_min_size(
+            egui::pos2(rect.min.x + margin, rect.max.y - btn_size.y - margin),
+            btn_size,
+        );
+        let rect_br = egui::Rect::from_min_size(
+            egui::pos2(rect.max.x - btn_size.x - margin, rect.max.y - btn_size.y - margin),
+            btn_size,
+        );
+        let rect_manual = egui::Rect::from_min_size(
+            egui::pos2(rect.center().x - btn_size.x / 2.0, rect.center().y - btn_size.y / 2.0),
+            btn_size,
+        );
+
+        for (label, val, target_rect) in [
+            ("좌상단", "top_left", rect_tl),
+            ("우상단", "top_right", rect_tr),
+            ("좌하단", "bottom_left", rect_bl),
+            ("우하단", "bottom_right", rect_br),
+            ("수동", "manual", rect_manual),
+        ] {
+            let is_active = snap == val;
+            let btn = egui::Button::new(RichText::new(label).size(Theme::FONT_SMALL).strong())
+                .fill(if is_active { Theme::TAB_ACTIVE_BG } else { Theme::TAB_DIM_BG })
+                .stroke(egui::Stroke::new(1.0, Theme::STROKE))
+                .corner_radius(egui::CornerRadius::same(Theme::R_SM))
+                .wrap();
+            if ui.put(target_rect, btn).clicked() {
+                snap = val.to_string();
+                changed = true;
             }
-        });
-    }
+        }
+
+        if changed {
+            position.insert("snap".into(), serde_json::json!(snap));
+            overlay.insert("position".into(), serde_json::json!(position));
+        }
+    });
 }
 
 fn varchive_tab(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContext) {

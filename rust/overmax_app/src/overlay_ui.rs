@@ -148,6 +148,7 @@ pub struct OverlayProps<'a> {
     pub varchive_upload_needed: bool,
     pub varchive_account_configured: bool,
     pub lite_mode: bool,
+    pub is_snap_manual: bool,
 }
 
 pub fn draw_overlay_panel(
@@ -187,6 +188,7 @@ pub fn draw_overlay_panel(
                 &px,
                 props.varchive_upload_needed,
                 props.varchive_account_configured,
+                props.is_snap_manual,
             );
             ui.add_space(px.panel_gap());
             draw_body(ui, props.state, props.pattern_tabs, props.recommendations, &px);
@@ -369,6 +371,29 @@ fn draw_lite_panel(
             });
         });
 
+    let is_snap_manual = props.is_snap_manual;
+
+    if is_snap_manual {
+        // Exclude the right settings/upload buttons area (approx 45px * scale) from the drag target
+        let mut drag_rect = response.response.rect;
+        drag_rect.max.x -= 45.0 * props.scale;
+        
+        let drag_response = ui.interact(
+            drag_rect,
+            ui.id().with("lite_overlay_drag"),
+            Sense::drag(),
+        );
+        if drag_response.drag_started() {
+            actions.start_drag = true;
+        }
+        if drag_response.dragged() {
+            actions.drag_delta = Some(drag_response.drag_delta());
+        }
+        if drag_response.drag_stopped() {
+            actions.restore_game_focus = true;
+        }
+    }
+
     actions.response_rect = Some(response.response.rect);
     actions
 }
@@ -383,6 +408,7 @@ fn draw_header(
     px: &Px,
     varchive_upload_needed: bool,
     varchive_account_configured: bool,
+    is_snap_manual: bool,
 ) {
     let mut buttons_left_x = None;
     let header = Frame::new()
@@ -574,20 +600,22 @@ fn draw_header(
             );
         });
 
-    let drag_rect = drag_rect_excluding_buttons(header.response.rect, buttons_left_x);
-    let drag_response = ui.interact(
-        drag_rect,
-        ui.id().with("overlay_header_drag"),
-        Sense::drag(),
-    );
-    if drag_response.drag_started() {
-        actions.start_drag = true;
-    }
-    if drag_response.dragged() {
-        actions.drag_delta = Some(drag_response.drag_delta());
-    }
-    if drag_response.drag_stopped() {
-        actions.restore_game_focus = true;
+    if is_snap_manual {
+        let drag_rect = drag_rect_excluding_buttons(header.response.rect, buttons_left_x);
+        let drag_response = ui.interact(
+            drag_rect,
+            ui.id().with("overlay_header_drag"),
+            Sense::drag(),
+        );
+        if drag_response.drag_started() {
+            actions.start_drag = true;
+        }
+        if drag_response.dragged() {
+            actions.drag_delta = Some(drag_response.drag_delta());
+        }
+        if drag_response.drag_stopped() {
+            actions.restore_game_focus = true;
+        }
     }
 }
 
@@ -844,7 +872,7 @@ mod tests {
                     let mut actions = super::OverlayActions::default();
 
                     let start_y = ui.cursor().top();
-                    super::draw_header(ui, &state_detecting, "Test Song Name", &pattern_tabs, &settings_open, &mut actions, &px, false, false);
+                    super::draw_header(ui, &state_detecting, "Test Song Name", &pattern_tabs, &settings_open, &mut actions, &px, false, false, true);
                     h_detecting = ui.cursor().top() - start_y;
                 });
             });
@@ -856,7 +884,7 @@ mod tests {
                     let mut actions = super::OverlayActions::default();
 
                     let start_y = ui.cursor().top();
-                    super::draw_header(ui, &state_no_badge, "Test Song Name", &pattern_tabs, &settings_open, &mut actions, &px, false, false);
+                    super::draw_header(ui, &state_no_badge, "Test Song Name", &pattern_tabs, &settings_open, &mut actions, &px, false, false, true);
                     h_no_badge = ui.cursor().top() - start_y;
                 });
             });
@@ -868,7 +896,7 @@ mod tests {
                     let mut actions = super::OverlayActions::default();
 
                     let start_y = ui.cursor().top();
-                    super::draw_header(ui, &state_normal_badge, "Test Song Name", &pattern_tabs, &settings_open, &mut actions, &px, false, false);
+                    super::draw_header(ui, &state_normal_badge, "Test Song Name", &pattern_tabs, &settings_open, &mut actions, &px, false, false, true);
                     h_normal = ui.cursor().top() - start_y;
                 });
             });
@@ -880,7 +908,7 @@ mod tests {
                     let mut actions = super::OverlayActions::default();
 
                     let start_y = ui.cursor().top();
-                    super::draw_header(ui, &state_perfect_badge, "Test Song Name", &pattern_tabs, &settings_open, &mut actions, &px, false, false);
+                    super::draw_header(ui, &state_perfect_badge, "Test Song Name", &pattern_tabs, &settings_open, &mut actions, &px, false, false, true);
                     h_perfect = ui.cursor().top() - start_y;
                 });
             });

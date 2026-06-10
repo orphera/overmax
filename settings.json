@@ -15,7 +15,9 @@
     "base_opacity": 0.8,
     "scale": 1.0,
     "lite_mode": false,
-    "lite_position": "top_right"
+    "position": {
+      "snap": "manual"
+    }
   },
   "jacket_matcher": {
     "db_path": "cache/image_index.db",

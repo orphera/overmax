@@ -6,6 +6,9 @@ pub enum SceneType {
     Unknown,
     Freestyle,
     Online,
+    ResultFreestyle,
+    ResultOpen3,
+    ResultOpen2,
 }
 
 #[derive(Clone, Debug, PartialEq)]

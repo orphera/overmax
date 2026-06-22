@@ -55,9 +55,90 @@ impl PlayStateDetector {
         ocr: &OcrDetector,
         now: f64,
     ) -> (GameSessionState, Option<OcrTelemetry>) {
-        let mode = detect_button_mode(frame, rois);
-        let (diff, confident) = detect_difficulty(frame, rois);
-        let is_max_combo = detect_max_combo(frame, rois);
+        use overmax_core::SceneType;
+
+        let scene = rois.current_scene();
+        let is_result = matches!(
+            scene,
+            SceneType::ResultFreestyle | SceneType::ResultOpen3 | SceneType::ResultOpen2
+        );
+
+        let mut mode = None;
+        let mut diff = None;
+        let mut confident = true;
+        let is_max_combo;
+
+        if is_result {
+            is_max_combo = detect_max_combo_result(frame, rois);
+            
+            match scene {
+                SceneType::ResultFreestyle => {
+                    if let Some(mode_roi) = rois.get_roi("mode") {
+                        if let Some(mode_img) = crop_roi(frame, mode_roi) {
+                            if let Some(text) = ocr.recognize_text_color(&mode_img) {
+                                let norm = text.to_lowercase();
+                                if norm.contains('4') { mode = Some("4B".to_string()); }
+                                else if norm.contains('5') { mode = Some("5B".to_string()); }
+                                else if norm.contains('6') { mode = Some("6B".to_string()); }
+                                else if norm.contains('8') { mode = Some("8B".to_string()); }
+                            }
+                        }
+                    }
+                    if let Some(diff_roi) = rois.get_roi("diff_panel") {
+                        if let Some(diff_img) = crop_roi(frame, diff_roi) {
+                            if let Some(text) = ocr.recognize_text_color(&diff_img) {
+                                let norm = text.to_lowercase();
+                                if norm.contains("hard") || norm.contains("hd") { diff = Some("HD".to_string()); }
+                                else if norm.contains("maximum") || norm.contains("mx") { diff = Some("MX".to_string()); }
+                                else if norm.contains("sc") { diff = Some("SC".to_string()); }
+                                else if norm.contains("normal") || norm.contains("nm") { diff = Some("NM".to_string()); }
+                            }
+                        }
+                    }
+                }
+                SceneType::ResultOpen3 | SceneType::ResultOpen2 => {
+                    let mut badge_text = None;
+                    if let Some(badge_roi) = rois.get_roi("mode_diff_badge") {
+                        if let Some(badge_img) = crop_roi(frame, badge_roi) {
+                            if let Some(text) = ocr.recognize_text_color(&badge_img) {
+                                badge_text = Some(text);
+                            }
+                        }
+                    }
+                    if badge_text.is_none() && scene == SceneType::ResultOpen2 {
+                        if let Some(logo_roi) = rois.get_roi("logo") {
+                            if let Some(logo_img) = crop_roi(frame, logo_roi) {
+                                if let Some(text) = ocr.recognize_text_color(&logo_img) {
+                                    badge_text = Some(text);
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(text) = badge_text {
+                        let norm = text.to_lowercase();
+                        if norm.contains("tunes") || norm.contains("tune") {
+                            if norm.contains("4b") || norm.contains('4') { mode = Some("4B".to_string()); }
+                            else if norm.contains("5b") || norm.contains('5') { mode = Some("5B".to_string()); }
+                            else if norm.contains("6b") || norm.contains('6') { mode = Some("6B".to_string()); }
+                            else if norm.contains("8b") || norm.contains('8') { mode = Some("8B".to_string()); }
+                            
+                            if norm.contains("sc") { diff = Some("SC".to_string()); }
+                            else if norm.contains("mx") || norm.contains("maximum") { diff = Some("MX".to_string()); }
+                            else if norm.contains("hd") || norm.contains("hard") { diff = Some("HD".to_string()); }
+                            else if norm.contains("nm") || norm.contains("normal") { diff = Some("NM".to_string()); }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        } else {
+            mode = detect_button_mode(frame, rois);
+            let (d, conf) = detect_difficulty(frame, rois);
+            diff = d;
+            confident = conf;
+            is_max_combo = detect_max_combo(frame, rois);
+        }
 
         let mut telemetry = None;
         let context = if let (Some(sid), Some(m), Some(d)) = (song_id, mode, diff) {
@@ -198,6 +279,49 @@ pub fn detect_max_combo(frame: &CapturedFrame, rois: &RoiManager) -> bool {
     };
     let (b, g, r) = region_mean_bgr(frame, roi);
     (f32::from(b) + f32::from(g) + f32::from(r)) / 3.0 >= 160.0
+}
+
+pub fn detect_max_combo_result(frame: &CapturedFrame, rois: &RoiManager) -> bool {
+    let Some(roi) = rois.get_roi("max_combo_badge") else {
+        return false;
+    };
+    let w = frame.width as i32;
+    let h = frame.height as i32;
+    
+    let x1 = roi.x1.clamp(0, w);
+    let y1 = roi.y1.clamp(0, h);
+    let x2 = roi.x2.clamp(0, w);
+    let y2 = roi.y2.clamp(0, h);
+
+    let mut matching_pixels = 0;
+    for y in y1..y2 {
+        for x in x1..x2 {
+            let idx = ((y * w + x) * 4) as usize;
+            if idx + 2 >= frame.bgra.len() {
+                continue;
+            }
+            let b = frame.bgra[idx];
+            let g = frame.bgra[idx + 1];
+            let r = frame.bgra[idx + 2];
+            
+            // Mint color (Max Combo), Pink/Purple (Perfect Play), or Gold (Freestyle max combo)
+            let is_mint = g > 130 && b > 130 && r < 160 && (g as i32 - r as i32).abs() > 20;
+            let is_pink = r > 130 && b > 130 && g < 160 && (r as i32 - g as i32).abs() > 20;
+            let is_gold = r > 150 && g > 120 && b < 130 && (r as i32 - b as i32).abs() > 30;
+
+            if is_mint || is_pink || is_gold {
+                matching_pixels += 1;
+            }
+        }
+    }
+
+    let total_pixels = (x2 - x1) * (y2 - y1);
+    if total_pixels <= 0 {
+        return false;
+    }
+    
+    let ratio = matching_pixels as f32 / total_pixels as f32;
+    ratio >= 0.03
 }
 
 fn button_colors() -> [ButtonColorEntry; 4] {

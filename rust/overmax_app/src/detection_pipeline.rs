@@ -116,8 +116,12 @@ impl DetectionPipeline {
         logo_detected: bool,
         now: f64,
     ) -> DetectionOutput {
-        let is_song_select = self.hysteresis.is_active;
-        let is_leaving = self.hysteresis.is_leaving;
+        let is_result = matches!(
+            self.last_logo_scene,
+            SceneType::ResultFreestyle | SceneType::ResultOpen3 | SceneType::ResultOpen2
+        );
+        let is_song_select = self.hysteresis.is_active || is_result;
+        let is_leaving = if is_result { false } else { self.hysteresis.is_leaving };
         let confidence = self.hysteresis.confidence;
 
         if !is_song_select {
@@ -169,7 +173,20 @@ impl DetectionPipeline {
             return Some(SceneType::Unknown);
         };
         
-        self.last_logo_scene = self.ocr.detect_logo(&logo).0;
+        let mut scene = self.ocr.detect_logo(&logo).0;
+        
+        // If logo is Unknown, check the bottom guide bar to see if it's OpenMatch 3+ result screen
+        if scene == SceneType::Unknown {
+            if let Some(bottom_roi) = self.rois.get_roi("bottom_guide") {
+                if let Some(bottom_img) = crop_roi(frame, bottom_roi) {
+                    if self.ocr.detect_bottom_guide_space(&bottom_img) {
+                        scene = SceneType::ResultOpen3;
+                    }
+                }
+            }
+        }
+        
+        self.last_logo_scene = scene;
         self.last_logo_ocr_ts = now;
         Some(self.last_logo_scene)
     }

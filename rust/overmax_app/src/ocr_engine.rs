@@ -4,9 +4,6 @@ use windows::Graphics::Imaging::BitmapDecoder;
 use windows::Media::Ocr::OcrEngine;
 use windows::Storage::Streams::{DataWriter, InMemoryRandomAccessStream};
 
-const KEYWORD_FREESTYLE: &str = "FREESTYLE";
-const KEYWORD_ONLINE: &str = "ONLINE";
-
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct OcrTelemetry {
@@ -122,14 +119,59 @@ impl OcrDetector {
             (None, String::new(), None)
         }
     }
+
+    pub fn recognize_text_color(&self, region: &ImageRegion) -> Option<String> {
+        self.engine.recognize_logo_color(region).ok()
+    }
+
+    pub fn detect_bottom_guide_space(&self, bottom_guide: &ImageRegion) -> bool {
+        if let Ok(t) = self.engine.recognize_logo_color(bottom_guide) {
+            let normalized = normalize_alnum(&t).to_lowercase();
+            if normalized.contains("space") {
+                return true;
+            }
+        }
+        if let Ok(t) = self.engine.recognize_logo(bottom_guide, false, false) {
+            let normalized = normalize_alnum(&t).to_lowercase();
+            if normalized.contains("space") {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn detect_bottom_guide_f5(&self, bottom_guide: &ImageRegion) -> bool {
+        if let Ok(t) = self.engine.recognize_logo_color(bottom_guide) {
+            let normalized = normalize_alnum(&t).to_lowercase();
+            if normalized.contains("f5") {
+                return true;
+            }
+        }
+        if let Ok(t) = self.engine.recognize_logo(bottom_guide, false, false) {
+            let normalized = normalize_alnum(&t).to_lowercase();
+            if normalized.contains("f5") {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 fn match_logo_scene(text: &str) -> Option<(SceneType, String)> {
-    let normalized = normalize_alnum(text);
-    if is_logo_keyword_match(&normalize_alnum(KEYWORD_FREESTYLE), &normalized) {
+    let normalized = normalize_alnum(text).to_lowercase();
+    if normalized.contains("buttontunes") {
+        Some((SceneType::ResultFreestyle, normalized))
+    } else if normalized.contains("freestyle") {
         Some((SceneType::Freestyle, normalized))
-    } else if is_logo_keyword_match(&normalize_alnum(KEYWORD_ONLINE), &normalized) {
+    } else if normalized.contains("online") {
         Some((SceneType::Online, normalized))
+    } else if normalized.contains("tunes") {
+        let has_number = normalized.chars().any(|c| c.is_ascii_digit());
+        if has_number {
+            Some((SceneType::ResultOpen2, normalized))
+        } else {
+            None
+        }
     } else {
         None
     }
@@ -139,6 +181,9 @@ fn scene_label(scene: SceneType) -> String {
     match scene {
         SceneType::Freestyle => "FREESTYLE".to_string(),
         SceneType::Online => "ONLINE".to_string(),
+        SceneType::ResultFreestyle => "RESULT_FREESTYLE".to_string(),
+        SceneType::ResultOpen3 => "RESULT_OPEN3".to_string(),
+        SceneType::ResultOpen2 => "RESULT_OPEN2".to_string(),
         _ => "UNKNOWN".to_string(),
     }
 }
@@ -307,6 +352,7 @@ fn normalize_alnum(text: &str) -> String {
         .collect()
 }
 
+#[allow(dead_code)]
 fn is_logo_keyword_match(keyword: &str, normalized_ocr: &str) -> bool {
     if keyword.is_empty() || normalized_ocr.is_empty() {
         return false;

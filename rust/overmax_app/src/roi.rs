@@ -54,6 +54,10 @@ impl RoiManager {
         self.current_scene = scene;
     }
 
+    pub fn current_scene(&self) -> SceneType {
+        self.current_scene
+    }
+
     pub fn update_window_size(&mut self, width: i32, height: i32) {
         if self.width == width && self.height == height {
             return;
@@ -65,7 +69,10 @@ impl RoiManager {
 
     pub fn get_roi(&self, name: &str) -> Option<RoiRect> {
         if name == "logo" {
-            return Some(self.transform_roi(RoiRect { x1: 120, y1: 23, x2: 320, y2: 53 }));
+            return Some(self.transform_roi(RoiRect { x1: 20, y1: 15, x2: 340, y2: 90 }));
+        }
+        if name == "bottom_guide" {
+            return Some(self.transform_roi(RoiRect { x1: 1300, y1: 950, x2: 1900, y2: 1030 }));
         }
         let roi = self.config.scenes.get(&self.current_scene)?.rois.get(name)?;
         Some(self.transform_roi(RoiRect::from(roi.clone())))
@@ -146,6 +153,6 @@ mod tests {
     fn applies_letterbox_offset_for_16_10() {
         let mut manager = RoiManager::new(1920, 1200);
         manager.set_scene(SceneType::Freestyle);
-        assert_eq!(manager.get_roi("logo").unwrap().y1, 83);
+        assert_eq!(manager.get_roi("logo").unwrap().y1, 75);
     }
 }

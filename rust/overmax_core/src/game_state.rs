@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum SceneType {
     Unknown,
     Freestyle,
+    Online,
     OpenMatch,
     LadderMatch,
     ResultFreestyle,

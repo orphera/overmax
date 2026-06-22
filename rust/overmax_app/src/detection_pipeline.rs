@@ -94,7 +94,7 @@ impl DetectionPipeline {
     ) -> DetectionOutput {
         self.rois.update_window_size(frame.width, frame.height);
         
-        let logo_detected = scene != SceneType::Unknown;
+        let logo_detected = scene != SceneType::Unknown && scene != SceneType::Online;
         if logo_detected {
             self.rois.set_scene(scene);
         }
@@ -110,7 +110,7 @@ impl DetectionPipeline {
     ) -> DetectionOutput {
         self.rois.update_window_size(frame.width, frame.height);
         
-        let logo_detected = self.last_logo_scene != SceneType::Unknown;
+        let logo_detected = self.last_logo_scene != SceneType::Unknown && self.last_logo_scene != SceneType::Online;
         self.process_frame_shared(frame, logo_detected, now)
     }
 

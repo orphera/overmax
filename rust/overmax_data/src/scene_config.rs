@@ -44,6 +44,9 @@ impl Default for GlobalRoiConfig {
 
         // LadderMatch ROI
         scenes.insert(SceneType::LadderMatch, SceneRoiConfig { rois: open_match_rois });
+
+        // Online ROI (Lobby menu, empty ROI config)
+        scenes.insert(SceneType::Online, SceneRoiConfig { rois: HashMap::new() });
         
         // ResultFreestyle ROI
         let mut result_freestyle_rois = HashMap::new();

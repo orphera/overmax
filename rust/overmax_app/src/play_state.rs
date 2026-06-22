@@ -178,13 +178,24 @@ impl PlayStateDetector {
                     }
                 }
 
-                Some(PlayContext {
-                    song_id: sid,
-                    mode: m,
-                    diff: d,
-                    rate,
-                    is_max_combo: if rate > 0.0 { is_max_combo } else { false },
-                })
+                let mut rate_valid = true;
+                if is_result {
+                    if self.last_rate_result.0.is_none() || self.last_rate_result.0 == Some(0.0) {
+                        rate_valid = false;
+                    }
+                }
+
+                if rate_valid {
+                    Some(PlayContext {
+                        song_id: sid,
+                        mode: m,
+                        diff: d,
+                        rate,
+                        is_max_combo: if rate > 0.0 { is_max_combo } else { false },
+                    })
+                } else {
+                    None
+                }
             } else {
                 None
             }

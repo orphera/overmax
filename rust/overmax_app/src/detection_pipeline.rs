@@ -51,6 +51,8 @@ pub struct DetectionPipeline {
     last_jacket_ts: f64,
     last_jacket_match_ts: f64,
     last_jacket_thumb: Option<Vec<u8>>,
+    result_scene_streak: u32,
+    last_detected_result_scene: SceneType,
 }
 
 impl DetectionPipeline {
@@ -67,6 +69,8 @@ impl DetectionPipeline {
             last_jacket_ts: 0.0,
             last_jacket_match_ts: 0.0,
             last_jacket_thumb: None,
+            result_scene_streak: 0,
+            last_detected_result_scene: SceneType::Unknown,
         }
     }
 
@@ -186,7 +190,28 @@ impl DetectionPipeline {
             }
         }
         
-        self.last_logo_scene = scene;
+        let is_detected_result = matches!(
+            scene,
+            SceneType::ResultFreestyle | SceneType::ResultOpen3 | SceneType::ResultOpen2
+        );
+
+        if is_detected_result {
+            if scene == self.last_detected_result_scene {
+                self.result_scene_streak += 1;
+            } else {
+                self.last_detected_result_scene = scene;
+                self.result_scene_streak = 1;
+            }
+
+            if self.result_scene_streak >= 2 {
+                self.last_logo_scene = scene;
+            }
+        } else {
+            self.result_scene_streak = 0;
+            self.last_detected_result_scene = SceneType::Unknown;
+            self.last_logo_scene = scene;
+        }
+
         self.last_logo_ocr_ts = now;
         Some(self.last_logo_scene)
     }

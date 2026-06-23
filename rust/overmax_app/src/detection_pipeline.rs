@@ -172,44 +172,67 @@ impl DetectionPipeline {
             .get_roi("logo")
             .and_then(|roi| crop_roi(frame, roi))
         else {
+            println!("    [detect_logo_if_due] logo crop failed! now={}", now);
             self.last_logo_scene = SceneType::Unknown;
             self.last_logo_ocr_ts = now;
             return Some(SceneType::Unknown);
         };
         
-        let mut scene = self.ocr.detect_logo(&logo).0;
+        let (scene, raw_text, _label) = self.ocr.detect_logo(&logo);
+        println!("    [detect_logo_if_due] now={}, crop_size={}x{}, OCR raw='{}', scene={:?}",
+                 now, logo.width, logo.height, raw_text, scene);
+
+        let mut scene_res = scene;
         
         // If logo is Unknown, check the bottom guide bar to see if it's OpenMatch 3+ result screen
-        if scene == SceneType::Unknown {
+        if scene_res == SceneType::Unknown {
             if let Some(bottom_roi) = self.rois.get_roi("bottom_guide") {
                 if let Some(bottom_img) = crop_roi(frame, bottom_roi) {
                     if self.ocr.detect_bottom_guide_space(&bottom_img) {
-                        scene = SceneType::ResultOpen3;
+                        scene_res = SceneType::ResultOpen3;
+                    }
+                }
+            }
+        }
+        
+        // If still Unknown, check the bottom part of the screen as a fallback (y starting from 35%)
+        if scene_res == SceneType::Unknown {
+            let bottom_half_roi = crate::roi::RoiRect {
+                x1: 0,
+                y1: frame.height * 35 / 100,
+                x2: frame.width,
+                y2: frame.height,
+            };
+            if let Some(bottom_half_img) = crop_roi(frame, bottom_half_roi) {
+                if let Some((text, rate_x_ratio)) = self.ocr.recognize_bottom_half_with_rate_x(&bottom_half_img) {
+                    if let Some(s) = self.ocr.classify_fallback_scene(&text, rate_x_ratio) {
+                        println!("    [detect_logo_if_due] fallback match: scene={:?}, text='{}', rate_x_ratio={:?}", s, text.trim(), rate_x_ratio);
+                        scene_res = s;
                     }
                 }
             }
         }
         
         let is_detected_result = matches!(
-            scene,
+            scene_res,
             SceneType::ResultFreestyle | SceneType::ResultOpen3 | SceneType::ResultOpen2
         );
 
         if is_detected_result {
-            if scene == self.last_detected_result_scene {
+            if scene_res == self.last_detected_result_scene {
                 self.result_scene_streak += 1;
             } else {
-                self.last_detected_result_scene = scene;
+                self.last_detected_result_scene = scene_res;
                 self.result_scene_streak = 1;
             }
 
             if self.result_scene_streak >= 2 {
-                self.last_logo_scene = scene;
+                self.last_logo_scene = scene_res;
             }
         } else {
             self.result_scene_streak = 0;
             self.last_detected_result_scene = SceneType::Unknown;
-            self.last_logo_scene = scene;
+            self.last_logo_scene = scene_res;
         }
 
         self.last_logo_ocr_ts = now;
@@ -320,6 +343,7 @@ impl DetectionPipeline {
 mod tests {
     use super::{DetectionPipeline, JacketMatchStatus};
     use crate::screen_capture::CapturedFrame;
+    use crate::hysteresis::HysteresisBuffer;
     use overmax_data::ImageIndexDb;
 
     #[test]
@@ -359,6 +383,112 @@ mod tests {
             width: 1920,
             height: 1080,
             bgra: vec![0; 1920 * 1080 * 4],
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_scratch_images() {
+        use std::path::Path;
+        use image::GenericImageView;
+        use overmax_core::SceneType;
+        use crate::frame_utils::crop_roi;
+
+        let scratch_dir = Path::new(r"C:\Users\jeongwoong\dev\overmax\scratch");
+        let images = [
+            "6.png", "7.png", "8.png",
+            "dc_1.png", "dc_2.png", "dc_3.png", "dc_4.png", "dc_5.jpg", "new_test.jpg",
+            "freestyle.png", "openmatch.png", "openmatch_2p.png"
+        ];
+
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+
+        for img_name in &images {
+            let path = scratch_dir.join(img_name);
+            if !path.exists() {
+                println!("{}: Not found", img_name);
+                continue;
+            }
+
+            let img = image::open(&path).expect("Failed to open image");
+            let (w, h) = img.dimensions();
+            let mut bgra = vec![0u8; (w * h * 4) as usize];
+            
+            for (x, y, pixel) in img.pixels() {
+                let idx = ((y * w + x) * 4) as usize;
+                bgra[idx] = pixel[2];     // B
+                bgra[idx + 1] = pixel[1]; // G
+                bgra[idx + 2] = pixel[0]; // R
+                bgra[idx + 3] = pixel[3]; // A
+            }
+
+            let frame = CapturedFrame {
+                width: w as i32,
+                height: h as i32,
+                bgra,
+            };
+
+            pipeline.rois.update_window_size(w as i32, h as i32);
+            let logo_roi = pipeline.rois.get_roi("logo").unwrap();
+            let logo_img = crop_roi(&frame, logo_roi).unwrap();
+            
+            // Public logo OCR attempt
+            let (logo_scene, logo_txt, _logo_label) = pipeline.ocr.detect_logo(&logo_img);
+
+            // Entire screen OCR to see what text exists
+            let entire_region = crate::frame_utils::ImageRegion {
+                bgra: frame.bgra.clone(),
+                width: w as i32,
+                height: h as i32,
+            };
+            let entire_txt = pipeline.ocr.recognize_text_color(&entire_region).unwrap_or_default();
+
+            // Public bottom guide OCR attempt (if logo is Unknown)
+            let mut has_space = false;
+            let mut bottom_text_opt = None;
+            if let Some(bottom_roi) = pipeline.rois.get_roi("bottom_guide") {
+                if let Some(bottom_img) = crop_roi(&frame, bottom_roi) {
+                    has_space = pipeline.ocr.detect_bottom_guide_space(&bottom_img);
+                    bottom_text_opt = pipeline.ocr.recognize_text_color(&bottom_img);
+                }
+            }
+
+            println!("==================================================");
+            println!("IMAGE: {}", img_name);
+            println!("Resolution: {}x{}", w, h);
+            println!("OCR Logo Final Match:        '{}' (Scene={:?})", logo_txt, logo_scene);
+            println!("OCR Bottom Space Detected: {} (Text={:?})", has_space, bottom_text_opt);
+            println!("Entire Screen OCR Text:\n{}", entire_txt);
+
+            // Run detection
+            pipeline.result_scene_streak = 0;
+            pipeline.last_detected_result_scene = SceneType::Unknown;
+            pipeline.last_logo_scene = SceneType::Unknown;
+            pipeline.last_logo_ocr_ts = 0.0;
+            pipeline.hysteresis = HysteresisBuffer::new(5, 0.6, 3, 0.4, 3);
+            pipeline.play_state.reset();
+
+            let mut final_out = None;
+            for step in 0..10 {
+                let t = step as f64 * 0.4;
+                let out = pipeline.detect(&frame, t);
+                println!("  Step {}: scene_out={:?}, logo_det={}, is_song_sel={}, streak={}, last_det_res={:?}, last_logo={:?}",
+                         step,
+                         pipeline.last_logo_scene,
+                         out.logo_detected,
+                         out.is_song_select,
+                         pipeline.result_scene_streak,
+                         pipeline.last_detected_result_scene,
+                         pipeline.last_logo_scene);
+                final_out = Some(out);
+            }
+
+            let out = final_out.unwrap();
+            println!("Pipeline Detected Scene: {:?}", pipeline.last_logo_scene);
+            println!("Is Song Select: {}", out.is_song_select);
+            println!("Jacket status: {:?}", out.jacket_status);
+            println!("PlayContext: {:?}", out.state.context);
+            println!("Is Stable: {}", out.state.is_stable);
         }
     }
 }

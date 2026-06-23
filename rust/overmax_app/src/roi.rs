@@ -72,7 +72,7 @@ impl RoiManager {
             return Some(self.transform_roi(RoiRect { x1: 20, y1: 15, x2: 340, y2: 90 }));
         }
         if name == "bottom_guide" {
-            return Some(self.transform_roi(RoiRect { x1: 1300, y1: 950, x2: 1900, y2: 1030 }));
+            return Some(self.transform_roi(RoiRect { x1: 1300, y1: 1010, x2: 1900, y2: 1070 }));
         }
         let roi = self.config.scenes.get(&self.current_scene)?.rois.get(name)?;
         Some(self.transform_roi(RoiRect::from(roi.clone())))

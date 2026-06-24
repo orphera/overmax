@@ -41,13 +41,13 @@ graph TD
 화면이 현재 곡을 고르는 중인지(선곡 화면), 게임 결과 화면인지(결과창)를 판별하여 뒤이어 실행할 무거운 매칭 로직들의 진입 여부를 제어한다.
 
 * **Anchor 탐색**: 
-  - **로고 기반 감지 (logo ROI)**: 화면 좌상단 로고 영역에서 `'BUTTON TUNES'`, `'FREESTYLE'`, `'ONLINE'`(LADDER/OPEN 포함) 등의 핵심 타이틀 텍스트를 OCR로 탐색하여 씬(`ResultFreestyle`, `Freestyle`, `OpenMatch`, `LadderMatch`, `ResultOpen2` 등)을 식별한다.
-  - **하단 절반 영역 Fallback 감지**: 로고가 Unknown인 경우, 화면 하단 절반 영역을 크게 읽어 `'JUDGEMENT DETAILS'`(ResultFreestyle 판별용), `'99.78%'` 등의 판정 비율 패턴, 혹은 여러 명의 스코어가 발견되는지 검사하여 결과창 씬을 보완 판별한다 (`classify_fallback_scene`).
-  - **오픈매치 결과창 Fallback**: 로고 영역 OCR 결과가 `Unknown`인 경우, 화면 하단 가이드바 영역(`bottom_guide` ROI)에서 상세 정보용 스페이스바 단축키 텍스트(`Space`) 존재 여부를 탐지하여 결과창(`ResultOpen3`)으로 판별한다 (`detect_bottom_guide_space`).
+  - **로고 기반 감지 (logo ROI)**: 화면 좌상단 로고 영역에서 `'BUTTON TUNES'`, `'FREESTYLE'`, `'ONLINE'`(LADDER/OPEN 포함) 등의 핵심 타이틀 텍스트를 OCR로 탐색하여 씬(`ResultFreestyle`, `Freestyle`, `OpenMatch`, `LadderMatch`, `ResultOpen2` 등)을 식별합니다.
+  - **하단 가이드바 기반 1차 경량 Probing (bottom_guide ROI)**: 로고가 Unknown인 경우, 즉시 무거운 하단 OCR로 진입하는 대신 아주 좁은 하단 가이드바 영역을 먼저 OCR합니다. 이때 스페이스바 단축키 관련 단어(`Space` 혹은 한국어 `상세정보` 등)가 탐지되면 결과창 후보로, `F5` 관련 단어(`F5` 혹은 한국어 `레더보드`/`즐겨찾기` 등)가 탐지되면 프리스타일 결과창 후보로 1차 마킹합니다.
+  - **2단계 Fallback OCR 및 씬 확정**: 1단계 가이드바 매칭으로 후보(Candidate) 플래그가 설정된 경우에만 비로소 2단계로 화면 하단 65% 영역을 크게 크롭하여 무거운 OCR(`recognize_bottom_half_with_rate_x`)을 수행하고, 판정 비율 패턴이나 레이아웃 비율을 검사해 최종 씬(`ResultOpen3`, `ResultOpen2`, `ResultFreestyle`)을 정밀 식별 및 확정합니다.
   - **인게임 Gameplay 최적화 (Heavy OCR Skip)**: 
     - 화면 하단 절반 영역 Fallback 및 가이드바 Fallback 감지는 연산 비용이 매우 높습니다. 
     - 프레임 버벅임을 원천 방지하기 위해, 선곡창 혹은 결과창 상태가 활성화되어 있는 세션 상태(`is_active_session = true`)일 때만 이 무거운 Fallback OCR들이 가동되도록 설계했습니다.
-    - 실제 노트 연주 중(Gameplay)과 같이 세션이 비활성화되었을 때는 무거운 하단 영역 OCR을 전면 차단하고, 크기가 극히 작은 로고 영역(`logo` ROI, 320x75)만 0.3초 주기로 검사하여 CPU 점유율을 0.1% 미만으로 억제하고 프레임을 완벽히 보존합니다.
+    - 실제 노트 연주 중(Gameplay)과 같이 세션이 비활성화되었을 때는 1단계 가이드바 probe 조차도 스킵하여 무거운 하단 영역 OCR을 전면 차단하고, 크기가 극히 작은 로고 영역(`logo` ROI, 320x75)만 0.3초 주기로 검사하여 CPU 점유율을 0.1% 미만으로 억제하고 프레임을 완벽히 보존합니다.
 * **Hysteresis Buffer**:
   - 화면 전환 시 깜빡임(Jitter)으로 인해 씬 상태가 불안정하게 튀는 현상을 막기 위해, 최근 N프레임 동안 연속 감지 횟수를 이력으로 관리한다. 임계값(Threshold)을 초과하는 시점에만 비로소 확정 씬(Stable Scene) 상태를 업데이트한다.
 
@@ -95,6 +95,7 @@ graph TD
 3. 로컬 SQLite DB(`record.db`)의 레코드 테이블에 데이터가 Upsert(업데이트 혹은 추가) 됨으로써 플레이 기록 수집이 완결된다.
 
 이 탐지 파이프라인의 소스코드는 다음 파일들에 분산되어 유기적으로 연동된다:
+* 메인 탐지 파이프라인 제어: [detection_pipeline.rs](../rust/overmax_app/src/detection_pipeline.rs)
 * ROI 설정: [scene_config.rs](../rust/overmax_data/src/scene_config.rs)
 * 상태 전이 및 로직 탐지: [play_state.rs](../rust/overmax_app/src/play_state.rs)
 * 이미지 특징점 및 전처리: [ocr.rs](../rust/overmax_cv/src/ocr.rs) / [lib.rs](../rust/overmax_cv/src/lib.rs)

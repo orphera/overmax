@@ -25,6 +25,30 @@ pub fn compute_image_features(
     Ok((phash, dhash, ahash, hog))
 }
 
+pub fn compute_image_hashes(
+    data: &[u8],
+    width: usize,
+    height: usize,
+    channels: usize,
+) -> Result<(String, String, String), error::CvError> {
+    image::validate_image(data, width, height, channels, "compute_image_hashes")?;
+    let gray = image::to_gray(data, channels);
+    let (phash, dhash, ahash) = image::compute_hashes(&gray, width, height);
+    Ok((phash, dhash, ahash))
+}
+
+pub fn compute_image_hog(
+    data: &[u8],
+    width: usize,
+    height: usize,
+    channels: usize,
+) -> Result<Vec<f32>, error::CvError> {
+    image::validate_image(data, width, height, channels, "compute_image_hog")?;
+    let gray = image::to_gray(data, channels);
+    let hog = hog::hog_gray(&gray, width, height);
+    Ok(hog)
+}
+
 pub fn make_thumbnail_bgra_32(
     data: &[u8],
     width: usize,

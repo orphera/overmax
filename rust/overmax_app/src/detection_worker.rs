@@ -121,7 +121,8 @@ impl DetectionWorker {
             "[Detection] image_index path={}",
             db_path.display()
         ));
-        let mut db = ImageIndexDb::new(db_path, threshold(&self.settings));
+        let mut db = ImageIndexDb::new(db_path, threshold(&self.settings))
+            .with_disable_hog(disable_hog(&self.settings));
         match db.load() {
             Ok(n) => self.log(format!("[Detection] image_index loaded: {n} images")),
             Err(e) => self.log(format!("[Detection] image_index load failed: {e}")),
@@ -339,4 +340,12 @@ fn idle_sleep(settings: &Value) -> f64 {
         .and_then(Value::as_f64)
         .unwrap_or(1.0)
         .max(0.5)
+}
+
+fn disable_hog(settings: &Value) -> bool {
+    settings
+        .get("jacket_matcher")
+        .and_then(|v| v.get("disable_hog"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
 }

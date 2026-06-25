@@ -25,6 +25,7 @@ struct ImageEntry {
 pub struct ImageIndexDb {
     db_path: PathBuf,
     similarity_threshold: f32,
+    pub disable_hog: bool,
     entries: Vec<ImageEntry>,
 }
 
@@ -33,8 +34,14 @@ impl ImageIndexDb {
         Self {
             db_path: db_path.as_ref().to_path_buf(),
             similarity_threshold,
+            disable_hog: false,
             entries: Vec::new(),
         }
+    }
+
+    pub fn with_disable_hog(mut self, disable_hog: bool) -> Self {
+        self.disable_hog = disable_hog;
+        self
     }
 
     pub fn load(&mut self) -> Result<usize> {
@@ -72,57 +79,90 @@ impl ImageIndexDb {
         if self.entries.is_empty() || top_k == 0 {
             return None;
         }
-        let query = QueryFeatures::from_image(data, width, height, channels)?;
-        self.best_match(&query, top_k)
-    }
 
-    fn best_match(&self, query: &QueryFeatures, top_k: usize) -> Option<ImageMatch> {
-        let mut candidates = self.hash_candidates(query, top_k);
-        candidates.sort_by(|a, b| b.1.total_cmp(&a.1));
-        candidates.into_iter().next().and_then(|(idx, similarity)| {
-            (similarity >= self.similarity_threshold).then(|| ImageMatch {
-                image_id: self.entries[idx].image_id.clone(),
-                similarity,
-            })
-        })
-    }
+        // 1단계: 해시 특징량만 먼저 계산
+        let (phash_str, dhash_str, ahash_str) =
+            overmax_cv::compute_image_hashes(data, width, height, channels).ok()?;
+        let q_phash = parse_hash(&phash_str)?;
+        let q_dhash = parse_hash(&dhash_str)?;
+        let q_ahash = parse_hash(&ahash_str)?;
 
-    fn hash_candidates(&self, query: &QueryFeatures, top_k: usize) -> Vec<(usize, f32)> {
-        let mut hashes = self
+        // 2단계: 전체 DB 곡에 대해 해시 거리(Hamming Distance) 스코어링
+        let mut candidates = self
             .entries
             .iter()
             .enumerate()
-            .map(|(idx, entry)| (idx, hash_score(entry, query)))
+            .map(|(idx, entry)| {
+                let p_dist = (entry.phash ^ q_phash).count_ones() as f32;
+                let d_dist = (entry.dhash ^ q_dhash).count_ones() as f32;
+                let a_dist = (entry.ahash ^ q_ahash).count_ones() as f32;
+                let score = 0.5 * p_dist + 0.3 * d_dist + 0.2 * a_dist;
+                (idx, score)
+            })
             .collect::<Vec<_>>();
-        hashes.sort_by(|a, b| a.1.total_cmp(&b.1));
-        hashes
+
+        // 해시 스코어 정렬 (낮을수록 가까움)
+        candidates.sort_by(|a, b| a.1.total_cmp(&b.1));
+
+        if candidates.is_empty() {
+            return None;
+        }
+
+        let first_idx = candidates[0].0;
+        let first_score = candidates[0].1;
+        let first_hash_sim = (1.0 - first_score / 64.0).clamp(0.0, 1.0);
+
+        // 3단계: HOG 연산 스킵 여부 판정
+        let skip_hog = if self.disable_hog {
+            true
+        } else if candidates.len() > 1 {
+            let second_score = candidates[1].1;
+            let margin = second_score - first_score;
+            // 1위 후보와 2위 후보의 스코어 차이가 3.0 이상이거나,
+            // 1위 후보가 완전 일치(0.0)하는 경우 HOG 계산 생략
+            margin >= 3.0 || first_score == 0.0
+        } else {
+            true
+        };
+
+        if skip_hog {
+            // HOG 생략 시 최종 유사도는 해시 유사도 자체로 평가
+            let similarity = first_hash_sim;
+            return (similarity >= self.similarity_threshold).then(|| ImageMatch {
+                image_id: self.entries[first_idx].image_id.clone(),
+                similarity,
+            });
+        }
+
+        // 4단계: HOG 정밀 매칭 (Margin이 좁은 경우에만 게으르게 HOG 피처 계산)
+        let q_hog = overmax_cv::compute_image_hog(data, width, height, channels).ok()?;
+        let q_hog_norm = vector_norm(&q_hog).max(1.0);
+
+        // 상위 top_k개 후보군에 대해서만 HOG Dot product 연산 적용
+        let mut final_candidates = candidates
             .into_iter()
             .take(top_k.min(self.entries.len()))
-            .map(|(idx, score)| (idx, similarity(&self.entries[idx], query, score)))
-            .collect()
-    }
-}
+            .map(|(idx, score)| {
+                let entry = &self.entries[idx];
+                let hash_sim = (1.0 - score / 64.0).clamp(0.0, 1.0);
+                let hog_sim = dot(&entry.hog, &q_hog) / (entry.hog_norm * q_hog_norm);
+                let similarity = 0.45 * hash_sim + 0.55 * hog_sim;
+                (idx, similarity)
+            })
+            .collect::<Vec<_>>();
 
-struct QueryFeatures {
-    phash: u64,
-    dhash: u64,
-    ahash: u64,
-    hog: Vec<f32>,
-    hog_norm: f32,
-}
+        // 최종 유사도 기준 내림차순 정렬 (높을수록 좋음)
+        final_candidates.sort_by(|a, b| b.1.total_cmp(&a.1));
 
-impl QueryFeatures {
-    fn from_image(data: &[u8], width: usize, height: usize, channels: usize) -> Option<Self> {
-        let (phash, dhash, ahash, hog) =
-            overmax_cv::compute_image_features(data, width, height, channels).ok()?;
-        let hog_norm = vector_norm(&hog).max(1.0);
-        Some(Self {
-            phash: parse_hash(&phash)?,
-            dhash: parse_hash(&dhash)?,
-            ahash: parse_hash(&ahash)?,
-            hog,
-            hog_norm,
-        })
+        final_candidates
+            .into_iter()
+            .next()
+            .and_then(|(idx, similarity)| {
+                (similarity >= self.similarity_threshold).then(|| ImageMatch {
+                    image_id: self.entries[idx].image_id.clone(),
+                    similarity,
+                })
+            })
     }
 }
 
@@ -187,18 +227,6 @@ fn parse_hog_blob(blob: &[u8]) -> Option<Vec<f32>> {
 
 fn parse_hash(value: &str) -> Option<u64> {
     u64::from_str_radix(value, 16).ok()
-}
-
-fn hash_score(entry: &ImageEntry, query: &QueryFeatures) -> f32 {
-    0.5 * (entry.phash ^ query.phash).count_ones() as f32
-        + 0.3 * (entry.dhash ^ query.dhash).count_ones() as f32
-        + 0.2 * (entry.ahash ^ query.ahash).count_ones() as f32
-}
-
-fn similarity(entry: &ImageEntry, query: &QueryFeatures, hash_score: f32) -> f32 {
-    let hash_sim = (1.0 - hash_score / 64.0).clamp(0.0, 1.0);
-    let hog_sim = dot(&entry.hog, &query.hog) / (entry.hog_norm * query.hog_norm);
-    0.45 * hash_sim + 0.55 * hog_sim
 }
 
 fn dot(left: &[f32], right: &[f32]) -> f32 {

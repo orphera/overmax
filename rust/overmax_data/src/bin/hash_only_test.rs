@@ -156,13 +156,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         
         // 피처 연산
-        let (q_phash_str, q_dhash_str, q_ahash_str, _) = 
+        let (q_phash, q_dhash, q_ahash, _) = 
             overmax_cv::compute_image_features(&bgra, cropped_w, cropped_h, 4)
                 .map_err(|e| format!("{:?}", e))?;
-        
-        let q_phash = u64::from_str_radix(&q_phash_str, 16).unwrap();
-        let q_dhash = u64::from_str_radix(&q_dhash_str, 16).unwrap();
-        let q_ahash = u64::from_str_radix(&q_ahash_str, 16).unwrap();
         
         // 해시 단독 매칭
         let mut best_match: Option<(&ImageEntry, f32)> = None;

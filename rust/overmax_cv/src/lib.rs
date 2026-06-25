@@ -7,7 +7,7 @@ pub fn compute_hashes_gray(
     data: &[u8],
     width: usize,
     height: usize,
-) -> Result<(String, String, String), error::CvError> {
+) -> Result<(u64, u64, u64), error::CvError> {
     image::validate_image(data, width, height, 1, "compute_hashes_gray")?;
     Ok(image::compute_hashes(data, width, height))
 }
@@ -17,7 +17,7 @@ pub fn compute_image_features(
     width: usize,
     height: usize,
     channels: usize,
-) -> Result<(String, String, String, Vec<f32>), error::CvError> {
+) -> Result<(u64, u64, u64, Vec<f32>), error::CvError> {
     image::validate_image(data, width, height, channels, "compute_image_features")?;
     let gray = image::to_gray(data, channels);
     let (phash, dhash, ahash) = image::compute_hashes(&gray, width, height);
@@ -30,7 +30,7 @@ pub fn compute_image_hashes(
     width: usize,
     height: usize,
     channels: usize,
-) -> Result<(String, String, String), error::CvError> {
+) -> Result<(u64, u64, u64), error::CvError> {
     image::validate_image(data, width, height, channels, "compute_image_hashes")?;
     let gray = image::to_gray(data, channels);
     let (phash, dhash, ahash) = image::compute_hashes(&gray, width, height);

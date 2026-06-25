@@ -81,11 +81,8 @@ impl ImageIndexDb {
         }
 
         // 1단계: 해시 특징량만 먼저 계산
-        let (phash_str, dhash_str, ahash_str) =
+        let (q_phash, q_dhash, q_ahash) =
             overmax_cv::compute_image_hashes(data, width, height, channels).ok()?;
-        let q_phash = parse_hash(&phash_str)?;
-        let q_dhash = parse_hash(&dhash_str)?;
-        let q_ahash = parse_hash(&ahash_str)?;
 
         // 2단계: 전체 DB 곡에 대해 해시 거리(Hamming Distance) 스코어링
         let mut candidates = self
@@ -293,7 +290,14 @@ mod tests {
         let image = gradient_image();
         let (phash, dhash, ahash, hog) =
             overmax_cv::compute_image_features(&image, 8, 8, 1).unwrap();
-        insert_image_with_features(&conn, "target", &phash, &dhash, &ahash, &hog);
+        insert_image_with_features(
+            &conn,
+            "target",
+            &format!("{:016x}", phash),
+            &format!("{:016x}", dhash),
+            &format!("{:016x}", ahash),
+            &hog,
+        );
         insert_image(&conn, "other", "ffffffffffffffff", 0.1);
         drop(conn);
 

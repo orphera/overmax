@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // 3. Process Features in Parallel (phash, dhash, ahash, HOG)
-    let results: Vec<(String, Result<(String, String, String, Vec<f32>), String>)> = tasks
+    let results: Vec<(String, Result<(u64, u64, u64, Vec<f32>), String>)> = tasks
         .into_par_iter()
         .map(|task| {
             let res = process_image(&task.path);
@@ -77,17 +77,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (song_id, feat_res) in results {
         match feat_res {
             Ok((phash, dhash, ahash, hog)) => {
+                let phash_str = format!("{:016x}", phash);
+                let dhash_str = format!("{:016x}", dhash);
+                let ahash_str = format!("{:016x}", ahash);
                 let hog_bytes = f32_vec_to_bytes(&hog);
                 tx.execute(
                     "INSERT INTO images (image_id, phash, dhash, ahash, hog, orb)
                      VALUES (?1, ?2, ?3, ?4, ?5, NULL)
                      ON CONFLICT(image_id) DO UPDATE SET
-                        phash = excluded.phash,
-                        dhash = excluded.dhash,
-                        ahash = excluded.ahash,
-                        hog   = excluded.hog,
-                        orb   = NULL",
-                    params![song_id, phash, dhash, ahash, hog_bytes],
+                         phash = excluded.phash,
+                         dhash = excluded.dhash,
+                         ahash = excluded.ahash,
+                         hog   = excluded.hog,
+                         orb   = NULL",
+                    params![song_id, phash_str, dhash_str, ahash_str, hog_bytes],
                 )?;
                 success_count += 1;
             }
@@ -105,7 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn process_image(path: &Path) -> Result<(String, String, String, Vec<f32>), String> {
+fn process_image(path: &Path) -> Result<(u64, u64, u64, Vec<f32>), String> {
     // 1. Read Raw File Bytes
     let bytes = fs::read(path).map_err(|e| e.to_string())?;
 

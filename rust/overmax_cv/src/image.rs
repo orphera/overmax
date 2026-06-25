@@ -26,7 +26,7 @@ pub fn to_gray(data: &[u8], channels: usize) -> Vec<u8> {
         .collect()
 }
 
-pub fn compute_hashes(gray: &[u8], width: usize, height: usize) -> (String, String, String) {
+pub fn compute_hashes(gray: &[u8], width: usize, height: usize) -> (u64, u64, u64) {
     (
         phash(gray, width, height),
         dhash(gray, width, height),
@@ -68,13 +68,13 @@ fn bgr_to_gray(b: u8, g: u8, r: u8) -> u8 {
     ((29 * u16::from(b) + 150 * u16::from(g) + 77 * u16::from(r) + 128) >> 8) as u8
 }
 
-fn ahash(gray: &[u8], width: usize, height: usize) -> String {
+fn ahash(gray: &[u8], width: usize, height: usize) -> u64 {
     let resized = resize_area_f32(gray, width, height, 8, 8);
     let mean = resized.iter().sum::<f32>() / resized.len() as f32;
-    bits_to_hex(resized.iter().map(|value| *value > mean))
+    bits_to_u64(resized.iter().map(|value| *value > mean))
 }
 
-fn dhash(gray: &[u8], width: usize, height: usize) -> String {
+fn dhash(gray: &[u8], width: usize, height: usize) -> u64 {
     let resized = resize_area_f32(gray, width, height, 9, 8);
     let mut bits = Vec::with_capacity(64);
     for y in 0..8 {
@@ -83,28 +83,23 @@ fn dhash(gray: &[u8], width: usize, height: usize) -> String {
             bits.push(resized[row + x + 1] > resized[row + x]);
         }
     }
-    bits_to_hex(bits.into_iter())
+    bits_to_u64(bits.into_iter())
 }
 
-fn phash(gray: &[u8], width: usize, height: usize) -> String {
+fn phash(gray: &[u8], width: usize, height: usize) -> u64 {
     let resized = resize_area_f32(gray, width, height, 32, 32);
     let coeffs = dct_2d_32(&resized);
     let low = low_dct_values(&coeffs);
     let median = median_without_dc(&low);
-    bits_to_hex(low.iter().map(|value| *value > median))
+    bits_to_u64(low.iter().map(|value| *value > median))
 }
 
-fn bits_to_hex(bits: impl Iterator<Item = bool>) -> String {
-    let mut out = String::new();
-    let mut byte = 0u8;
-    for (idx, bit) in bits.enumerate() {
-        byte = (byte << 1) | u8::from(bit);
-        if idx % 8 == 7 {
-            out.push_str(&format!("{byte:02x}"));
-            byte = 0;
-        }
+fn bits_to_u64(bits: impl Iterator<Item = bool>) -> u64 {
+    let mut val = 0u64;
+    for bit in bits {
+        val = (val << 1) | u64::from(bit);
     }
-    out
+    val
 }
 
 fn area_pixel(src: &[u8], sw: usize, dx: usize, dy: usize, sx: f32, sy: f32) -> f32 {

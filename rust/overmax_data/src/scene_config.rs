@@ -51,26 +51,26 @@ impl Default for GlobalRoiConfig {
         // ResultFreestyle ROI
         let mut result_freestyle_rois = HashMap::new();
         result_freestyle_rois.insert("jacket".to_string(), RoiRect { x: 705, y: 14, width: 60, height: 60 });
-        result_freestyle_rois.insert("rate".to_string(), RoiRect { x: 880, y: 660, width: 140, height: 35 });
+        result_freestyle_rois.insert("rate".to_string(), RoiRect { x: 891, y: 608, width: 109, height: 32 });
         result_freestyle_rois.insert("mode".to_string(), RoiRect { x: 5, y: 18, width: 335, height: 75 });
-        result_freestyle_rois.insert("diff_panel".to_string(), RoiRect { x: 723, y: 75, width: 74, height: 33 });
-        result_freestyle_rois.insert("max_combo_badge".to_string(), RoiRect { x: 1050, y: 630, width: 200, height: 180 });
+        result_freestyle_rois.insert("diff_panel".to_string(), RoiRect { x: 707, y: 84, width: 93, height: 21 });
+        result_freestyle_rois.insert("max_combo_badge".to_string(), RoiRect { x: 1027, y: 524, width: 75, height: 73 });
         scenes.insert(SceneType::ResultFreestyle, SceneRoiConfig { rois: result_freestyle_rois });
  
         // ResultOpen3 ROI (오픈매치 3인+)
         let mut result_open3_rois = HashMap::new();
         result_open3_rois.insert("jacket".to_string(), RoiRect { x: 705, y: 14, width: 60, height: 60 });
-        result_open3_rois.insert("rate".to_string(), RoiRect { x: 370, y: 670, width: 140, height: 35 });
-        result_open3_rois.insert("mode_diff_badge".to_string(), RoiRect { x: 290, y: 830, width: 280, height: 40 });
-        result_open3_rois.insert("max_combo_badge".to_string(), RoiRect { x: 230, y: 560, width: 90, height: 80 });
+        result_open3_rois.insert("rate".to_string(), RoiRect { x: 293, y: 673, width: 107, height: 30 });
+        result_open3_rois.insert("mode_diff_badge".to_string(), RoiRect { x: 212, y: 830, width: 316, height: 39 });
+        result_open3_rois.insert("max_combo_badge".to_string(), RoiRect { x: 439, y: 591, width: 73, height: 73 });
         scenes.insert(SceneType::ResultOpen3, SceneRoiConfig { rois: result_open3_rois });
  
         // ResultOpen2 ROI (오픈매치 2인)
         let mut result_open2_rois = HashMap::new();
         result_open2_rois.insert("jacket".to_string(), RoiRect { x: 705, y: 14, width: 60, height: 60 });
-        result_open2_rois.insert("rate".to_string(), RoiRect { x: 370, y: 670, width: 140, height: 35 });
-        result_open2_rois.insert("mode_diff_badge".to_string(), RoiRect { x: 290, y: 830, width: 280, height: 40 });
-        result_open2_rois.insert("max_combo_badge".to_string(), RoiRect { x: 230, y: 560, width: 90, height: 80 });
+        result_open2_rois.insert("rate".to_string(), RoiRect { x: 403, y: 673, width: 107, height: 31 });
+        result_open2_rois.insert("mode_diff_badge".to_string(), RoiRect { x: 312, y: 830, width: 315, height: 40 });
+        result_open2_rois.insert("max_combo_badge".to_string(), RoiRect { x: 539, y: 591, width: 73, height: 73 });
         scenes.insert(SceneType::ResultOpen2, SceneRoiConfig { rois: result_open2_rois });
 
         Self { scenes }

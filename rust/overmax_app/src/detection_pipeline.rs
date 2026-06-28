@@ -321,6 +321,23 @@ impl DetectionPipeline {
             }
         }
         
+        let is_prev_result = matches!(
+            self.last_logo_scene,
+            SceneType::ResultFreestyle | SceneType::ResultOpen3 | SceneType::ResultOpen2
+        );
+
+        if scene_res == SceneType::Unknown && is_prev_result {
+            let norm_logo = raw_text.to_uppercase();
+            let has_logo_keyword = norm_logo.contains("BUTTON")
+                || norm_logo.contains("TUNES")
+                || norm_logo.contains("TIJNFS")
+                || norm_logo.contains("TUNE");
+            if has_logo_keyword {
+                scene_res = self.last_logo_scene;
+                println!("    [detect_logo_if_due] Lock-in: keeping previous result scene {:?} due to logo keyword match", scene_res);
+            }
+        }
+
         let is_detected_result = matches!(
             scene_res,
             SceneType::ResultFreestyle | SceneType::ResultOpen3 | SceneType::ResultOpen2

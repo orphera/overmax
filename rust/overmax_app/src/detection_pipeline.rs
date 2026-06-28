@@ -528,9 +528,11 @@ mod tests {
         let db_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cache/image_index.db");
         let db_path_str = db_path.to_str().unwrap();
         let mut db = ImageIndexDb::new(db_path_str, 0.6);
-        let loaded = db.load().expect("Failed to load image index db");
-        println!("Loaded {} images from image_index.db", loaded);
+        let _ = db.load();
+        
         let mut pipeline = DetectionPipeline::new(db);
+        let roi_dir = scratch_dir.join("roi");
+        std::fs::create_dir_all(&roi_dir).unwrap();
 
         for img_name in &images {
             let path = scratch_dir.join(img_name);
@@ -560,127 +562,59 @@ mod tests {
             };
 
             pipeline.rois.update_window_size(w as i32, h as i32);
-            let logo_roi = pipeline.rois.get_roi("logo").unwrap();
-            let logo_img = crop_roi(&frame, logo_roi).unwrap();
-            
-            // Public logo OCR attempt
-            let (logo_scene, logo_txt, _logo_label) = pipeline.ocr.detect_logo(&logo_img);
+            pipeline.reset_on_screen_exit();
 
-            // Entire screen OCR disabled for speed
-            // let entire_region = crate::frame_utils::ImageRegion {
-            //     bgra: frame.bgra.clone(),
-            //     width: w as i32,
-            //     height: h as i32,
-            // };
-            // let _entire_txt = pipeline.ocr.recognize_text_color(&entire_region).unwrap_or_default();
-
-            // Public bottom guide OCR attempt (if logo is Unknown)
-            let mut has_space = false;
-            let mut bottom_text_opt = None;
-            if let Some(bottom_roi) = pipeline.rois.get_roi("bottom_guide") {
-                if let Some(bottom_img) = crop_roi(&frame, bottom_roi) {
-                    has_space = pipeline.ocr.detect_bottom_guide_space(&bottom_img);
-                    bottom_text_opt = pipeline.ocr.recognize_text_color(&bottom_img);
-                }
-            }
-
-            println!("  [Test ROI Crops]");
-            // Test ResultFreestyle ROIs
-            pipeline.rois.set_scene(SceneType::ResultFreestyle);
-            if let Some(mode_roi) = pipeline.rois.get_roi("mode") {
-                if let Some(mode_img) = crop_roi(&frame, mode_roi) {
-                    let txt = pipeline.ocr.recognize_text_all_passes(&mode_img).unwrap_or_default();
-                    println!("    ResultFreestyle mode roi size: {}x{}, OCR: '{}'", mode_img.width, mode_img.height, txt);
-                }
-            }
-            if let Some(diff_roi) = pipeline.rois.get_roi("diff_panel") {
-                if let Some(diff_img) = crop_roi(&frame, diff_roi) {
-                    let txt = pipeline.ocr.recognize_text_all_passes(&diff_img).unwrap_or_default();
-                    println!("    ResultFreestyle diff_panel roi size: {}x{}, OCR: '{}'", diff_img.width, diff_img.height, txt);
-                }
-            }
-            
-            // Test ResultOpen3 ROIs
-            pipeline.rois.set_scene(SceneType::ResultOpen3);
-            if let Some(badge_roi) = pipeline.rois.get_roi("mode_diff_badge") {
-                let expanded_roi = crate::roi::RoiRect {
-                    x1: badge_roi.x1 - 15,
-                    y1: badge_roi.y1 - 15,
-                    x2: badge_roi.x2 + 15,
-                    y2: badge_roi.y2 + 15,
-                };
-                if let Some(badge_img) = crop_roi(&frame, expanded_roi) {
-                    let txt = pipeline.ocr.recognize_text_all_passes(&badge_img).unwrap_or_default();
-                    println!("    ResultOpen3 mode_diff_badge (expanded 15px) size: {}x{}, OCR: '{}'", badge_img.width, badge_img.height, txt);
-                }
-                if let Some(badge_img) = crop_roi(&frame, badge_roi) {
-                    let txt = pipeline.ocr.recognize_text_all_passes(&badge_img).unwrap_or_default();
-                    println!("    ResultOpen3 mode_diff_badge (normal) size: {}x{}, OCR: '{}'", badge_img.width, badge_img.height, txt);
-                }
-            }
-
-            // Test ResultOpen2 ROIs
-            pipeline.rois.set_scene(SceneType::ResultOpen2);
-            if let Some(badge_roi) = pipeline.rois.get_roi("mode_diff_badge") {
-                let expanded_roi = crate::roi::RoiRect {
-                    x1: badge_roi.x1 - 15,
-                    y1: badge_roi.y1 - 15,
-                    x2: badge_roi.x2 + 15,
-                    y2: badge_roi.y2 + 15,
-                };
-                if let Some(badge_img) = crop_roi(&frame, expanded_roi) {
-                    let txt = pipeline.ocr.recognize_text_all_passes(&badge_img).unwrap_or_default();
-                    println!("    ResultOpen2 mode_diff_badge (expanded 15px) size: {}x{}, OCR: '{}'", badge_img.width, badge_img.height, txt);
-                }
-                if let Some(badge_img) = crop_roi(&frame, badge_roi) {
-                    let txt = pipeline.ocr.recognize_text_all_passes(&badge_img).unwrap_or_default();
-                    println!("    ResultOpen2 mode_diff_badge (normal) size: {}x{}, OCR: '{}'", badge_img.width, badge_img.height, txt);
-                }
-            }
-
-            println!("==================================================");
-            println!("IMAGE: {}", img_name);
-            println!("Resolution: {}x{}", w, h);
-            println!("OCR Logo Final Match:        '{}' (Scene={:?})", logo_txt, logo_scene);
-            println!("OCR Bottom Space Detected: {} (Text={:?})", has_space, bottom_text_opt);
-            // println!("Entire Screen OCR Text:\n{}", entire_txt);
-
-            // Run detection
-            pipeline.result_scene_streak = 0;
-            pipeline.last_detected_result_scene = SceneType::Unknown;
-            pipeline.last_logo_scene = SceneType::Unknown;
-            pipeline.last_logo_ocr_ts = 0.0;
-            pipeline.hysteresis = HysteresisBuffer::new(5, 0.6, 3, 0.4, 3);
-            pipeline.play_state.reset();
-            pipeline.current_song_id = None;
-            pipeline.last_jacket_ts = 0.0;
-            pipeline.last_jacket_match_ts = 0.0;
-            pipeline.last_jacket_thumb = None;
-
-            let mut final_out = None;
+            // 1. Detect final stable scene
+            let mut final_scene = SceneType::Unknown;
             for step in 0..10 {
                 let t = step as f64 * 0.4;
-                let out = pipeline.detect(&frame, t);
-                println!("  Step {}: scene_out={:?}, logo_det={}, is_song_sel={}, streak={}, last_det_res={:?}, last_logo={:?}, jacket={:?}, song_id={:?}, ctx={:?}",
-                         step,
-                         pipeline.last_logo_scene,
-                         out.logo_detected,
-                         out.is_song_select,
-                         pipeline.result_scene_streak,
-                         pipeline.last_detected_result_scene,
-                         pipeline.last_logo_scene,
-                         out.jacket_status,
-                         out.current_song_id,
-                         out.state.context);
-                final_out = Some(out);
+                let _ = pipeline.detect(&frame, t);
+                final_scene = pipeline.last_logo_scene;
+            }
+            println!("IMAGE: {} -> Detected Scene: {:?}", img_name, final_scene);
+
+            // 2. Build ROI name list for current scene
+            let mut roi_names = vec!["logo".to_string(), "bottom_guide".to_string()];
+            if let Some(cfg) = pipeline.rois.config.scenes.get(&final_scene) {
+                for name in cfg.rois.keys() {
+                    roi_names.push(name.clone());
+                }
+            }
+            if final_scene == SceneType::Freestyle || final_scene == SceneType::OpenMatch || final_scene == SceneType::LadderMatch {
+                for diff in ["NM", "HD", "MX", "SC"] {
+                    roi_names.push(format!("diff_panel_{}", diff));
+                }
             }
 
-            let out = final_out.unwrap();
-            println!("Pipeline Detected Scene: {:?}", pipeline.last_logo_scene);
-            println!("Is Song Select: {}", out.is_song_select);
-            println!("Jacket status: {:?}", out.jacket_status);
-            println!("PlayContext: {:?}", out.state.context);
-            println!("Is Stable: {}", out.state.is_stable);
+            // 3. Crop and save each ROI
+            for roi_name in roi_names {
+                let roi_rect = if roi_name.starts_with("diff_panel_") {
+                    let diff_name = roi_name.strip_prefix("diff_panel_").unwrap();
+                    pipeline.rois.get_diff_panel_roi_for_scene(diff_name, final_scene)
+                } else {
+                    pipeline.rois.get_roi_for_scene(&roi_name, final_scene)
+                };
+
+                let Some(roi) = roi_rect else { continue; };
+
+                let Some(cropped) = crop_roi(&frame, roi) else { continue; };
+
+                let mut rgba = cropped.bgra.clone();
+                for chunk in rgba.chunks_exact_mut(4) {
+                    chunk.swap(0, 2); // BGR -> RGB
+                }
+
+                let out_filename = format!("{}_{}.png", img_name.strip_suffix(".png").unwrap_or(img_name), roi_name);
+                let out_path = roi_dir.join(out_filename);
+                image::save_buffer(
+                    &out_path,
+                    &rgba,
+                    cropped.width as u32,
+                    cropped.height as u32,
+                    image::ColorType::Rgba8
+                ).expect("Failed to save cropped image");
+                println!("    Saved ROI '{}' to {:?}", roi_name, out_path);
+            }
         }
     }
 }

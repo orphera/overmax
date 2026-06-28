@@ -32,7 +32,7 @@ pub struct RoiManager {
     offset_x: i32,
     offset_y: i32,
     current_scene: SceneType,
-    config: GlobalRoiConfig,
+    pub(crate) config: GlobalRoiConfig,
 }
 
 impl RoiManager {

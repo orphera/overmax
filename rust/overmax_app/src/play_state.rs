@@ -88,14 +88,7 @@ impl PlayStateDetector {
                         }
                     }
                     if let Some(diff_roi) = rois.get_roi("diff_panel") {
-                        // 세로 해상도가 17px로 너무 낮아 OCR 엔진이 텍스트 영역 인지에 실패하므로 위아래 마진(패딩)을 추가하여 크롭합니다.
-                        let expanded_roi = crate::roi::RoiRect {
-                            x1: diff_roi.x1 - 5,
-                            y1: diff_roi.y1 - 8,
-                            x2: diff_roi.x2 + 5,
-                            y2: diff_roi.y2 + 8,
-                        };
-                        if let Some(diff_img) = crop_roi(frame, expanded_roi) {
+                        if let Some(diff_img) = crop_roi(frame, diff_roi) {
                             if let Some(text) = ocr.recognize_text_all_passes(&diff_img) {
                                 println!("    [detect] Freestyle diff OCR raw: '{}'", text);
                                 let norm = text.to_lowercase();
@@ -112,14 +105,7 @@ impl PlayStateDetector {
                 SceneType::ResultOpen3 | SceneType::ResultOpen2 => {
                     let mut badge_text = None;
                     if let Some(badge_roi) = rois.get_roi("mode_diff_badge") {
-                        // 뱃지 영역이 텍스트 중간에 잘리는 것을 막고 OCR 정확도를 위해 좌우 10px, 상하 5px 마진을 더해 통째로 읽습니다.
-                        let expanded_roi = crate::roi::RoiRect {
-                            x1: badge_roi.x1 - 10,
-                            y1: badge_roi.y1 - 5,
-                            x2: badge_roi.x2 + 10,
-                            y2: badge_roi.y2 + 5,
-                        };
-                        if let Some(badge_img) = crop_roi(frame, expanded_roi) {
+                        if let Some(badge_img) = crop_roi(frame, badge_roi) {
                             if let Some(txt) = ocr.recognize_text_all_passes(&badge_img) {
                                 println!("    [detect] ResultOpen mode_diff_badge OCR raw: '{}'", txt);
                                 badge_text = Some(txt);

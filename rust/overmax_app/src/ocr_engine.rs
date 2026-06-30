@@ -110,36 +110,15 @@ impl OcrDetector {
         Some((val, txt, telemetry))
     }
 
+    /// Rate 영역을 감지합니다.
+    ///
+    /// # 가드레일 (CRITICAL GUARDRAIL)
+    /// 인게임 실시간 성능 보호를 위해 **반드시 단일 패스(1-Pass) 실행만 수행**해야 합니다.
+    /// 절대로 3-pass 등의 다중 패스 루프를 이곳에 재도입하지 마십시오. (AGENTS.md 및 CONTEXT.md 제약 조건)
+    /// OCR 인식 실패나 오작동 대응은 `PlayStateDetector`의 히스토리 버퍼(`stable_raw` 다수결)를 통해 해결합니다.
     pub fn detect_rate(&self, rate: &ImageRegion) -> (Option<f32>, String, Option<OcrTelemetry>) {
-        let mut fallback = None;
-        // Pass 1: Color OCR
-        if let Some((val, txt, tel)) = self.attempt_rate_ocr(rate, true, false) {
-            if val.is_some() {
-                return (val, txt, Some(tel));
-            }
-            if !txt.is_empty() && fallback.is_none() {
-                fallback = Some((val, txt, tel));
-            }
-        }
-        // Pass 2: Grayscale OCR (auto-invert)
+        // 단일 패스: Grayscale Auto-Invert OCR (가장 인식 강건성이 높음)
         if let Some((val, txt, tel)) = self.attempt_rate_ocr(rate, false, false) {
-            if val.is_some() {
-                return (val, txt, Some(tel));
-            }
-            if !txt.is_empty() && fallback.is_none() {
-                fallback = Some((val, txt, tel));
-            }
-        }
-        // Pass 3: Grayscale OCR (forced opposite invert)
-        if let Some((val, txt, tel)) = self.attempt_rate_ocr(rate, false, true) {
-            if val.is_some() {
-                return (val, txt, Some(tel));
-            }
-            if !txt.is_empty() && fallback.is_none() {
-                fallback = Some((val, txt, tel));
-            }
-        }
-        if let Some((val, txt, tel)) = fallback {
             (val, txt, Some(tel))
         } else {
             (None, String::new(), None)

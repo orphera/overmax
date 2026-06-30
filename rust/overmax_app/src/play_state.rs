@@ -179,11 +179,42 @@ impl PlayStateDetector {
 
                     if should_ocr && now - self.last_rate_ocr_ts >= 0.20 {
                         if let Some(rate_img) = crop_roi(frame, rate_roi) {
-                            let res = ocr.detect_rate(&rate_img);
-                            println!("    [detect] rate OCR run. rate={:?}, text='{}'", res.0, res.1);
-                            self.last_rate_result = res;
-                            self.last_rate_checksum = current_checksum;
+                            let mut rate_res = ocr.detect_rate(&rate_img);
                             self.last_rate_ocr_ts = now;
+
+                            // 결과창인 경우 Score OCR을 통한 크로스 검증 수행
+                            if is_result {
+                                if let Some(score_roi) = rois.get_roi("score") {
+                                    if let Some(score_img) = crop_roi(frame, score_roi) {
+                                        if let Some(score_val) = ocr.detect_score(&score_img) {
+                                            println!("    [detect] score OCR run. score={}", score_val);
+                                            let calc_rate = score_val as f32 / 10000.0;
+                                            if (0.0..=100.0).contains(&calc_rate) {
+                                                match rate_res.0 {
+                                                    Some(r) => {
+                                                        // 두 값의 오차가 0.05% 이내이거나 일정한 경우 보정
+                                                        if (r - calc_rate).abs() < 0.05 {
+                                                            rate_res.0 = Some((calc_rate * 100.0).floor() / 100.0);
+                                                        } else {
+                                                            // 오차가 큰 경우 인식 강건성이 우수한 score 역산값을 우선 신뢰
+                                                            println!("    [detect] Rate/Score mismatch (Rate: {}, Score: {}). Trusting score.", r, score_val);
+                                                            rate_res.0 = Some((calc_rate * 100.0).floor() / 100.0);
+                                                        }
+                                                    }
+                                                    None => {
+                                                        // Rate OCR 실패 시 Score 역산값으로 메꿈
+                                                        rate_res.0 = Some((calc_rate * 100.0).floor() / 100.0);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            println!("    [detect] rate OCR run. rate={:?}, text='{}'", rate_res.0, rate_res.1);
+                            self.last_rate_result = rate_res;
+                            self.last_rate_checksum = current_checksum;
                         }
                     }
 

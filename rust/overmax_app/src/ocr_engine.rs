@@ -125,6 +125,16 @@ impl OcrDetector {
         }
     }
 
+    /// Score 영역을 단일 패스(Grayscale Auto-Invert)로 감지하여 정수로 파싱합니다.
+    pub fn detect_score(&self, score: &ImageRegion) -> Option<u32> {
+        // Grayscale 1-pass (auto-invert=false, binarize=false) 호출
+        if let Ok(text) = self.engine.recognize_logo(score, false, false) {
+            parse_score_text(&text)
+        } else {
+            None
+        }
+    }
+
     pub fn recognize_text_color(&self, region: &ImageRegion) -> Option<String> {
         self.engine.recognize_logo_color(region).ok()
     }
@@ -389,6 +399,13 @@ fn recognize_bmp(engine: &OcrEngine, bmp: &[u8]) -> Result<String, String> {
     Ok(text)
 }
 
+fn parse_score_text(text: &str) -> Option<u32> {
+    let clean = text.chars()
+        .filter(|c| c.is_ascii_digit())
+        .collect::<String>();
+    clean.parse::<u32>().ok()
+}
+
 fn parse_rate_text(text: &str) -> Option<f32> {
     let mut cleaned = String::new();
     let mut dot_seen = false;
@@ -469,7 +486,14 @@ fn to_err(err: windows::core::Error) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_logo_keyword_match, normalize_alnum, parse_rate_text};
+    use super::{is_logo_keyword_match, normalize_alnum, parse_rate_text, parse_score_text};
+
+    #[test]
+    fn parses_score_text_correctly() {
+        assert_eq!(parse_score_text("999,800"), Some(999800));
+        assert_eq!(parse_score_text("1,000,000"), Some(1000000));
+        assert_eq!(parse_score_text("abc"), None);
+    }
 
     #[test]
     fn parses_rate_text_like_python_path() {

@@ -55,6 +55,7 @@ pub struct DetectionPipeline {
     last_jacket_thumb: Option<Vec<u8>>,
     result_scene_streak: u32,
     last_detected_result_scene: SceneType,
+    last_played_song_id: Option<u32>,
 }
 
 impl DetectionPipeline {
@@ -75,6 +76,7 @@ impl DetectionPipeline {
             last_jacket_thumb: None,
             result_scene_streak: 0,
             last_detected_result_scene: SceneType::Unknown,
+            last_played_song_id: None,
         }
     }
 
@@ -134,6 +136,15 @@ impl DetectionPipeline {
         let confidence = self.hysteresis.confidence;
 
         if !is_song_select {
+            // 선곡 화면에서 플레이 진입(이탈) 시, 직전의 곡 ID를 플레이 이력으로 기록
+            if self.hysteresis.is_active && self.current_song_id.is_some() {
+                self.last_played_song_id = self.current_song_id;
+                println!("    [process_frame_shared] Saved last_played_song_id={:?} upon gameplay entry", self.last_played_song_id);
+            }
+            // 결과창 상태를 완전히 빠져나가는 경우에도 플레이 이력 소멸
+            if !is_result {
+                self.last_played_song_id = None;
+            }
             self.reset_on_screen_exit();
             return self.output(
                 logo_detected,
@@ -147,6 +158,11 @@ impl DetectionPipeline {
         }
 
         if is_leaving {
+            // 선곡 화면에서 나갈 때도 플레이 이력 확보
+            if self.current_song_id.is_some() {
+                self.last_played_song_id = self.current_song_id;
+                println!("    [process_frame_shared] Saved last_played_song_id={:?} upon leaving", self.last_played_song_id);
+            }
             return self.output(
                 logo_detected,
                 true,
@@ -156,6 +172,11 @@ impl DetectionPipeline {
                 JacketMatchStatus::Leaving,
                 None,
             );
+        }
+
+        // 결과창에서 다시 선곡 화면으로 복귀하는 경우 플레이 이력 리셋
+        if !is_result {
+            self.last_played_song_id = None;
         }
 
         let jacket_status = self.update_song_id_from_jacket(frame, now);
@@ -255,6 +276,18 @@ impl DetectionPipeline {
         );
 
         if is_detected_result {
+            // 플레이 이력(최근 플레이한 곡 ID)이 존재하는 경우에만 결과창 진입을 허용하여 COLLECTION 화면 등에서의 오인식 방지
+            if self.last_played_song_id.is_none() {
+                scene_res = SceneType::Unknown;
+            }
+        }
+
+        let is_detected_result_final = matches!(
+            scene_res,
+            SceneType::ResultFreestyle | SceneType::ResultOpen3 | SceneType::ResultOpen2
+        );
+
+        if is_detected_result_final {
             if scene_res == self.last_detected_result_scene {
                 self.result_scene_streak += 1;
             } else {

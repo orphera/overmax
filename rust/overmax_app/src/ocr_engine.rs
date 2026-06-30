@@ -46,42 +46,14 @@ impl OcrDetector {
     pub fn is_available(&self) -> bool {
         self.engine.is_available()
     }
+    /// 상단 로고 영역을 단일 패스(Color)로 감지하여 씬을 판별합니다.
     pub fn detect_logo(&self, logo: &ImageRegion) -> (SceneType, String, String) {
-        // 1. Try Color OCR
-        let mut color_txt = String::new();
+        // 단일 패스: Color OCR (성능 향상을 위한 1-pass 단일화)
         if let Ok(t) = self.engine.recognize_logo_color(logo) {
-            color_txt = t.clone();
             if let Some((scene, _)) = match_logo_scene(&t) {
                 return (scene, t, scene_label(scene));
             }
         }
-        // 2. Try Grayscale (no binarization)
-        let mut gray_txt = String::new();
-        if let Ok(t) = self.engine.recognize_logo(logo, false, false) {
-            gray_txt = t.clone();
-            if let Some((scene, _)) = match_logo_scene(&t) {
-                return (scene, t, scene_label(scene));
-            }
-        }
-        // 3. Try Binarized normal
-        let mut bin_txt = String::new();
-        if let Ok(t) = self.engine.recognize_logo(logo, false, true) {
-            bin_txt = t.clone();
-            if let Some((scene, _)) = match_logo_scene(&t) {
-                return (scene, t, scene_label(scene));
-            }
-        }
-        // 4. Try Binarized inverted
-        let mut inv_txt = String::new();
-        if let Ok(t) = self.engine.recognize_logo(logo, true, true) {
-            inv_txt = t.clone();
-            if let Some((scene, _)) = match_logo_scene(&t) {
-                return (scene, t, scene_label(scene));
-            }
-        }
-
-        println!("    [detect_logo] all passes failed! color='{}', gray='{}', bin='{}', inv='{}'",
-                 color_txt.trim(), gray_txt.trim(), bin_txt.trim(), inv_txt.trim());
         (SceneType::Unknown, String::new(), "UNKNOWN".to_string())
     }
 
@@ -117,18 +89,18 @@ impl OcrDetector {
     /// 절대로 3-pass 등의 다중 패스 루프를 이곳에 재도입하지 마십시오. (AGENTS.md 및 CONTEXT.md 제약 조건)
     /// OCR 인식 실패나 오작동 대응은 `PlayStateDetector`의 히스토리 버퍼(`stable_raw` 다수결)를 통해 해결합니다.
     pub fn detect_rate(&self, rate: &ImageRegion) -> (Option<f32>, String, Option<OcrTelemetry>) {
-        // 단일 패스: Grayscale Auto-Invert OCR (가장 인식 강건성이 높음)
-        if let Some((val, txt, tel)) = self.attempt_rate_ocr(rate, false, false) {
+        // 단일 패스: Color OCR (사용자 경험 및 테스트 결과 가장 우수한 텍스트 품질 확보)
+        if let Some((val, txt, tel)) = self.attempt_rate_ocr(rate, true, false) {
             (val, txt, Some(tel))
         } else {
             (None, String::new(), None)
         }
     }
 
-    /// Score 영역을 단일 패스(Grayscale Auto-Invert)로 감지하여 정수로 파싱합니다.
+    /// Score 영역을 단일 패스(Color)로 감지하여 정수로 파싱합니다.
     pub fn detect_score(&self, score: &ImageRegion) -> Option<u32> {
-        // Grayscale 1-pass (auto-invert=false, binarize=false) 호출
-        if let Ok(text) = self.engine.recognize_logo(score, false, false) {
+        // Color 1-pass 호출 (Rate와 동일하게 Color 채널을 유지하여 인식 성능 극대화)
+        if let Ok(text) = self.engine.recognize_logo_color(score) {
             parse_score_text(&text)
         } else {
             None
@@ -493,6 +465,89 @@ mod tests {
         assert_eq!(parse_score_text("999,800"), Some(999800));
         assert_eq!(parse_score_text("1,000,000"), Some(1000000));
         assert_eq!(parse_score_text("abc"), None);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_color_vs_grayscale_ocr() {
+        use image::GenericImageView;
+        use crate::frame_utils::crop_roi;
+        use crate::roi::RoiManager;
+        use overmax_core::SceneType;
+
+        let scratch_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scratch");
+        let test_cases = [
+            ("hd_test_1.png", SceneType::ResultFreestyle),
+            ("hd_test_2.png", SceneType::ResultFreestyle),
+            ("hd_test_3.png", SceneType::ResultFreestyle),
+            ("hd_test_4.png", SceneType::ResultFreestyle),
+            ("hd_test_5.png", SceneType::ResultFreestyle),
+            ("hd_test_2p_1.png", SceneType::ResultOpen2),
+            ("hd_test_2p_2.png", SceneType::ResultOpen2),
+        ];
+
+        let detector = super::OcrDetector::new();
+        println!("\n=== OCR COLOR VS GRAYSCALE COMPARISON ===");
+
+        for (img_name, scene) in &test_cases {
+            let path = scratch_dir.join(img_name);
+            if !path.exists() {
+                continue;
+            }
+            let img = image::io::Reader::open(&path).expect("Failed to open file")
+                .with_guessed_format().expect("Failed to guess format")
+                .decode().expect("Failed to decode image");
+            let (w, h) = img.dimensions();
+            let mut bgra = vec![0u8; (w * h * 4) as usize];
+            for (x, y, pixel) in img.pixels() {
+                let idx = ((y * w + x) * 4) as usize;
+                bgra[idx] = pixel[2];     // B
+                bgra[idx + 1] = pixel[1]; // G
+                bgra[idx + 2] = pixel[0]; // R
+                bgra[idx + 3] = pixel[3]; // A
+            }
+            let frame = crate::screen_capture::CapturedFrame {
+                width: w as i32,
+                height: h as i32,
+                bgra,
+            };
+
+            let mut rois = RoiManager::new(w as i32, h as i32);
+            rois.set_scene(*scene);
+
+            println!("IMAGE: {}", img_name);
+
+            // Rate OCR 비교
+            if let Some(rate_roi) = rois.get_roi("rate") {
+                if let Some(rate_img) = crop_roi(&frame, rate_roi) {
+                    let color_res = detector.attempt_rate_ocr(&rate_img, true, false);
+                    let gray_res = detector.attempt_rate_ocr(&rate_img, false, false);
+                    
+                    println!("  [Rate-Color]     Parsed: {:?}, Text: '{}'", 
+                        color_res.as_ref().and_then(|r| r.0),
+                        color_res.as_ref().map(|r| r.1.trim()).unwrap_or("FAILED")
+                    );
+                    println!("  [Rate-Grayscale] Parsed: {:?}, Text: '{}'", 
+                        gray_res.as_ref().and_then(|r| r.0),
+                        gray_res.as_ref().map(|r| r.1.trim()).unwrap_or("FAILED")
+                    );
+                }
+            }
+
+            // Score OCR 비교
+            if let Some(score_roi) = rois.get_roi("score") {
+                if let Some(score_img) = crop_roi(&frame, score_roi) {
+                    let color_txt = detector.engine.recognize_logo_color(&score_img).unwrap_or_default();
+                    let gray_txt = detector.engine.recognize_logo(&score_img, false, false).unwrap_or_default();
+                    
+                    let color_score = super::parse_score_text(&color_txt);
+                    let gray_score = super::parse_score_text(&gray_txt);
+
+                    println!("  [Score-Color]    Parsed: {:?}, Text: '{}'", color_score, color_txt.trim());
+                    println!("  [Score-Gray]     Parsed: {:?}, Text: '{}'", gray_score, gray_txt.trim());
+                }
+            }
+        }
     }
 
     #[test]

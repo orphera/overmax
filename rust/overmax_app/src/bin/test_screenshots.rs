@@ -1,26 +1,38 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use image::GenericImageView;
 
 use overmax_app::screen_capture::CapturedFrame;
 use overmax_app::roi::RoiManager;
 use overmax_app::ocr_engine::OcrDetector;
 use overmax_app::frame_utils::crop_roi;
-use overmax_app::play_state::MIN_VALID_RATE;
 use overmax_core::SceneType;
 
-fn load_frame(path: &Path) -> CapturedFrame {
-    let img = image::open(path).expect("failed to open image");
+fn load_frame(path: &Path) -> Option<CapturedFrame> {
+    let img = match image::open(path) {
+        Ok(i) => i,
+        Err(e) => {
+            eprintln!("      [Error] Failed to open image '{}': {}", path.display(), e);
+            return None;
+        }
+    };
     let (w, h) = img.dimensions();
-    let mut rgba = img.to_rgba8().into_raw();
+    // 1920x1080 리사이즈 (hd_* 파일들의 해상도가 FHD가 아닐 경우 대비)
+    let img_resized = if w != 1920 || h != 1080 {
+        img.resize_exact(1920, 1080, image::imageops::FilterType::Lanczos3)
+    } else {
+        img
+    };
+    
+    let mut rgba = img_resized.to_rgba8().into_raw();
     for chunk in rgba.chunks_exact_mut(4) {
         chunk.swap(0, 2);
     }
-    CapturedFrame {
-        width: w as i32,
-        height: h as i32,
+    Some(CapturedFrame {
+        width: 1920,
+        height: 1080,
         bgra: rgba,
-    }
+    })
 }
 
 fn detect_scene_from_logo(frame: &CapturedFrame, ocr: &OcrDetector, rois: &RoiManager) -> SceneType {
@@ -37,40 +49,105 @@ fn detect_scene_from_logo(frame: &CapturedFrame, ocr: &OcrDetector, rois: &RoiMa
     scene
 }
 
-fn main() {
-    let screenshots_dir = Path::new("scratch/screenshots/converted");
-    if !screenshots_dir.exists() {
-        eprintln!("Error: Converted screenshots directory not found.");
+fn save_badge_crop(frame: &CapturedFrame, rois: &RoiManager, scene: SceneType, original_filename: &str) {
+    let badge_roi = match rois.get_roi_for_scene("max_combo_badge", scene) {
+        Some(roi) => roi,
+        None => return,
+    };
+    let Some(badge_img) = crop_roi(frame, badge_roi) else {
         return;
+    };
+    let scene_str = match scene {
+        SceneType::Freestyle => "freestyle",
+        SceneType::OpenMatch => "openmatch",
+        SceneType::ResultFreestyle => "result_freestyle",
+        SceneType::ResultOpen3 => "result_open3",
+        SceneType::ResultOpen2 => "result_open2",
+        _ => "unknown",
+    };
+    
+    // 대상 폴더 존재 확인
+    let dst_dir = Path::new("scratch/screenshots");
+    if !dst_dir.exists() {
+        fs::create_dir_all(dst_dir).unwrap();
     }
+    
+    let dst_name = format!("{}_mcbadge_{}", scene_str, original_filename);
+    // 확장자가 png가 아니면 png로 강제 변경
+    let dst_path = dst_dir.join(dst_name).with_extension("png");
+    
+    let mut bgra = badge_img.bgra.clone();
+    for chunk in bgra.chunks_exact_mut(4) {
+        chunk.swap(0, 2);
+    }
+    let rgba = bgra;
+    
+    let buf = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(
+        badge_img.width as u32,
+        badge_img.height as u32,
+        rgba
+    ).expect("failed to create image buffer");
+    let dynamic_img = image::DynamicImage::ImageRgba8(buf);
+    dynamic_img.save(&dst_path).expect("failed to save badge crop image");
+    println!("      Saved badge crop to: {}", dst_path.display());
+    if let Ok((phash, dhash, ahash)) = overmax_cv::compute_image_hashes(
+        &badge_img.bgra,
+        badge_img.width as usize,
+        badge_img.height as usize,
+        4
+    ) {
+        println!("      [Badge Hash] phash={:016x}, dhash={:016x}, ahash={:016x}", phash, dhash, ahash);
+    }
+}
+
+fn main() {
+    let mut paths: Vec<PathBuf> = Vec::new();
+    
+    // 1. converted 스크린샷 폴더 수집
+    let screenshots_dir = Path::new("scratch/screenshots/converted");
+    if screenshots_dir.exists() {
+        if let Ok(entries) = fs::read_dir(screenshots_dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("png") {
+                    let fname = path.file_name().unwrap().to_string_lossy().to_string();
+                    if !fname.contains("_mcbadge_") {
+                        paths.push(path);
+                    }
+                }
+            }
+        }
+    }
+    
+    // 2. scratch/hd_* 파일 수집
+    let scratch_dir = Path::new("scratch");
+    if scratch_dir.exists() {
+        if let Ok(entries) = fs::read_dir(scratch_dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                let fname = path.file_name().unwrap().to_string_lossy().to_lowercase();
+                if fname.starts_with("hd_") && (fname.ends_with(".png") || fname.ends_with(".jpg")) {
+                    paths.push(path);
+                }
+            }
+        }
+    }
+    
+    paths.sort_by_key(|p| p.file_name().unwrap().to_os_string());
+    println!("Found {} total files to process and crop.", paths.len());
     
     println!("--- Initializing OCR Detector ---");
     let ocr = OcrDetector::new();
-    if !ocr.is_available() {
-        eprintln!("Error: Windows OCR is not available on this system.");
-        return;
-    }
     
-    let mut entries: Vec<_> = fs::read_dir(screenshots_dir)
-        .expect("failed to read dir")
-        .filter_map(|e| e.ok())
-        .collect();
-    
-    // 파일명 정렬
-    entries.sort_by_key(|e| e.file_name());
-    
-    println!("Found {} screenshots to test.", entries.len());
-    
-    for entry in entries {
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("png") {
-            continue;
-        }
-        
+    for path in paths {
+        let filename = path.file_name().unwrap().to_string_lossy().to_string();
         println!("\n==================================================");
-        println!("Testing: {}", path.file_name().unwrap().to_string_lossy());
+        println!("Processing: {}", filename);
         
-        let frame = load_frame(&path);
+        let Some(frame) = load_frame(&path) else {
+            println!("  - Failed to load image. Skipping.");
+            continue;
+        };
         let mut rois = RoiManager::new(frame.width, frame.height);
         
         // 1. Logo 분석을 통해 씬 판별
@@ -78,27 +155,44 @@ fn main() {
         println!("  - Detected Scene: {:?}", scene);
         
         if scene == SceneType::Unknown {
-            // 파일명에 따라 임의 매칭 시도 (만약 로고 OCR이 실패한 경우 대비)
-            let fname = path.file_name().unwrap().to_string_lossy().to_lowercase();
+            let fname = filename.to_lowercase();
             if fname.contains("freestyle") {
                 scene = SceneType::Freestyle;
                 println!("  - (Fallback) Using Freestyle from filename");
             } else if fname.contains("open") || fname.contains("match") {
                 scene = SceneType::OpenMatch;
                 println!("  - (Fallback) Using OpenMatch from filename");
+            } else if fname.contains("hd_test_2p") {
+                scene = SceneType::ResultOpen2;
+                println!("  - (Fallback) Using ResultOpen2 from filename");
+            } else if fname.contains("hd_test_1") || fname.contains("hd_test_3") {
+                scene = SceneType::ResultOpen3;
+                println!("  - (Fallback) Using ResultOpen3 from filename");
+            } else if fname.contains("hd_test") {
+                scene = SceneType::ResultFreestyle;
+                println!("  - (Fallback) Using ResultFreestyle from filename");
             } else {
-                // 기본적으로 Freestyle과 OpenMatch 둘 다 테스트
-                println!("  - Scene Unknown. Running testing for both Freestyle and OpenMatch:");
-                for test_scene in &[SceneType::Freestyle, SceneType::OpenMatch] {
-                    println!("    --- Testing as Scene: {:?} ---", test_scene);
-                    rois.set_scene(*test_scene);
-                    run_roi_test(&frame, &ocr, &rois, *test_scene);
+                println!("  - Scene Unknown. Generating badge crops for all candidate scenes:");
+                let candidates = [
+                    SceneType::Freestyle,
+                    SceneType::OpenMatch,
+                    SceneType::ResultFreestyle,
+                    SceneType::ResultOpen2,
+                    SceneType::ResultOpen3,
+                ];
+                for &cand in &candidates {
+                    save_badge_crop(&frame, &rois, cand, &filename);
                 }
                 continue;
             }
         }
         
         rois.set_scene(scene);
+        
+        // 뱃지 영역 저장
+        save_badge_crop(&frame, &rois, scene, &filename);
+        
+        // Rate/Score 출력 테스트도 함께 수행
         run_roi_test(&frame, &ocr, &rois, scene);
     }
 }
@@ -111,11 +205,7 @@ fn run_roi_test(frame: &CapturedFrame, ocr: &OcrDetector, rois: &RoiManager, sce
             let res = ocr.detect_rate(&rate_img);
             rate_val = res.0;
             println!("    Rate ROI OCR Result: {:?}", res.0);
-        } else {
-            println!("    Failed to crop rate ROI");
         }
-    } else {
-        println!("    No rate ROI found for scene {:?}", scene);
     }
     
     // Score ROI 테스트
@@ -125,11 +215,7 @@ fn run_roi_test(frame: &CapturedFrame, ocr: &OcrDetector, rois: &RoiManager, sce
             let res = ocr.detect_score(&score_img);
             score_val = res;
             println!("    Score ROI OCR Result: {:?}", res);
-        } else {
-            println!("    Failed to crop score ROI");
         }
-    } else {
-        println!("    No score ROI found for scene {:?}", scene);
     }
     
     // 크로스 검증 로직 모사 및 보강 테스트
@@ -146,7 +232,7 @@ fn run_roi_test(frame: &CapturedFrame, ocr: &OcrDetector, rois: &RoiManager, sce
                 println!("    Calculated Rate from Score: {:.4}%", calc_rate);
                 
                 let is_valid_range = if is_song_select {
-                    (MIN_VALID_RATE..=100.0).contains(&calc_rate)
+                    (overmax_app::play_state::MIN_VALID_RATE..=100.0).contains(&calc_rate)
                 } else {
                     (0.0..=100.0).contains(&calc_rate)
                 };

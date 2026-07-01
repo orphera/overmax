@@ -349,55 +349,71 @@ pub fn detect_difficulty(frame: &CapturedFrame, rois: &RoiManager) -> (Option<St
     )
 }
 
+// 선곡창 Perfect Play (100.0%) 뱃지 대표 해시
+const TEMPLATE_SELECT_PERFECT_PHASH: u64 = 0xdca6ef1001714f9e;
+const TEMPLATE_SELECT_PERFECT_DHASH: u64 = 0xe4a5a484b4551545;
+const TEMPLATE_SELECT_PERFECT_AHASH: u64 = 0x3ffdf4600cdcdcb8;
+
+// 선곡창 Max Combo 뱃지 대표 해시
+const TEMPLATE_SELECT_MC_PHASH: u64 = 0xc25a6a8e372b67c8;
+const TEMPLATE_SELECT_MC_DHASH: u64 = 0x4909a11e9266a98f;
+const TEMPLATE_SELECT_MC_AHASH: u64 = 0x15f4f0073effff03;
+
+// 결과창 Perfect Play (100.0%) 뱃지 대표 해시
+const TEMPLATE_RESULT_PERFECT_PHASH: u64 = 0xdea7c998117c851e;
+const TEMPLATE_RESULT_PERFECT_DHASH: u64 = 0xd455544439b5b5a5;
+const TEMPLATE_RESULT_PERFECT_AHASH: u64 = 0x3fbdf4e014ddd450;
+
+// 결과창 Max Combo 뱃지 대표 해시
+const TEMPLATE_RESULT_MC_PHASH: u64 = 0xda5a52d2123b2fe8;
+const TEMPLATE_RESULT_MC_DHASH: u64 = 0x2929137dd4ef210f;
+const TEMPLATE_RESULT_MC_AHASH: u64 = 0xd4fce007fffffc00;
+
+fn calculate_hash_score(phash: u64, dhash: u64, ahash: u64, t_phash: u64, t_dhash: u64, t_ahash: u64) -> f32 {
+    let p_dist = (phash ^ t_phash).count_ones() as f32;
+    let d_dist = (dhash ^ t_dhash).count_ones() as f32;
+    let a_dist = (ahash ^ t_ahash).count_ones() as f32;
+    0.5 * p_dist + 0.3 * d_dist + 0.2 * a_dist
+}
+
 pub fn detect_max_combo(frame: &CapturedFrame, rois: &RoiManager) -> bool {
     let Some(roi) = rois.get_roi("max_combo_badge") else {
         return false;
     };
-    let (b, g, r) = region_mean_bgr(frame, roi);
-    (f32::from(b) + f32::from(g) + f32::from(r)) / 3.0 >= 160.0
+    let Some(badge_img) = crop_roi(frame, roi) else {
+        return false;
+    };
+    let Ok((phash, dhash, ahash)) = overmax_cv::compute_image_hashes(
+        &badge_img.bgra,
+        badge_img.width as usize,
+        badge_img.height as usize,
+        4
+    ) else {
+        return false;
+    };
+    let score_perfect = calculate_hash_score(phash, dhash, ahash, TEMPLATE_SELECT_PERFECT_PHASH, TEMPLATE_SELECT_PERFECT_DHASH, TEMPLATE_SELECT_PERFECT_AHASH);
+    let score_mc = calculate_hash_score(phash, dhash, ahash, TEMPLATE_SELECT_MC_PHASH, TEMPLATE_SELECT_MC_DHASH, TEMPLATE_SELECT_MC_AHASH);
+    score_perfect <= 10.0 || score_mc <= 10.0
 }
 
 pub fn detect_max_combo_result(frame: &CapturedFrame, rois: &RoiManager) -> bool {
     let Some(roi) = rois.get_roi("max_combo_badge") else {
         return false;
     };
-    let w = frame.width as i32;
-    let h = frame.height as i32;
-    
-    let x1 = roi.x1.clamp(0, w);
-    let y1 = roi.y1.clamp(0, h);
-    let x2 = roi.x2.clamp(0, w);
-    let y2 = roi.y2.clamp(0, h);
-
-    let mut matching_pixels = 0;
-    for y in y1..y2 {
-        for x in x1..x2 {
-            let idx = ((y * w + x) * 4) as usize;
-            if idx + 2 >= frame.bgra.len() {
-                continue;
-            }
-            let b = frame.bgra[idx];
-            let g = frame.bgra[idx + 1];
-            let r = frame.bgra[idx + 2];
-            
-            // Mint color (Max Combo), Pink/Purple (Perfect Play), or Gold (Freestyle max combo)
-            let is_mint = g > 130 && b > 130 && r < 160 && (g as i32 - r as i32).abs() > 20;
-            let is_pink = r > 130 && b > 130 && g < 160 && (r as i32 - g as i32).abs() > 20;
-            let is_gold = r > 150 && g > 120 && b < 130 && (r as i32 - b as i32).abs() > 30;
-
-            if is_mint || is_pink || is_gold {
-                matching_pixels += 1;
-            }
-        }
-    }
-
-    let total_pixels = (x2 - x1) * (y2 - y1);
-    if total_pixels <= 0 {
+    let Some(badge_img) = crop_roi(frame, roi) else {
         return false;
-    }
-    
-    let ratio = matching_pixels as f32 / total_pixels as f32;
-    ratio >= 0.03
+    };
+    let Ok((phash, dhash, ahash)) = overmax_cv::compute_image_hashes(
+        &badge_img.bgra,
+        badge_img.width as usize,
+        badge_img.height as usize,
+        4
+    ) else {
+        return false;
+    };
+    let score_perfect = calculate_hash_score(phash, dhash, ahash, TEMPLATE_RESULT_PERFECT_PHASH, TEMPLATE_RESULT_PERFECT_DHASH, TEMPLATE_RESULT_PERFECT_AHASH);
+    let score_mc = calculate_hash_score(phash, dhash, ahash, TEMPLATE_RESULT_MC_PHASH, TEMPLATE_RESULT_MC_DHASH, TEMPLATE_RESULT_MC_AHASH);
+    score_perfect <= 10.0 || score_mc <= 10.0
 }
 
 fn button_colors() -> [ButtonColorEntry; 4] {

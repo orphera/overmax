@@ -98,3 +98,13 @@ pub fn preprocess_ocr_color_bgra_with_telemetry(
     image::validate_image(data, width, height, 4, "preprocess_ocr_color_bgra_with_telemetry")?;
     Ok(ocr::preprocess_color_bgra_with_telemetry(data, width, height))
 }
+
+pub fn detect_rect_edges(
+    data: &[u8],
+    width: usize,
+    height: usize,
+    margin: usize,
+) -> Result<f32, error::CvError> {
+    image::validate_image(data, width, height, 4, "detect_rect_edges")?;
+    Ok(image::detect_rect_edges(data, width, height, margin))
+}

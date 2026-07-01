@@ -239,10 +239,37 @@ impl DetectionPipeline {
         );
 
         if scene_res == SceneType::Unknown {
-            // 하단 가이드바 단축키에 의존하지 않고, 모드 배지(mode_diff_badge) 영역의 4B/5B/6B/8B 버튼 모드 키워드를 단독 앵커로 사용하여 오픈매치 결과창 씬 변별
+            // 하단 가이드바 단축키에 의존하지 않고, 모드 배지(mode_diff_badge) 영역 of 4B/5B/6B/8B 버튼 모드 키워드를 단독 앵커로 사용하여 오픈매치 결과창 씬 변별
             if let Some(fallback_scene) = self.check_open_match_badge(frame) {
                 scene_res = fallback_scene;
                 self.rois.set_scene(scene_res); // Sync configurations
+            }
+        }
+
+        // 로고 OCR과 오픈매치 뱃지 OCR이 모두 실패한 경우, 결과창 재킷 사각형의 엣지 디텍션으로 최종 구원
+        if scene_res == SceneType::Unknown {
+            if let Some(jacket_roi) = self.rois.get_roi_for_scene("jacket", SceneType::ResultFreestyle) {
+                let margin = 8;
+                let ext_roi = crate::roi::RoiRect {
+                    x1: jacket_roi.x1 - margin,
+                    y1: jacket_roi.y1 - margin,
+                    x2: jacket_roi.x2 + margin,
+                    y2: jacket_roi.y2 + margin,
+                };
+                if let Some(ext_img) = crop_roi(frame, ext_roi) {
+                    if let Ok(edge_strength) = overmax_cv::detect_rect_edges(
+                        &ext_img.bgra,
+                        ext_img.width as usize,
+                        ext_img.height as usize,
+                        margin as usize,
+                    ) {
+                        println!("    [detect_logo_if_due] Result screen jacket edge strength: {}", edge_strength);
+                        if edge_strength >= 15.0 {
+                            scene_res = SceneType::ResultFreestyle;
+                            println!("    [detect_logo_if_due] Bypassed logo OCR: Result screen detected via jacket edge strength!");
+                        }
+                    }
+                }
             }
         }
 
@@ -264,18 +291,6 @@ impl DetectionPipeline {
         );
 
         if is_detected_result {
-            // 플레이 이력(최근 플레이한 곡 ID)이 존재하는 경우에만 결과창 진입을 허용하여 COLLECTION 화면 등에서의 오인식 방지
-            if self.last_played_song_id.is_none() {
-                scene_res = SceneType::Unknown;
-            }
-        }
-
-        let is_detected_result_final = matches!(
-            scene_res,
-            SceneType::ResultFreestyle | SceneType::ResultOpen3 | SceneType::ResultOpen2
-        );
-
-        if is_detected_result_final {
             if scene_res == self.last_detected_result_scene {
                 self.result_scene_streak += 1;
             } else {
@@ -283,8 +298,43 @@ impl DetectionPipeline {
                 self.result_scene_streak = 1;
             }
 
+            // 1프레임 대기 후, 2프레임차에 최종 검증 수행
             if self.result_scene_streak >= 2 {
-                self.last_logo_scene = scene_res;
+                let mut allow_entry = true;
+
+                // 만약 플레이 이력이 없다면 결과창 재킷 매칭을 통해 2차 검증을 수행
+                if self.last_played_song_id.is_none() {
+                    allow_entry = false; // 기본적으로 차단
+                    if let Some(jacket_roi) = self.rois.get_roi_for_scene("jacket", scene_res) {
+                        if let Some(jacket_img) = crop_roi(frame, jacket_roi) {
+                            if let Some(match_res) = self.jacket_matcher.match_jacket(
+                                &jacket_img.bgra,
+                                jacket_img.width as usize,
+                                jacket_img.height as usize,
+                                4,
+                            ) {
+                                if let Ok(song_id) = match_res.image_id.parse::<u32>() {
+                                    println!(
+                                        "    [detect_logo_if_due] Result screen jacket verified. SongID={}, Similarity={}",
+                                        song_id, match_res.similarity
+                                    );
+                                    // 유실되었던 플레이 이력을 매칭된 곡 ID로 복구(Backfill)
+                                    self.last_played_song_id = Some(song_id);
+                                    allow_entry = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if allow_entry {
+                    self.last_logo_scene = scene_res;
+                } else {
+                    println!("    [detect_logo_if_due] Result screen jacket verification failed. Rejecting scene.");
+                    self.result_scene_streak = 0;
+                    self.last_detected_result_scene = SceneType::Unknown;
+                    self.last_logo_scene = SceneType::Unknown;
+                }
             }
         } else {
             self.result_scene_streak = 0;

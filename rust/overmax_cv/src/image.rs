@@ -236,3 +236,59 @@ fn median_without_dc(values: &[f32]) -> f32 {
     sorted.sort_by(|a, b| a.total_cmp(b));
     sorted[sorted.len() / 2]
 }
+
+pub fn detect_rect_edges(
+    data: &[u8],
+    width: usize,
+    height: usize,
+    margin: usize,
+) -> f32 {
+    if width <= margin * 2 + 4 || height <= margin * 2 + 4 {
+        return 0.0;
+    }
+    let gray = to_gray(data, 4);
+
+    let mut sum_diff = 0.0;
+    let mut count = 0;
+
+    let x_left = margin;
+    let x_right = width - margin;
+    let y_top = margin;
+    let y_bottom = height - margin;
+
+    // 1. 좌측 및 우측 수직 경계선 엣지 감지
+    for y in y_top..y_bottom {
+        // 좌측 경계선
+        let idx_left = y * width + x_left;
+        let diff_left = (f32::from(gray[idx_left + 1]) - f32::from(gray[idx_left - 1])).abs();
+        sum_diff += diff_left;
+        count += 1;
+
+        // 우측 경계선
+        let idx_right = y * width + x_right;
+        let diff_right = (f32::from(gray[idx_right + 1]) - f32::from(gray[idx_right - 1])).abs();
+        sum_diff += diff_right;
+        count += 1;
+    }
+
+    // 2. 상단 및 하단 수평 경계선 엣지 감지
+    for x in x_left..x_right {
+        // 상단 경계선
+        let idx_top = y_top * width + x;
+        let diff_top = (f32::from(gray[idx_top + width]) - f32::from(gray[idx_top - width])).abs();
+        sum_diff += diff_top;
+        count += 1;
+
+        // 하단 경계선
+        let idx_bottom = y_bottom * width + x;
+        let diff_bottom = (f32::from(gray[idx_bottom + width]) - f32::from(gray[idx_bottom - width])).abs();
+        sum_diff += diff_bottom;
+        count += 1;
+    }
+
+    if count == 0 {
+        0.0
+    } else {
+        sum_diff / count as f32
+    }
+}

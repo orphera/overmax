@@ -346,7 +346,9 @@ fn parse_rate_text(text: &str) -> Option<f32> {
     // 소수점 셋째 자리 이하 무조건 버림(Truncate) 보정 적용하여 반올림 차단
     value = (value * 100.0).floor() / 100.0;
 
-    (0.0..=100.0).contains(&value).then_some(value)
+    // 유효한 실시간 기록으로 처리할 수 있는 최소 범위(MIN_VALID_RATE = 80.0%) 이상인 경우만 유효값으로 반환하고,
+    // 0.00%가 4.00% 또는 9.00% 노이즈로 완벽하게 잘못 오인식되는 수치 등은 스캔 시점에 원천 배제합니다.
+    (crate::play_state::MIN_VALID_RATE..=100.0).contains(&value).then_some(value)
 }
 
 fn normalize_alnum(text: &str) -> String {

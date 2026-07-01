@@ -128,7 +128,7 @@ impl OcrDetector {
     }
 
     pub fn recognize_text_all_passes(&self, region: &ImageRegion) -> Option<String> {
-        // Reverted to single-pass Color OCR to minimize CPU overhead as requested by user
+        // 단일 패스: Color OCR (인게임 성능 및 제약 조건을 준수하기 위해 단일 패스로 강제 유지합니다.)
         if let Ok(t) = self.engine.recognize_logo_color(region) {
             if !t.trim().is_empty() {
                 return Some(t);

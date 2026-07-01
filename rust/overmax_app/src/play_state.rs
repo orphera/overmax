@@ -57,11 +57,15 @@ impl PlayStateDetector {
         self.last_rate_checksum = None;
         self.last_rate_result = (None, String::new(), None);
         self.last_rate_ocr_ts = 0.0;
-        self.last_detected_mode = None;
-        self.last_detected_diff = None;
+        // 결과창 진입 시 복구용으로 사용하기 위해 last_detected_mode/diff 캐시는 reset 시에도 보존합니다.
         self.last_song_id = None;
         self.last_mode = None;
         self.last_diff = None;
+    }
+
+    pub fn clear_detected_cache(&mut self) {
+        self.last_detected_mode = None;
+        self.last_detected_diff = None;
     }
 
     pub fn detect(

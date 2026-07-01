@@ -179,6 +179,7 @@ impl DetectionPipeline {
         // 결과창에서 다시 선곡 화면으로 복귀하는 경우 플레이 이력 리셋
         if !is_result {
             self.last_played_song_id = None;
+            self.play_state.clear_detected_cache();
         }
 
         let jacket_status = self.update_song_id_from_jacket(frame, now);

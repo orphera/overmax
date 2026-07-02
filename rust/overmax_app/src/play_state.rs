@@ -156,6 +156,20 @@ impl PlayStateDetector {
                     _ => {}
                 }
 
+                if self.last_detected_mode.is_none() {
+                    self.last_detected_mode = self.last_mode.clone();
+                }
+                if self.last_detected_diff.is_none() {
+                    self.last_detected_diff = self.last_diff.clone();
+                }
+
+                if mode.is_none() {
+                    mode = self.last_detected_mode.clone();
+                }
+                if diff.is_none() {
+                    diff = self.last_detected_diff.clone();
+                }
+
                 if mode.is_some() && diff.is_some() {
                     self.last_detected_mode = mode.clone();
                     self.last_detected_diff = diff.clone();

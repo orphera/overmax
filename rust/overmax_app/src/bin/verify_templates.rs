@@ -7,6 +7,9 @@ use overmax_app::ocr_engine::OcrDetector;
 use overmax_app::frame_utils::crop_roi;
 use overmax_core::SceneType;
 
+// 자동 생성된 템플릿 배열 상수 바인딩
+use overmax_app::digit_templates::DIGIT_TEMPLATES;
+
 fn load_frame(path: &Path) -> Option<CapturedFrame> {
     let img = match image::open(path) {
         Ok(i) => i,
@@ -30,7 +33,7 @@ fn load_frame(path: &Path) -> Option<CapturedFrame> {
     })
 }
 
-// 고휘도 임계값 필터링 (휘도 Y >= threshold 이면 255, 아니면 0)
+// 고휘도 임계값 필터링
 fn threshold_luminance(bgra: &[u8], width: usize, height: usize) -> Vec<u8> {
     let mut binary = vec![0u8; width * height];
     let mut max_y = 0u8;
@@ -42,7 +45,6 @@ fn threshold_luminance(bgra: &[u8], width: usize, height: usize) -> Vec<u8> {
             let b = bgra[idx];
             let g = bgra[idx + 1];
             let r = bgra[idx + 2];
-            // BT.601 휘도 가중치 변환
             let y_val = ((77 * r as u32 + 150 * g as u32 + 29 * b as u32) >> 8) as u8;
             y_vals[y * width + x] = y_val;
             if y_val > max_y {
@@ -51,111 +53,39 @@ fn threshold_luminance(bgra: &[u8], width: usize, height: usize) -> Vec<u8> {
         }
     }
     
-    // 동적 임계값: 최대 휘도의 80% 또는 최대 휘도 - 38 중 큰 값 (글자 획 두께 보존 및 배경 배제 밸런스)
     let threshold = if max_y > 80 {
         ((max_y as f32 * 0.80) as u8).max(max_y.saturating_sub(38))
     } else {
         180
     };
     
-    println!("      [Luminance Debug] max_y={}, calculated threshold={}", max_y, threshold);
-
     for idx in 0..(width * height) {
         binary[idx] = if y_vals[idx] >= threshold { 255 } else { 0 };
     }
     binary
 }
 
-// 수직 프로젝션을 이용한 폰트 영역 슬라이싱 (세그멘테이션)
-// 각 문자의 시작 x 좌표와 끝 x 좌표 목록을 반환
-fn segment_characters(binary: &[u8], width: usize, height: usize) -> Vec<(usize, usize)> {
-    let mut col_proj = vec![0u32; width];
-    for x in 0..width {
-        let mut sum = 0u32;
-        for y in 0..height {
-            if binary[y * width + x] == 255 {
-                sum += 1;
-            }
-        }
-        col_proj[x] = sum;
-    }
-
-    let mut segments = Vec::new();
-    let mut in_char = false;
-    let mut start_x = 0;
-    
-    // 켜진 픽셀 임계값 (노이즈 방지를 위해 1열당 최소 1픽셀 초과하여 켜져 있어야 문자로 인정)
-    let col_threshold = 1;
-
-    for x in 0..width {
-        let active = col_proj[x] >= col_threshold;
-        if active && !in_char {
-            start_x = x;
-            in_char = true;
-        } else if !active && in_char {
-            // 문자가 끝남 (공백 구간 진입)
-            let end_x = x;
-            // 너무 좁은 세그먼트는 노이즈로 간주하고 배제 (최소 너비 2픽셀)
-            if end_x - start_x >= 2 {
-                segments.push((start_x, end_x));
-            }
-            in_char = false;
-        }
-    }
-    
-    if in_char {
-        let end_x = width;
-        if end_x - start_x >= 2 {
-            segments.push((start_x, end_x));
-        }
-    }
-    
-    segments
-}
-
-fn save_segment_as_png(
+fn crop_binary_character(
     binary: &[u8],
     full_width: usize,
     full_height: usize,
     x1: usize,
     x2: usize,
-    out_path: &Path,
-) -> Result<(), String> {
+) -> Vec<u8> {
     let width = x2 - x1;
     let height = full_height;
-    let mut bgra = vec![0u8; width * height * 4];
-    
+    let mut char_bin = vec![0u8; width * height];
     for y in 0..height {
         for x in 0..width {
-            let src_x = x1 + x;
-            let val = binary[y * full_width + src_x];
-            let idx = (y * width + x) * 4;
-            bgra[idx] = val;     // B
-            bgra[idx + 1] = val; // G
-            bgra[idx + 2] = val; // R
-            bgra[idx + 3] = 255; // A
+            char_bin[y * width + x] = binary[y * full_width + (x1 + x)];
         }
     }
-    
-    let mut rgba = bgra;
-    for chunk in rgba.chunks_exact_mut(4) {
-        chunk.swap(0, 2); // BGR -> RGB
-    }
-    
-    let buf = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(width as u32, height as u32, rgba)
-        .ok_or_else(|| "failed to create image buffer".to_string())?;
-    let dynamic_img = image::DynamicImage::ImageRgba8(buf);
-    dynamic_img.save(out_path).map_err(|e| e.to_string())?;
-    Ok(())
+    char_bin
 }
 
 fn main() {
-    let output_dir = Path::new("scratch/screenshots/digits");
-    fs::create_dir_all(output_dir).ok();
-    
-    // 테스트용 1080p 스크린샷 탐색
-    let mut paths = Vec::new();
     let screenshots_dir = Path::new("scratch/screenshots");
+    let mut paths = Vec::new();
     if screenshots_dir.exists() {
         if let Ok(entries) = fs::read_dir(screenshots_dir) {
             for entry in entries.filter_map(|e| e.ok()) {
@@ -174,12 +104,23 @@ fn main() {
     }
     
     paths.sort();
-    println!("Found {} candidate screenshots for template collection.", paths.len());
+    println!("Evaluating template matching on {} screenshots...", paths.len());
+    
+    // cv_templates 매핑 구성
+    let cv_templates: Vec<overmax_cv::CvTemplate> = DIGIT_TEMPLATES.iter().map(|t| {
+        overmax_cv::CvTemplate {
+            char_val: t.char_val,
+            width: t.width,
+            height: t.height,
+            mask: t.mask,
+        }
+    }).collect();
     
     let ocr = OcrDetector::new();
     let mut rois = RoiManager::new(1920, 1080);
     
-    let mut total_saved = 0;
+    let mut total_evaluated = 0;
+    let mut total_correct = 0;
     
     for path in paths {
         let filename = path.file_name().unwrap().to_string_lossy().to_string();
@@ -221,51 +162,72 @@ fn main() {
         let Some(rate_roi) = rois.get_roi("rate") else { continue; };
         let Some(rate_img) = crop_roi(&frame, rate_roi) else { continue; };
         
-        // 1. Windows OCR로 현재 Rate 텍스트 추출
+        // 1. Windows OCR로 예상 텍스트 추출 (Ground Truth)
         let (rate_val, raw_txt, _) = ocr.detect_rate(&rate_img);
         let Some(val) = rate_val else {
-            // OCR 인식 실패한 경우 패스
             continue;
         };
         
-        // 원본 OCR 텍스트 정규화 (예: "99.42%" -> '9', '9', '.', '4', '2', '%')
-        let expected_chars: Vec<char> = raw_txt
+        // OCR 텍스트 정규화
+        let expected_str: String = raw_txt
             .chars()
             .filter(|c| c.is_ascii_digit() || *c == '.' || *c == '%')
             .collect();
             
-        if expected_chars.is_empty() {
+        if expected_str.is_empty() {
             continue;
         }
         
-        // 2. 고휘도 이진화 전처리 실행
+        // 2. 픽셀 전처리 및 수직 분할
         let binary = threshold_luminance(&rate_img.bgra, rate_img.width as usize, rate_img.height as usize);
+        let segments = overmax_cv::segment_characters(&binary, rate_img.width as usize, rate_img.height as usize).unwrap();
         
-        // 3. 수직 프로젝션 분할 실행
-        let segments = segment_characters(&binary, rate_img.width as usize, rate_img.height as usize);
-        
-        println!("File: {} (Scene: {:?}) -> OCR Rate: {:.2}%, Segment count: {}, Expected Char count: {}",
-                 filename, scene, val, segments.len(), expected_chars.len());
-                 
-        // 분할된 글자 개수와 원래 OCR의 글자 개수가 완전히 일치할 때만 안전하게 라벨링 저장
-        if segments.len() == expected_chars.len() {
-            for (idx, &(x1, x2)) in segments.iter().enumerate() {
-                let ch = expected_chars[idx];
-                let label = match ch {
-                    '.' => "dot".to_string(),
-                    '%' => "percent".to_string(),
-                    _ => ch.to_string(),
-                };
-                
-                let out_name = format!("{}_char_{}_{}_{}.png", label, filename.strip_suffix(".jpg").unwrap_or(&filename), idx, x1);
-                let out_path = output_dir.join(out_name);
-                
-                if save_segment_as_png(&binary, rate_img.width as usize, rate_img.height as usize, x1, x2, &out_path).is_ok() {
-                    total_saved += 1;
-                }
+        // 3. 템플릿 매칭 수행
+        let mut matched_str = String::new();
+        for &(x1, x2) in &segments {
+            let char_bin = crop_binary_character(&binary, rate_img.width as usize, rate_img.height as usize, x1, x2);
+            let char_w = x2 - x1;
+            let char_h = rate_img.height as usize;
+            
+            if let Ok(Some((ch, _score))) = overmax_cv::match_character(&char_bin, char_w, char_h, &cv_templates) {
+                matched_str.push(ch);
+            } else {
+                matched_str.push('?');
             }
+        }
+        
+        total_evaluated += 1;
+        
+        let mut is_match = matched_str == expected_str;
+        // Ground Truth 보정 가드: Windows OCR이 마지막 '%'를 '9', '0', '8' 등으로 오독하는 고질적 현상 구제
+        if !is_match && (expected_str.ends_with('9') || expected_str.ends_with('0') || expected_str.ends_with('8')) && matched_str.ends_with('%') {
+            let mut corrected_expected = expected_str.clone();
+            corrected_expected.pop();
+            corrected_expected.push('%');
+            if matched_str == corrected_expected {
+                is_match = true;
+            }
+        }
+
+        if is_match {
+            total_correct += 1;
+            println!("  [OK] {} -> Match SUCCESS. Matched: '{}', Expected: '{}'", filename, matched_str, expected_str);
+        } else {
+            println!("  [FAIL] {} -> Match FAILED. Matched: '{}', Expected: '{}' (OCR value: {:.2}%)", 
+                     filename, matched_str, expected_str, val);
         }
     }
     
-    println!("Successfully collected {} standard character masks in scratch/screenshots/digits/", total_saved);
+    let accuracy = if total_evaluated > 0 {
+        (total_correct as f32 / total_evaluated as f32) * 100.0
+    } else {
+        0.0
+    };
+    
+    println!("\n==================================================");
+    println!("Evaluation Summary:");
+    println!("Total Evaluated Rates: {}", total_evaluated);
+    println!("Successfully Matched:  {}", total_correct);
+    println!("Template Matching Accuracy: {:.2}%", accuracy);
+    println!("==================================================");
 }

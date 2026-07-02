@@ -292,3 +292,141 @@ pub fn detect_rect_edges(
         sum_diff / count as f32
     }
 }
+
+pub struct CvTemplate<'a> {
+    pub char_val: char,
+    pub width: usize,
+    pub height: usize,
+    pub mask: &'a [u8],
+}
+
+pub fn resize_binary_nearest(
+    src: &[u8],
+    sw: usize,
+    sh: usize,
+    dw: usize,
+    dh: usize,
+) -> Vec<u8> {
+    let mut dst = vec![0u8; dw * dh];
+    if sw == 0 || sh == 0 || dw == 0 || dh == 0 {
+        return dst;
+    }
+    for dy in 0..dh {
+        let sy = (dy * sh) / dh;
+        let sy_clamped = sy.min(sh - 1);
+        for dx in 0..dw {
+            let sx = (dx * sw) / dw;
+            let sx_clamped = sx.min(sw - 1);
+            dst[dy * dw + dx] = src[sy_clamped * sw + sx_clamped];
+        }
+    }
+    dst
+}
+
+pub fn segment_characters(binary: &[u8], width: usize, height: usize) -> Vec<(usize, usize)> {
+    let mut col_proj = vec![0u32; width];
+    for x in 0..width {
+        let mut sum = 0u32;
+        for y in 0..height {
+            if binary[y * width + x] == 255 {
+                sum += 1;
+            }
+        }
+        col_proj[x] = sum;
+    }
+
+    let mut segments = Vec::new();
+    let mut in_char = false;
+    let mut start_x = 0;
+    
+    // 켜진 픽셀 임계값 (노이즈 방지를 위해 1열당 최소 3픽셀 이상 활성화하여 배경 잔여 노이즈 컷)
+    let col_threshold = 3;
+
+    for x in 0..width {
+        let active = col_proj[x] >= col_threshold;
+        if active && !in_char {
+            start_x = x;
+            in_char = true;
+        } else if !active && in_char {
+            let end_x = x;
+            if end_x - start_x >= 2 {
+                segments.push((start_x, end_x));
+            }
+            in_char = false;
+        }
+    }
+    
+    if in_char {
+        let end_x = width;
+        if end_x - start_x >= 2 {
+            segments.push((start_x, end_x));
+        }
+    }
+    
+    segments
+}
+
+pub fn match_character(
+    char_bin: &[u8],
+    char_w: usize,
+    char_h: usize,
+    templates: &[CvTemplate],
+) -> Option<(char, f32)> {
+    if char_w == 0 || char_h == 0 || templates.is_empty() {
+        return None;
+    }
+
+    let target_h = 32usize;
+    let target_w = ((char_w as f32 * target_h as f32 / char_h as f32).round()) as usize;
+    if target_w == 0 {
+        return None;
+    }
+
+    // 입력받은 세그먼트를 템플릿 비교 표준인 32px 높이로 리사이징
+    let resized_bin = resize_binary_nearest(char_bin, char_w, char_h, target_w, target_h);
+
+    let mut best_char = None;
+    let mut best_score = 0.0f32;
+
+    println!("      [Match Character Debug] Segment size: {}x{} -> target_w={}", char_w, char_h, target_w);
+
+    for t in templates {
+        // 폭이 너무 크게 차이나는 템플릿 배제 (오인식 억제 필터 - 자간 뭉개짐 편차를 고려하여 6px로 완화)
+        let diff_w = (t.width as isize - target_w as isize).abs();
+        if diff_w > 6 {
+            println!("        Template '{}' skipped due to width diff (t.w={}, seg.w={}, diff={})", t.char_val, t.width, target_w, diff_w);
+            continue;
+        }
+
+        // 템플릿의 가로 폭을 세그먼트 가로 폭(target_w)으로 1대1 일치화
+        let scaled_template = resize_binary_nearest(t.mask, t.width, t.height, target_w, target_h);
+
+        // 해밍 거리 (XOR 차이 픽셀 카운트 - 255와 1의 채널 스케일 불일치 규격화 해결)
+        let mut diff_pixels = 0usize;
+        let total_pixels = target_w * target_h;
+        for i in 0..total_pixels {
+            let a = if resized_bin[i] > 0 { 1u8 } else { 0u8 };
+            let b = if scaled_template[i] > 0 { 1u8 } else { 0u8 };
+            if a != b {
+                diff_pixels += 1;
+            }
+        }
+
+        let match_rate = (total_pixels - diff_pixels) as f32 / total_pixels as f32;
+        println!("        Template '{}': match_rate={:.2}% (diff_w={})", t.char_val, match_rate * 100.0, diff_w);
+        
+        if match_rate > best_score {
+            best_score = match_rate;
+            best_char = Some(t.char_val);
+        }
+    }
+
+    println!("      Best match: {:?} with score {:.2}%", best_char, best_score * 100.0);
+
+    // 최소 매칭 한계선인 65% 이상일 때만 정상 분류 값으로 통과
+    if best_score >= 0.65 {
+        best_char.map(|c| (c, best_score))
+    } else {
+        None
+    }
+}

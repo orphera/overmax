@@ -30,3 +30,4 @@ pub mod ui_command;
 pub mod updater;
 pub mod varchive_upload;
 pub mod window_tracker;
+pub mod digit_templates;

@@ -108,3 +108,22 @@ pub fn detect_rect_edges(
     image::validate_image(data, width, height, 4, "detect_rect_edges")?;
     Ok(image::detect_rect_edges(data, width, height, margin))
 }
+
+pub use image::CvTemplate;
+
+pub fn segment_characters(
+    binary: &[u8],
+    width: usize,
+    height: usize,
+) -> Result<Vec<(usize, usize)>, error::CvError> {
+    Ok(image::segment_characters(binary, width, height))
+}
+
+pub fn match_character(
+    char_bin: &[u8],
+    char_w: usize,
+    char_h: usize,
+    templates: &[CvTemplate],
+) -> Result<Option<(char, f32)>, error::CvError> {
+    Ok(image::match_character(char_bin, char_w, char_h, templates))
+}

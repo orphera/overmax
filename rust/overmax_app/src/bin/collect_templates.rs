@@ -30,6 +30,24 @@ fn load_frame(path: &Path) -> Option<CapturedFrame> {
     })
 }
 
+fn crop_roi_direct(frame: &CapturedFrame, x: usize, y: usize, width: usize, height: usize) -> overmax_app::frame_utils::ImageRegion {
+    let mut bgra = vec![0u8; width * height * 4];
+    for dy in 0..height {
+        for dx in 0..width {
+            let src_x = x + dx;
+            let src_y = y + dy;
+            let src_idx = (src_y * frame.width as usize + src_x) * 4;
+            let dst_idx = (dy * width + dx) * 4;
+            bgra[dst_idx..dst_idx + 4].copy_from_slice(&frame.bgra[src_idx..src_idx + 4]);
+        }
+    }
+    overmax_app::frame_utils::ImageRegion {
+        bgra,
+        width: width as i32,
+        height: height as i32,
+    }
+}
+
 // 고휘도 임계값 필터링 (휘도 Y >= threshold 이면 255, 아니면 0)
 fn threshold_luminance(bgra: &[u8], width: usize, height: usize) -> Vec<u8> {
     let mut binary = vec![0u8; width * height];
@@ -194,9 +212,26 @@ fn main() {
             Some(img) => img,
             None => continue,
         };
-        let (mut scene, _, _) = ocr.detect_logo(&logo_img);
+        let (mut scene, logo_raw, _) = ocr.detect_logo(&logo_img);
         
-        // 씬 Unknown 이면 파일명으로 유추
+        // 씬 Unknown 이면 텍스트 키워드 및 파일명으로 유추
+        if scene == SceneType::Unknown {
+            let logo_norm = logo_raw.to_lowercase();
+            if logo_norm.contains("button") || logo_norm.contains("tunes") {
+                scene = SceneType::ResultFreestyle;
+            } else {
+                // 오픈매치 결과창 뱃지 탐지를 통한 ResultOpen3 구원 로직 이식 (씬 설정 없이 다이렉트 크롭 - ResultOpen3 mode_diff_badge coordinates)
+                let temp_badge = crop_roi_direct(&frame, 212, 830, 316, 39);
+                if let Some(txt) = ocr.recognize_text_all_passes(&temp_badge) {
+                    let norm = txt.to_lowercase();
+                    if norm.contains("tunes") || norm.contains("mode") || norm.contains("button") 
+                        || norm.contains("4b") || norm.contains("5b") || norm.contains("6b") || norm.contains("8b") {
+                        scene = SceneType::ResultOpen3;
+                    }
+                }
+            }
+        }
+        
         if scene == SceneType::Unknown {
             let fname = filename.to_lowercase();
             if fname.contains("freestyle") {
@@ -221,10 +256,22 @@ fn main() {
         let Some(rate_roi) = rois.get_roi("rate") else { continue; };
         let Some(rate_img) = crop_roi(&frame, rate_roi) else { continue; };
         
-        // 1. Windows OCR로 현재 Rate 텍스트 추출
-        let (rate_val, raw_txt, _) = ocr.detect_rate(&rate_img);
+        // 1. Windows OCR로 현재 Rate 생 텍스트 추출 (템플릿 매칭 우회하여 수집 방해 원천 방지)
+        let mut raw_txt = String::new();
+        if let Some(txt) = ocr.recognize_text_color(&rate_img) {
+            raw_txt = txt;
+        }
+        
+        let mut rate_val = None;
+        let clean: String = raw_txt.chars().filter(|c| c.is_ascii_digit() || *c == '.').collect();
+        if let Ok(v) = clean.parse::<f32>() {
+            if v >= 0.0 && v <= 100.0 {
+                rate_val = Some(v);
+            }
+        }
+        
         let Some(val) = rate_val else {
-            // OCR 인식 실패한 경우 패스
+            println!("      [DEBUG collect] detect_rate failed. raw_txt='{}', filename='{}', scene={:?}", raw_txt, filename, scene);
             continue;
         };
         

@@ -54,7 +54,7 @@ impl Default for GlobalRoiConfig {
         let mut result_freestyle_rois = HashMap::new();
         result_freestyle_rois.insert("jacket".to_string(), RoiRect { x: 705, y: 14, width: 60, height: 60 });
         result_freestyle_rois.insert("rate".to_string(), RoiRect { x: 891, y: 608, width: 109, height: 32 });
-        result_freestyle_rois.insert("mode".to_string(), RoiRect { x: 5, y: 18, width: 335, height: 75 });
+        result_freestyle_rois.insert("mode".to_string(), RoiRect { x: 0, y: 18, width: 340, height: 75 });
         result_freestyle_rois.insert("diff_panel".to_string(), RoiRect { x: 707, y: 84, width: 93, height: 21 });
         result_freestyle_rois.insert("max_combo_badge".to_string(), RoiRect { x: 1024, y: 521, width: 75, height: 75 });
         result_freestyle_rois.insert("score".to_string(), RoiRect { x: 759, y: 710, width: 407, height: 94 });

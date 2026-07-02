@@ -69,7 +69,7 @@ impl RoiManager {
 
     pub fn get_roi_for_scene(&self, name: &str, scene: SceneType) -> Option<RoiRect> {
         if name == "logo" {
-            return Some(self.transform_roi(RoiRect { x1: 5, y1: 18, x2: 340, y2: 93 }));
+            return Some(self.transform_roi(RoiRect { x1: 0, y1: 18, x2: 340, y2: 93 }));
         }
         let roi = self.config.scenes.get(&scene)?.rois.get(name)?;
         Some(self.transform_roi(RoiRect::from(roi.clone())))

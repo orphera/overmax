@@ -296,23 +296,7 @@ impl OcrDetector {
             badge.clone()
         };
 
-        let mut detected_diff = self.detect_difficulty_from_pattern(&diff_region);
-        if detected_diff.is_none() {
-            let mut sum_b = 0u64;
-            let mut sum_g = 0u64;
-            let mut sum_r = 0u64;
-            let count = (diff_region.width * diff_region.height) as usize;
-            for idx in 0..count {
-                let offset = idx * 4;
-                sum_b += diff_region.bgra[offset] as u64;
-                sum_g += diff_region.bgra[offset + 1] as u64;
-                sum_r += diff_region.bgra[offset + 2] as u64;
-            }
-            let mean_b = sum_b as f32 / count as f32;
-            let mean_g = sum_g as f32 / count as f32;
-            let mean_r = sum_r as f32 / count as f32;
-            detected_diff = detect_difficulty_from_bgr((mean_b, mean_g, mean_r), is_openmatch);
-        }
+        let detected_diff = self.detect_difficulty_from_pattern(&diff_region);
         
         // 2. 모드 감지 (기존 픽셀 템플릿 매칭 재사용)
         let w = badge.width as usize;
@@ -404,20 +388,39 @@ impl OcrDetector {
             }
         }
 
+        // 타겟 템플릿 크기(50x68)로 동적 리사이징 적용하여 해상도 차이 극복
+        let (target_w, target_h) = (50usize, 68usize);
+        let resized_binary = if w != target_w || h != target_h {
+            let mut dst = vec![0u8; target_w * target_h];
+            for dy in 0..target_h {
+                let sy = (dy * h) / target_h;
+                let sy_clamped = sy.min(h - 1);
+                for dx in 0..target_w {
+                    let sx = (dx * w) / target_w;
+                    let sx_clamped = sx.min(w - 1);
+                    dst[dy * target_w + dx] = binary[sy_clamped * w + sx_clamped];
+                }
+            }
+            dst
+        } else {
+            binary
+        };
+
         let mut best_score = 0.0f32;
         let mut best_label: Option<String> = None;
 
         for t in &crate::result_mode_templates::RESULT_MODE_TEMPLATES {
-            if t.width != w || t.height != h {
+            if t.width != target_w || t.height != target_h {
                 continue;
             }
             let mut matches = 0usize;
-            for i in 0..total {
-                if binary[i] == t.mask[i] {
+            let compare_total = target_w * target_h;
+            for i in 0..compare_total {
+                if resized_binary[i] == t.mask[i] {
                     matches += 1;
                 }
             }
-            let score = matches as f32 / total as f32;
+            let score = matches as f32 / compare_total as f32;
             if score > 0.80 && score > best_score {
                 best_score = score;
                 best_label = Some(t.mode_label.to_string());
@@ -464,20 +467,39 @@ impl OcrDetector {
             binary[i] = if luma_vals[i] >= threshold { 1 } else { 0 };
         }
 
+        // 타겟 템플릿 크기(90x18)로 동적 리사이징 적용하여 해상도 차이 극복
+        let (target_w, target_h) = (90usize, 18usize);
+        let resized_binary = if w != target_w || h != target_h {
+            let mut dst = vec![0u8; target_w * target_h];
+            for dy in 0..target_h {
+                let sy = (dy * h) / target_h;
+                let sy_clamped = sy.min(h - 1);
+                for dx in 0..target_w {
+                    let sx = (dx * w) / target_w;
+                    let sx_clamped = sx.min(w - 1);
+                    dst[dy * target_w + dx] = binary[sy_clamped * w + sx_clamped];
+                }
+            }
+            dst
+        } else {
+            binary
+        };
+
         let mut best_score = 0.0f32;
         let mut best_label: Option<String> = None;
 
         for t in &crate::result_diff_templates::RESULT_DIFF_TEMPLATES {
-            if t.width != w || t.height != h {
+            if t.width != target_w || t.height != target_h {
                 continue;
             }
             let mut matches = 0usize;
-            for i in 0..total {
-                if binary[i] == t.mask[i] {
+            let compare_total = target_w * target_h;
+            for i in 0..compare_total {
+                if resized_binary[i] == t.mask[i] {
                     matches += 1;
                 }
             }
-            let score = matches as f32 / total as f32;
+            let score = matches as f32 / compare_total as f32;
             if score > 0.80 && score > best_score {
                 best_score = score;
                 best_label = Some(t.name.to_string());
@@ -959,44 +981,7 @@ fn to_err(err: windows::core::Error) -> String {
     err.message().to_string()
 }
 
-pub fn detect_difficulty_from_bgr(mean_bgr: (f32, f32, f32), is_openmatch: bool) -> Option<String> {
-    let (b, g, r) = mean_bgr;
-    
-    if is_openmatch {
-        // 오픈매치 결과창 뱃지 (상대적으로 밝음)
-        if b >= 120.0 && r <= 100.0 {
-            Some("SC".to_string())
-        } else if r >= 120.0 && b <= 60.0 {
-            if g >= 80.0 {
-                Some("HD".to_string())
-            } else {
-                Some("MX".to_string())
-            }
-        } else if b >= 100.0 && r <= 40.0 {
-            Some("NM".to_string())
-        } else {
-            None
-        }
-    } else {
-        // Freestyle 결과창 뱃지 (텍스트 혼입으로 어두움)
-        let sum = b + g + r;
-        if sum < 30.0 {
-            return None; // 패널이 너무 어두우면 식별 보류
-        }
-        
-        if b > g * 1.3 && r > g * 1.3 {
-            Some("SC".to_string())
-        } else if r > g * 1.5 && b < g * 1.2 {
-            Some("MX".to_string())
-        } else if r > b * 1.5 && g > b * 1.3 {
-            Some("HD".to_string())
-        } else if b > g * 1.5 && r < g * 1.2 {
-            Some("NM".to_string())
-        } else {
-            None
-        }
-    }
-}
+
 
 #[cfg(test)]
 mod tests {

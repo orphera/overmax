@@ -339,8 +339,8 @@ pub fn segment_characters(binary: &[u8], width: usize, height: usize) -> Vec<(us
     let mut in_char = false;
     let mut start_x = 0;
     
-    // 켜진 픽셀 임계값 (노이즈 방지를 위해 1열당 최소 3픽셀 이상 활성화하여 배경 잔여 노이즈 컷)
-    let col_threshold = 3;
+    // 켜진 픽셀 임계값 (노이즈 방지를 위해 1열당 높이에 비례한 최소 픽셀 활성화하여 배경 잔여 노이즈 컷)
+    let col_threshold = ((height / 10).max(1)) as u32;
 
     for x in 0..width {
         let active = col_proj[x] >= col_threshold;

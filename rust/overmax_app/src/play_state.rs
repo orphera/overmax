@@ -32,6 +32,7 @@ pub struct PlayStateDetector {
     last_song_id: Option<u32>,
     last_mode: Option<String>,
     last_diff: Option<String>,
+    result_rate_window: VecDeque<f32>,
 }
 
 impl PlayStateDetector {
@@ -48,6 +49,7 @@ impl PlayStateDetector {
             last_song_id: None,
             last_mode: None,
             last_diff: None,
+            result_rate_window: VecDeque::new(),
         }
     }
 
@@ -61,6 +63,7 @@ impl PlayStateDetector {
         self.last_song_id = None;
         self.last_mode = None;
         self.last_diff = None;
+        self.result_rate_window.clear();
     }
 
     pub fn clear_detected_cache(&mut self) {
@@ -219,17 +222,25 @@ impl PlayStateDetector {
 
                             println!("    [detect] rate OCR run. rate={:?}, text='{}'", rate_res.0, rate_res.1);
                             
-                            let update_cache = if is_result {
-                                match (rate_res.0, self.last_rate_result.0) {
-                                    (Some(new_r), Some(old_r)) => new_r >= old_r,
-                                    (Some(_), None) => true,
-                                    _ => false,
+                            if is_result {
+                                if let Some(new_r) = rate_res.0 {
+                                    self.result_rate_window.push_back(new_r);
+                                    if self.result_rate_window.len() > 7 {
+                                        self.result_rate_window.pop_front();
+                                    }
+                                    
+                                    // 윈도우 버퍼에서 중간값(Median)을 취하여 노이즈 억제
+                                    let mut sorted: Vec<f32> = self.result_rate_window.iter().cloned().collect();
+                                    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                                    let mid = sorted.len() / 2;
+                                    rate_res.0 = Some(sorted[mid]);
                                 }
+                                self.last_rate_result = rate_res;
                             } else {
-                                true
-                            };
-
-                            if update_cache {
+                                // 결과창이 아닐 때는 윈도우 버퍼를 항상 클리어
+                                if !self.result_rate_window.is_empty() {
+                                    self.result_rate_window.clear();
+                                }
                                 self.last_rate_result = rate_res;
                             }
                         }

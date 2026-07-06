@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use image::GenericImageView;
 use overmax_app::capture::screen_capture::CapturedFrame;
 use overmax_app::detector::roi::RoiManager;

@@ -436,11 +436,7 @@ fn run_roi_test(
                 }
             }
             SceneType::ResultOpen3 | SceneType::ResultOpen2 => {
-                if let Some(mode_roi) = rois.get_roi("openmatch_mode") {
-                    if let Some(mode_img) = crop_roi(frame, mode_roi) {
-                        detected_mode = ocr.detect_freestyle_mode(&mode_img);
-                    }
-                }
+                detected_mode = overmax_engine::detector::play_state::detect_button_mode_from_roi(frame, rois, "openmatch_mode_color");
                 if let Some(diff_roi) = rois.get_roi("openmatch_diff") {
                     if let Some(diff_img) = crop_roi(frame, diff_roi) {
                         detected_diff = ocr.detect_openmatch_result_difficulty(&diff_img);

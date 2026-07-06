@@ -120,11 +120,7 @@ impl PlayStateDetector {
                         }
                     }
                     SceneType::ResultOpen3 | SceneType::ResultOpen2 => {
-                        if let Some(mode_roi) = rois.get_roi("openmatch_mode") {
-                            if let Some(mode_img) = crop_roi(frame, mode_roi) {
-                                mode = ocr.detect_freestyle_mode(&mode_img);
-                            }
-                        }
+                        mode = detect_button_mode_from_roi(frame, rois, "openmatch_mode_color");
                         if let Some(diff_roi) = rois.get_roi("openmatch_diff") {
                             if let Some(diff_img) = crop_roi(frame, diff_roi) {
                                 diff = ocr.detect_openmatch_result_difficulty(&diff_img);
@@ -318,11 +314,18 @@ impl PlayStateDetector {
     }
 }
 
-pub fn detect_button_mode(frame: &CapturedFrame, rois: &RoiManager) -> Option<String> {
-    let roi = rois.get_roi("btn_mode")?;
+pub fn detect_button_mode_from_roi(frame: &CapturedFrame, rois: &RoiManager, roi_name: &str) -> Option<String> {
+    let roi = rois.get_roi(roi_name)?;
     let mean = region_mean_bgr(frame, roi);
     let mut best = (None, f32::INFINITY);
-    for (mode, colors) in button_colors() {
+    
+    let colors_table = if roi_name == "openmatch_mode_color" {
+        openmatch_button_colors()
+    } else {
+        button_colors()
+    };
+
+    for (mode, colors) in colors_table {
         for color in colors {
             let dist = color_dist(mean, *color);
             if dist < best.1 {
@@ -333,6 +336,10 @@ pub fn detect_button_mode(frame: &CapturedFrame, rois: &RoiManager) -> Option<St
     (best.1 <= BTN_MODE_MAX_DIST)
         .then_some(best.0)
         .flatten()
+}
+
+pub fn detect_button_mode(frame: &CapturedFrame, rois: &RoiManager) -> Option<String> {
+    detect_button_mode_from_roi(frame, rois, "btn_mode")
 }
 
 pub fn detect_difficulty(frame: &CapturedFrame, rois: &RoiManager) -> (Option<String>, bool) {
@@ -431,6 +438,15 @@ fn button_colors() -> [ButtonColorEntry; 4] {
         ("5B", &[(0xC6, 0xA9, 0x44)]),
         ("6B", &[(0x30, 0x94, 0xED)]),
         ("8B", &[(0x31, 0x14, 0x1D)]),
+    ]
+}
+
+fn openmatch_button_colors() -> [ButtonColorEntry; 4] {
+    [
+        ("4B", &[(102, 118, 46)]),
+        ("5B", &[(147, 136, 95)]),
+        ("6B", &[(61, 137, 192)]),
+        ("8B", &[(153, 90, 88)]),
     ]
 }
 

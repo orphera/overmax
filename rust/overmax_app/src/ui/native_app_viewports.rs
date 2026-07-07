@@ -144,7 +144,7 @@ impl NativeApp {
             sync_open: self.ui_state.sync_open.clone(),
             scan_pending: self.ui_state.scan_pending.clone(),
             sync_steam_id: self.sync_state.steam_id.clone(),
-            fetch_tx: self.fetch_req_tx.clone(),
+            fetch_tx: self.sync_channels.fetch_req_tx.clone(),
             steam_users: self.sync_state.steam_users.clone(),
         };
         ctx.show_viewport_deferred(
@@ -219,8 +219,8 @@ impl NativeApp {
         }
         let open = self.ui_state.sync_open.clone();
         let scan_pending = self.ui_state.scan_pending.clone();
-        let upload_tx = self.upload_req_tx.clone();
-        let delete_tx = self.delete_req_tx.clone();
+        let upload_tx = self.sync_channels.upload_req_tx.clone();
+        let delete_tx = self.sync_channels.delete_req_tx.clone();
         let sync_state = self.sync_state.clone();
         ctx.show_viewport_deferred(
             native_helpers::vp_sync(),

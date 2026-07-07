@@ -213,17 +213,7 @@ pub struct SharedSyncState {
     pub steam_users: Arc<Mutex<std::collections::HashMap<String, steam_session::SteamUser>>>,
 }
 
-pub struct NativeApp {
-    pub(crate) root: Arc<std::path::PathBuf>,
-    pub(crate) settings: SharedSettings,
-    pub(crate) ui_state: SharedUiState,
-    pub(crate) debug_state: SharedDebugState,
-    pub(crate) sync_state: SharedSyncState,
-    pub(crate) log_rx: Option<Receiver<String>>,
-    pub(crate) game_rect: Arc<Mutex<Option<overmax_engine::capture::window_tracker::WindowRect>>>,
-    pub(crate) session: GameSessionState,
-    pub(crate) confidence: f32,
-    pub(crate) recorded_states: std::collections::HashSet<(u32, String, String)>,
+pub(crate) struct SyncWorkerChannels {
     pub(crate) sync_rx: Receiver<Result<Vec<SyncCandidate>, String>>,
     pub(crate) sync_tx: Sender<Result<Vec<SyncCandidate>, String>>,
     pub(crate) upload_req_rx: Receiver<usize>,
@@ -236,6 +226,20 @@ pub struct NativeApp {
     pub(crate) fetch_res_tx: Sender<(String, i32, Result<usize, String>)>,
     pub(crate) delete_req_rx: Receiver<usize>,
     pub(crate) delete_req_tx: Sender<usize>,
+}
+
+pub struct NativeApp {
+    pub(crate) root: Arc<std::path::PathBuf>,
+    pub(crate) settings: SharedSettings,
+    pub(crate) ui_state: SharedUiState,
+    pub(crate) debug_state: SharedDebugState,
+    pub(crate) sync_state: SharedSyncState,
+    pub(crate) log_rx: Option<Receiver<String>>,
+    pub(crate) game_rect: Arc<Mutex<Option<overmax_engine::capture::window_tracker::WindowRect>>>,
+    pub(crate) session: GameSessionState,
+    pub(crate) confidence: f32,
+    pub(crate) recorded_states: std::collections::HashSet<(u32, String, String)>,
+    pub(crate) sync_channels: SyncWorkerChannels,
     pub(crate) detection_rx: Receiver<DetectionOutput>,
     pub(crate) ui_cmd_rx: Receiver<UiCommand>,
     pub(crate) varchive_db: Arc<VArchiveDB>,
@@ -436,18 +440,20 @@ impl NativeApp {
             session: GameSessionState::detecting(),
             confidence: 0.0,
             recorded_states: std::collections::HashSet::new(),
-            sync_rx,
-            sync_tx,
-            upload_req_rx,
-            upload_req_tx,
-            upload_res_rx,
-            upload_res_tx,
-            delete_req_rx,
-            delete_req_tx,
-            fetch_req_rx,
-            fetch_req_tx,
-            fetch_res_rx,
-            fetch_res_tx,
+            sync_channels: SyncWorkerChannels {
+                sync_rx,
+                sync_tx,
+                upload_req_rx,
+                upload_req_tx,
+                upload_res_rx,
+                upload_res_tx,
+                fetch_req_rx,
+                fetch_req_tx,
+                fetch_res_rx,
+                fetch_res_tx,
+                delete_req_rx,
+                delete_req_tx,
+            },
             detection_rx,
             ui_cmd_rx,
             varchive_db,
@@ -484,7 +490,7 @@ impl NativeApp {
     }
 
     pub(crate) fn poll_delete_requests(&mut self, ctx: &egui::Context) {
-        while let Ok(idx) = self.delete_req_rx.try_recv() {
+        while let Ok(idx) = self.sync_channels.delete_req_rx.try_recv() {
             let cand = self.sync_state.candidates.lock()
                 .ok()
                 .and_then(|g| g.get(idx).cloned());
@@ -539,7 +545,7 @@ impl NativeApp {
     }
 
     pub(crate) fn poll_upload_requests(&mut self, ctx: &egui::Context) {
-        while let Ok(idx) = self.upload_req_rx.try_recv() {
+        while let Ok(idx) = self.sync_channels.upload_req_rx.try_recv() {
             let cand = self.sync_state.candidates.lock()
                 .ok()
                 .and_then(|g| g.get(idx).cloned());
@@ -550,7 +556,7 @@ impl NativeApp {
     }
 
     pub(crate) fn drain_sync_scan(&self) {
-        while let Ok(res) = self.sync_rx.try_recv() {
+        while let Ok(res) = self.sync_channels.sync_rx.try_recv() {
             match res {
                 Ok(list) => {
                     let n = list.len();
@@ -572,7 +578,7 @@ impl NativeApp {
 
     pub(crate) fn drain_upload_results(&mut self) {
         let mut refreshed = false;
-        while let Ok((idx, status, msg)) = self.upload_res_rx.try_recv() {
+        while let Ok((idx, status, msg)) = self.sync_channels.upload_res_rx.try_recv() {
             let success = status == "success";
             if let Ok(mut list) = self.sync_state.candidates.lock() {
                 if let Some(c) = list.get_mut(idx) {
@@ -631,7 +637,7 @@ impl NativeApp {
         let steam = self.sync_state.steam_id.lock()
             .map(|g| g.clone())
             .unwrap_or_default();
-        let tx = self.sync_tx.clone();
+        let tx = self.sync_channels.sync_tx.clone();
         let root = self.root.clone();
         let rdb = self.record_db.clone();
         std::thread::spawn(move || {
@@ -659,7 +665,7 @@ impl NativeApp {
             .map(|g| g.clone())
             .unwrap_or_default();
         let account_path = account_path_for_steam(&merged, &steam);
-        let tx = self.upload_res_tx.clone();
+        let tx = self.sync_channels.upload_res_tx.clone();
         let root = self.root.clone();
 
         std::thread::spawn(move || {
@@ -819,19 +825,19 @@ impl NativeApp {
                 self.max_log_lines(),
                 format!("[VArchive] 자동 갱신 시작 (SteamID: {}, V-ID: {})", sid, v_id),
             );
-            let _ = self.fetch_req_tx.send((sid, v_id.to_string(), 0));
+            let _ = self.sync_channels.fetch_req_tx.send((sid, v_id.to_string(), 0));
         }
     }
 
     pub(crate) fn poll_fetch_requests(&mut self, ctx: &egui::Context) {
-        while let Ok((steam_id, v_id, button)) = self.fetch_req_rx.try_recv() {
+        while let Ok((steam_id, v_id, button)) = self.sync_channels.fetch_req_rx.try_recv() {
             self.spawn_fetch(steam_id, v_id, button, ctx.clone());
         }
     }
 
     pub(crate) fn drain_fetch_results(&mut self) {
         let mut refreshed = false;
-        while let Ok((v_id, btn, res)) = self.fetch_res_rx.try_recv() {
+        while let Ok((v_id, btn, res)) = self.sync_channels.fetch_res_rx.try_recv() {
             match res {
                 Ok(_) => {
                     refreshed = true;
@@ -852,7 +858,7 @@ impl NativeApp {
     }
 
     fn spawn_fetch(&self, steam_id: String, v_id: String, button: i32, ctx: egui::Context) {
-        let tx = self.fetch_res_tx.clone();
+        let tx = self.sync_channels.fetch_res_tx.clone();
         let cache_root = self.root.join("cache").join("varchive");
         let log_lines = self.debug_state.log_lines.clone();
         let max_lines = self.max_log_lines();

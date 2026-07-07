@@ -46,6 +46,3 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_Graphics",
     "Win32_System_Diagnostics_ToolHelp",
 ] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-x11rb = "0.13"

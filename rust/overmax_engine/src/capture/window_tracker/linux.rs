@@ -1,14 +1,10 @@
 use super::WindowRect;
 
-pub struct WindowTracker {
-    _title: String,
-}
+pub struct WindowTracker;
 
 impl WindowTracker {
-    pub fn new(title: &str) -> Self {
-        Self {
-            _title: title.to_string(),
-        }
+    pub fn new(_title: &str) -> Self {
+        Self
     }
 
     pub fn game_rect(&self) -> Option<WindowRect> {

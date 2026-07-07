@@ -7,7 +7,7 @@ use windows_sys::Win32::Graphics::Gdi::{
     RGBQUAD, SRCCOPY,
 };
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct CapturedFrame {
     pub width: i32,
     pub height: i32,

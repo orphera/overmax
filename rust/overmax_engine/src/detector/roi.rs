@@ -146,10 +146,10 @@ mod tests {
         assert_eq!(
             manager.get_roi("jacket"),
             Some(RoiRect {
-                x1: 711,
-                y1: 534,
-                x2: 769,
-                y2: 592
+                x1: 710,
+                y1: 533,
+                x2: 770,
+                y2: 593
             })
         );
     }

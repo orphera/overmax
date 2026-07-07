@@ -4,6 +4,7 @@ use overmax_engine::detector::roi::RoiManager;
 use overmax_engine::detector::ocr_engine::OcrDetector;
 use overmax_engine::capture::frame_utils::crop_roi;
 use overmax_core::SceneType;
+#[cfg(target_os = "windows")]
 use windows::Win32::System::WinRT::{RoInitialize, RO_INIT_MULTITHREADED};
 use overmax_app::bin_utils::load_frame;
 
@@ -83,6 +84,7 @@ fn main() {
     }).collect();
     
     // WinRT COM MTA 초기화 강제 수행 (데드락 완벽 예방)
+    #[cfg(target_os = "windows")]
     let _ = unsafe { RoInitialize(RO_INIT_MULTITHREADED) };
     
     let ocr = OcrDetector::new();

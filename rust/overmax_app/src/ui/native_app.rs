@@ -383,6 +383,8 @@ impl NativeApp {
         let (upload_res_tx, upload_res_rx) = mpsc::channel();
         let (delete_req_tx, delete_req_rx) = mpsc::channel::<usize>();
         let (ui_cmd_tx, ui_cmd_rx) = mpsc::channel();
+        #[cfg(not(target_os = "windows"))]
+        let _ = &ui_cmd_tx;
         let (fetch_req_tx, fetch_req_rx) = mpsc::channel();
         let (fetch_res_tx, fetch_res_rx) = mpsc::channel();
 

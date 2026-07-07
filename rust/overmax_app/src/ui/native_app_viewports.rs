@@ -56,6 +56,7 @@ fn get_local_mouse_pos(ctx: &egui::Context, hwnd_opt: Option<isize>) -> Option<e
 
     #[cfg(not(target_os = "windows"))]
     {
+        let _ = hwnd_opt;
         ctx.input(|i| i.pointer.latest_pos())
     }
 }
@@ -478,7 +479,11 @@ impl NativeApp {
         }
 
         // 마우스가 오버레이 영역 위에 있을 때만 상호작용 가능하게 함 (보조창 조작을 위해)
+        #[cfg(target_os = "windows")]
         let local_mouse = get_local_mouse_pos(ctx, self.win_cache.cached_hwnd);
+        #[cfg(not(target_os = "windows"))]
+        let local_mouse = get_local_mouse_pos(ctx, None);
+
         let is_over = local_mouse.is_some() || self.is_dragging;
         let passthrough = !overlay_on || !is_over;
         if self.state_tracker.prev_passthrough.update(Some(passthrough)) {
@@ -618,8 +623,12 @@ impl NativeApp {
                     self.is_dragging = false;
                 }
 
-                // 오버레이 창 드래그 처리
+                #[cfg(target_os = "windows")]
                 self.handle_window_drag(ctx, actions.start_drag);
+                #[cfg(not(target_os = "windows"))]
+                if actions.start_drag {
+                    ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+                }
 
                 if actions.restore_game_focus {
                     let max_log_lines = self.max_log_lines();

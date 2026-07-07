@@ -6,6 +6,7 @@ use overmax_engine::capture::screen_capture::CapturedFrame;
 use overmax_engine::detector::roi::RoiManager;
 use overmax_engine::detector::ocr_engine::OcrDetector;
 use overmax_engine::capture::frame_utils::crop_roi;
+use overmax_engine::detector::detection_pipeline::detect_scene_from_logo;
 use overmax_core::SceneType;
 use overmax_data::ImageIndexDb;
 
@@ -37,94 +38,7 @@ fn load_frame(path: &Path) -> Option<CapturedFrame> {
     })
 }
 
-fn detect_openmatch_color_match(mean: (u8, u8, u8)) -> bool {
-    let openmatch_colors = [
-        (102u8, 118u8, 46u8),  // 4B
-        (147u8, 136u8, 95u8),  // 5B
-        (61u8, 137u8, 192u8),  // 6B
-        (153u8, 90u8, 88u8),   // 8B
-    ];
-    let max_dist = 60.0f32;
-    for color in &openmatch_colors {
-        let db = f32::from(mean.0) - f32::from(color.0);
-        let dg = f32::from(mean.1) - f32::from(color.1);
-        let dr = f32::from(mean.2) - f32::from(color.2);
-        let dist = (db * db + dg * dg + dr * dr).sqrt();
-        if dist <= max_dist {
-            return true;
-        }
-    }
-    false
-}
 
-fn check_open_match_badge(frame: &CapturedFrame, rois: &RoiManager) -> Option<SceneType> {
-    // 5x5 BGR Color-based Detection
-    if let Some(color_roi) = rois.get_roi_for_scene("openmatch_mode", SceneType::ResultOpen3) {
-        let mean = overmax_engine::capture::frame_utils::region_mean_bgr(frame, color_roi);
-        if detect_openmatch_color_match(mean) {
-            return Some(SceneType::ResultOpen3);
-        }
-    }
-
-    if let Some(color_roi) = rois.get_roi_for_scene("openmatch_mode", SceneType::ResultOpen2) {
-        let mean = overmax_engine::capture::frame_utils::region_mean_bgr(frame, color_roi);
-        if detect_openmatch_color_match(mean) {
-            return Some(SceneType::ResultOpen2);
-        }
-    }
-
-    None
-}
-
-fn detect_scene_from_logo(frame: &CapturedFrame, ocr: &OcrDetector, rois: &RoiManager) -> SceneType {
-    let logo_roi = match rois.get_roi("logo") {
-        Some(roi) => roi,
-        None => return SceneType::Unknown,
-    };
-    let logo_img = match crop_roi(frame, logo_roi) {
-        Some(img) => img,
-        None => return SceneType::Unknown,
-    };
-    let (mut scene, raw_text, _) = ocr.detect_logo(&logo_img);
-    println!("      [Logo OCR] raw: '{}', scene: {:?}", raw_text.trim(), scene);
-    
-    // 1단계 오픈매치 배지 BGR 폴백
-    if scene == SceneType::Unknown {
-        if let Some(fallback_scene) = check_open_match_badge(frame, rois) {
-            scene = fallback_scene;
-            println!("      Bypassed logo OCR: Result screen detected via open match badge BGR!");
-        }
-    }
-    
-    // 2단계 엣지 디텍션 폴백 (실제 DetectionPipeline과 동일한 엣지 구원 로직)
-    if scene == SceneType::Unknown {
-        if let Some(jacket_roi) = rois.get_roi_for_scene("jacket", SceneType::ResultFreestyle) {
-            let margin = 8;
-            let ext_roi = overmax_engine::detector::roi::RoiRect {
-                x1: jacket_roi.x1 - margin,
-                y1: jacket_roi.y1 - margin,
-                x2: jacket_roi.x2 + margin,
-                y2: jacket_roi.y2 + margin,
-            };
-            if let Some(ext_img) = crop_roi(frame, ext_roi) {
-                if let Ok(edge_strength) = overmax_cv::detect_rect_edges(
-                    &ext_img.bgra,
-                    ext_img.width as usize,
-                    ext_img.height as usize,
-                    margin as usize,
-                ) {
-                    println!("      [Jacket Edge Detection] edge strength: {:.2}", edge_strength);
-                    if edge_strength >= 15.0 {
-                        scene = SceneType::ResultFreestyle;
-                        println!("      Bypassed logo OCR: Result screen detected via jacket edge strength!");
-                    }
-                }
-            }
-        }
-    }
-    
-    scene
-}
 
 fn save_badge_crop(frame: &CapturedFrame, rois: &RoiManager, scene: SceneType, original_filename: &str) {
     let badge_roi = match rois.get_roi_for_scene("max_combo_badge", scene) {

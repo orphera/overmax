@@ -244,7 +244,7 @@ impl DetectionPipeline {
 
         if scene_res == SceneType::Unknown {
             // 하단 가이드바 단축키에 의존하지 않고, 모드 배지(mode_diff_badge) 영역 of 4B/5B/6B/8B 버튼 모드 키워드를 단독 앵커로 사용하여 오픈매치 결과창 씬 변별
-            if let Some(fallback_scene) = self.check_open_match_badge(frame) {
+            if let Some(fallback_scene) = check_open_match_badge(frame, &self.rois) {
                 scene_res = fallback_scene;
                 self.rois.set_scene(scene_res); // Sync configurations
             }
@@ -358,44 +358,7 @@ impl DetectionPipeline {
         Some(self.last_logo_scene)
     }
 
-    fn detect_openmatch_color_match(mean: (u8, u8, u8)) -> bool {
-        let openmatch_colors = [
-            (102u8, 118u8, 46u8),  // 4B
-            (147u8, 136u8, 95u8),  // 5B
-            (61u8, 137u8, 192u8),  // 6B
-            (153u8, 90u8, 88u8),   // 8B
-        ];
-        let max_dist = 60.0f32;
-        for color in &openmatch_colors {
-            let db = f32::from(mean.0) - f32::from(color.0);
-            let dg = f32::from(mean.1) - f32::from(color.1);
-            let dr = f32::from(mean.2) - f32::from(color.2);
-            let dist = (db * db + dg * dg + dr * dr).sqrt();
-            if dist <= max_dist {
-                return true;
-            }
-        }
-        false
-    }
 
-    fn check_open_match_badge(&self, frame: &CapturedFrame) -> Option<SceneType> {
-        // 5x5 BGR Color-based Fallback
-        if let Some(color_roi) = self.rois.get_roi_for_scene("openmatch_mode", SceneType::ResultOpen3) {
-            let mean = crate::capture::frame_utils::region_mean_bgr(frame, color_roi);
-            if Self::detect_openmatch_color_match(mean) {
-                return Some(SceneType::ResultOpen3);
-            }
-        }
-
-        if let Some(color_roi) = self.rois.get_roi_for_scene("openmatch_mode", SceneType::ResultOpen2) {
-            let mean = crate::capture::frame_utils::region_mean_bgr(frame, color_roi);
-            if Self::detect_openmatch_color_match(mean) {
-                return Some(SceneType::ResultOpen2);
-            }
-        }
-
-        None
-    }
 
     fn update_song_id_from_jacket(&mut self, frame: &CapturedFrame, now: f64) -> JacketMatchStatus {
         if !self.image_db.is_ready() {
@@ -502,6 +465,91 @@ impl DetectionPipeline {
             ocr_telemetry,
         }
     }
+}
+
+pub fn detect_openmatch_color_match(mean: (u8, u8, u8)) -> bool {
+    let openmatch_colors = [
+        (102u8, 118u8, 46u8),  // 4B
+        (147u8, 136u8, 95u8),  // 5B
+        (61u8, 137u8, 192u8),  // 6B
+        (153u8, 90u8, 88u8),   // 8B
+    ];
+    let max_dist = 60.0f32;
+    for color in &openmatch_colors {
+        let db = f32::from(mean.0) - f32::from(color.0);
+        let dg = f32::from(mean.1) - f32::from(color.1);
+        let dr = f32::from(mean.2) - f32::from(color.2);
+        let dist = (db * db + dg * dg + dr * dr).sqrt();
+        if dist <= max_dist {
+            return true;
+        }
+    }
+    false
+}
+
+pub fn check_open_match_badge(frame: &CapturedFrame, rois: &RoiManager) -> Option<SceneType> {
+    // 5x5 BGR Color-based Fallback
+    if let Some(color_roi) = rois.get_roi_for_scene("openmatch_mode", SceneType::ResultOpen3) {
+        let mean = crate::capture::frame_utils::region_mean_bgr(frame, color_roi);
+        if detect_openmatch_color_match(mean) {
+            return Some(SceneType::ResultOpen3);
+        }
+    }
+
+    if let Some(color_roi) = rois.get_roi_for_scene("openmatch_mode", SceneType::ResultOpen2) {
+        let mean = crate::capture::frame_utils::region_mean_bgr(frame, color_roi);
+        if detect_openmatch_color_match(mean) {
+            return Some(SceneType::ResultOpen2);
+        }
+    }
+
+    None
+}
+
+pub fn detect_scene_from_logo(frame: &CapturedFrame, ocr: &OcrDetector, rois: &RoiManager) -> SceneType {
+    let logo_roi = match rois.get_roi("logo") {
+        Some(roi) => roi,
+        None => return SceneType::Unknown,
+    };
+    let logo_img = match crop_roi(frame, logo_roi) {
+        Some(img) => img,
+        None => return SceneType::Unknown,
+    };
+    let (mut scene, _raw_text, _) = ocr.detect_logo(&logo_img);
+
+    // 1단계 오픈매치 배지 BGR 폴백
+    if scene == SceneType::Unknown {
+        if let Some(fallback_scene) = check_open_match_badge(frame, rois) {
+            scene = fallback_scene;
+        }
+    }
+
+    // 2단계 엣지 디텍션 폴백 (실제 DetectionPipeline과 동일한 엣지 구원 로직)
+    if scene == SceneType::Unknown {
+        if let Some(jacket_roi) = rois.get_roi_for_scene("jacket", SceneType::ResultFreestyle) {
+            let margin = 8;
+            let ext_roi = crate::detector::roi::RoiRect {
+                x1: jacket_roi.x1 - margin,
+                y1: jacket_roi.y1 - margin,
+                x2: jacket_roi.x2 + margin,
+                y2: jacket_roi.y2 + margin,
+            };
+            if let Some(ext_img) = crop_roi(frame, ext_roi) {
+                if let Ok(edge_strength) = overmax_cv::detect_rect_edges(
+                    &ext_img.bgra,
+                    ext_img.width as usize,
+                    ext_img.height as usize,
+                    margin as usize,
+                ) {
+                    if edge_strength >= 15.0 {
+                        scene = SceneType::ResultFreestyle;
+                    }
+                }
+            }
+        }
+    }
+
+    scene
 }
 
 #[cfg(test)]

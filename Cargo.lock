@@ -2500,7 +2500,6 @@ dependencies = [
 name = "overmax-engine"
 version = "0.1.0"
 dependencies = [
- "egui",
  "image",
  "overmax-core",
  "overmax-data",

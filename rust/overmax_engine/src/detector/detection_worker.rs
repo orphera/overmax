@@ -21,11 +21,11 @@ pub fn spawn(
     log_tx: Sender<String>,
     game_found_tx: Sender<()>,
     detection_tx: Sender<DetectionOutput>,
-    ctx_holder: std::sync::Arc<std::sync::Mutex<Option<egui::Context>>>,
+    repaint_callback: Box<dyn Fn() + Send + Sync + 'static>,
 ) {
     std::thread::spawn(move || {
         initialize_winrt(&log_tx);
-        let mut worker = DetectionWorker::new(root, settings, log_tx, game_found_tx, detection_tx, ctx_holder);
+        let mut worker = DetectionWorker::new(root, settings, log_tx, game_found_tx, detection_tx, repaint_callback);
         worker.run();
     });
 }
@@ -53,7 +53,7 @@ struct DetectionWorker {
     last_detection_log: Instant,
     was_found: bool,
     is_foreground: bool,
-    ctx_holder: std::sync::Arc<std::sync::Mutex<Option<egui::Context>>>,
+    repaint_callback: Box<dyn Fn() + Send + Sync + 'static>,
     last_song_id: Changed<Option<u32>>,
     last_is_song_select: Changed<bool>,
     last_logo_detected: Changed<bool>,
@@ -70,7 +70,7 @@ impl DetectionWorker {
         log_tx: Sender<String>,
         game_found_tx: Sender<()>,
         detection_tx: Sender<DetectionOutput>,
-        ctx_holder: std::sync::Arc<std::sync::Mutex<Option<egui::Context>>>,
+        repaint_callback: Box<dyn Fn() + Send + Sync + 'static>,
     ) -> Self {
         Self {
             root,
@@ -83,7 +83,7 @@ impl DetectionWorker {
             last_detection_log: Instant::now() - LOG_INTERVAL,
             was_found: false,
             is_foreground: false,
-            ctx_holder,
+            repaint_callback,
             last_song_id: Changed::new(None),
             last_is_song_select: Changed::new(false),
             last_logo_detected: Changed::new(false),
@@ -117,11 +117,7 @@ impl DetectionWorker {
     }
 
     fn request_repaint(&self) {
-        if let Ok(holder) = self.ctx_holder.lock() {
-            if let Some(ctx) = &*holder {
-                ctx.request_repaint();
-            }
-        }
+        (self.repaint_callback)();
     }
 
     fn build_pipeline(&self) -> DetectionPipeline {

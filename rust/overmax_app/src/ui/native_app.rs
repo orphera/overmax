@@ -377,8 +377,16 @@ impl NativeApp {
             }
         }
 
-        let ctx_holder = Arc::new(Mutex::new(None));
+        let ctx_holder: Arc<Mutex<Option<egui::Context>>> = Arc::new(Mutex::new(None));
         let ctx_holder_clone = ctx_holder.clone();
+
+        let repaint_callback = Box::new(move || {
+            if let Ok(holder) = ctx_holder_clone.lock() {
+                if let Some(ctx) = &*holder {
+                    ctx.request_repaint();
+                }
+            }
+        });
 
         detection_worker::spawn(
             (*root).clone(),
@@ -389,7 +397,7 @@ impl NativeApp {
             log_tx.clone(),
             game_found_tx,
             detection_tx,
-            ctx_holder_clone,
+            repaint_callback,
         );
 
         let mut filters = std::collections::HashMap::new();

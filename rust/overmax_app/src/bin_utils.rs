@@ -1,6 +1,6 @@
 use std::path::Path;
 use image::GenericImageView;
-use overmax_engine::capture::screen_capture::CapturedFrame;
+use overmax_engine::capture::frame::CapturedFrame;
 
 pub fn load_frame(path: &Path) -> Option<CapturedFrame> {
     let img = match image::open(path) {

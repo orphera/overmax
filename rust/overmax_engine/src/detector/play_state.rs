@@ -2,7 +2,7 @@ use crate::capture::frame_utils::crop_roi;
 use crate::capture::frame_utils::region_mean_bgr;
 use crate::detector::ocr_engine::{OcrDetector, OcrTelemetry};
 use crate::detector::roi::RoiManager;
-use crate::capture::screen_capture::CapturedFrame;
+use crate::capture::frame::CapturedFrame;
 use overmax_core::{GameSessionState, PlayContext, Changed};
 use std::collections::VecDeque;
 
@@ -557,7 +557,7 @@ pub fn get_rate_plausibility(rate: f32) -> i32 {
 mod tests {
     use super::{detect_button_mode, PlayStateDetector};
     use crate::detector::roi::RoiManager;
-    use crate::capture::screen_capture::CapturedFrame;
+    use crate::capture::frame::CapturedFrame;
     use overmax_core::SceneType;
 
     #[test]

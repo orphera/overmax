@@ -1,18 +1,12 @@
 use crate::capture::window_tracker::WindowRect;
 use crate::capture::capture_engine::CaptureEngine;
+use crate::capture::frame::CapturedFrame;
 use std::ptr::null_mut;
 use windows_sys::Win32::Graphics::Gdi::{
     BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC,
     SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS, HBITMAP, HDC,
     RGBQUAD, SRCCOPY,
 };
-
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub struct CapturedFrame {
-    pub width: i32,
-    pub height: i32,
-    pub bgra: Vec<u8>,
-}
 
 pub struct GdiCaptureEngine {
     screen_dc: Option<HDC>,

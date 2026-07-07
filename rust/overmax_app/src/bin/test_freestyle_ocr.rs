@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use overmax_engine::capture::screen_capture::CapturedFrame;
+use overmax_engine::capture::frame::CapturedFrame;
 use overmax_engine::detector::roi::RoiManager;
 use overmax_engine::detector::ocr_engine::OcrDetector;
 use overmax_engine::capture::frame_utils::crop_roi;

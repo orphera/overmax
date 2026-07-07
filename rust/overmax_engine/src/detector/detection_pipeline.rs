@@ -3,7 +3,7 @@ use crate::detector::hysteresis::HysteresisBuffer;
 use crate::detector::ocr_engine::{OcrDetector, OcrTelemetry};
 use crate::detector::play_state::PlayStateDetector;
 use crate::detector::roi::RoiManager;
-use crate::capture::screen_capture::CapturedFrame;
+use crate::capture::frame::CapturedFrame;
 use overmax_core::{GameSessionState, SceneType};
 use overmax_data::ImageIndexDb;
 
@@ -604,7 +604,7 @@ pub fn detect_scene_from_logo(
 #[cfg(test)]
 mod tests {
     use super::{DetectionPipeline, JacketMatchStatus};
-    use crate::capture::screen_capture::CapturedFrame;
+    use crate::capture::frame::CapturedFrame;
     use crate::detector::hysteresis::HysteresisBuffer;
     use overmax_data::ImageIndexDb;
 

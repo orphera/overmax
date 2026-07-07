@@ -1,11 +1,16 @@
 use crate::capture::frame_utils::ImageRegion;
 use overmax_core::SceneType;
-use windows::Graphics::Imaging::BitmapDecoder;
-use windows::Media::Ocr::OcrEngine;
-use windows::Storage::Streams::{DataWriter, InMemoryRandomAccessStream};
-
-
 use std::fmt;
+
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "windows")]
+mod windows;
+
+#[cfg(target_os = "linux")]
+use linux::OcrEngine as PlatformOcrEngine;
+#[cfg(target_os = "windows")]
+use windows::OcrEngine as PlatformOcrEngine;
 
 #[derive(Clone, Default, PartialEq)]
 pub struct OcrTelemetry {
@@ -47,13 +52,13 @@ impl fmt::Debug for OcrTelemetry {
 }
 
 pub struct OcrDetector {
-    engine: WindowsOcrEngine,
+    engine: PlatformOcrEngine,
 }
 
 impl OcrDetector {
     pub fn new() -> Self {
         Self {
-            engine: WindowsOcrEngine::new(),
+            engine: PlatformOcrEngine::new(),
         }
     }
 
@@ -471,138 +476,6 @@ fn match_best_template(
     best_label
 }
 
-struct WindowsOcrEngine {
-    engine: Option<OcrEngine>,
-}
-
-impl WindowsOcrEngine {
-    fn new() -> Self {
-        Self {
-            engine: OcrEngine::TryCreateFromUserProfileLanguages().ok(),
-        }
-    }
-
-    fn is_available(&self) -> bool {
-        self.engine.is_some()
-    }
-
-    #[allow(dead_code)]
-    fn recognize_logo(&self, image: &ImageRegion, force_invert: bool, binarize: bool) -> Result<String, String> {
-        let Some(engine) = &self.engine else {
-            return Ok(String::new());
-        };
-        let bmp = overmax_cv::preprocess_ocr_bgra(
-            &image.bgra,
-            image.width as usize,
-            image.height as usize,
-            force_invert,
-            binarize,
-        )
-        .map_err(|e| e.to_string())?;
-        recognize_bmp(engine, &bmp).map(|text| text.trim().to_string())
-    }
-
-    fn recognize_logo_color(&self, image: &ImageRegion) -> Result<String, String> {
-        let Some(engine) = &self.engine else {
-            return Ok(String::new());
-        };
-        if image.width <= 0 || image.height <= 0 {
-            return Err("OCR image has invalid dimensions".to_string());
-        }
-        let bmp = overmax_cv::preprocess_ocr_color_bgra(
-            &image.bgra,
-            image.width as usize,
-            image.height as usize,
-        )
-        .map_err(|e| e.to_string())?;
-        recognize_bmp(engine, &bmp).map(|text| text.trim().to_string())
-    }
-
-    fn recognize_with_telemetry(
-        &self,
-        image: &ImageRegion,
-        force_invert: bool,
-        binarize: bool,
-    ) -> Result<(String, overmax_cv::OcrPreprocessResult), String> {
-        let Some(engine) = &self.engine else {
-            return Ok((String::new(), overmax_cv::OcrPreprocessResult::default()));
-        };
-        let preprocess = preprocess_ocr_bmp_with_telemetry(image, force_invert, binarize)?;
-        let text = recognize_bmp(engine, &preprocess.bmp).map(|t| t.trim().to_string())?;
-        Ok((text, preprocess))
-    }
-
-    fn recognize_color_with_telemetry(
-        &self,
-        image: &ImageRegion,
-    ) -> Result<(String, overmax_cv::OcrPreprocessResult), String> {
-        let Some(engine) = &self.engine else {
-            return Ok((String::new(), overmax_cv::OcrPreprocessResult::default()));
-        };
-        if image.width <= 0 || image.height <= 0 {
-            return Err("OCR image has invalid dimensions".to_string());
-        }
-        let preprocess = overmax_cv::preprocess_ocr_color_bgra_with_telemetry(
-            &image.bgra,
-            image.width as usize,
-            image.height as usize,
-        )
-        .map_err(|e| e.to_string())?;
-        let text = recognize_bmp(engine, &preprocess.bmp).map(|t| t.trim().to_string())?;
-        Ok((text, preprocess))
-    }
-
-}
-
-fn preprocess_ocr_bmp_with_telemetry(
-    image: &ImageRegion,
-    force_invert: bool,
-    binarize: bool,
-) -> Result<overmax_cv::OcrPreprocessResult, String> {
-    if image.width <= 0 || image.height <= 0 {
-        return Err("OCR image has invalid dimensions".to_string());
-    }
-    overmax_cv::preprocess_ocr_bgra_with_telemetry(
-        &image.bgra,
-        image.width as usize,
-        image.height as usize,
-        force_invert,
-        binarize,
-    )
-    .map_err(|e| e.to_string())
-}
-
-fn recognize_bmp(engine: &OcrEngine, bmp: &[u8]) -> Result<String, String> {
-    let stream = InMemoryRandomAccessStream::new().map_err(to_err)?;
-    let writer = DataWriter::CreateDataWriter(&stream).map_err(to_err)?;
-    writer.WriteBytes(bmp).map_err(to_err)?;
-    writer
-        .StoreAsync()
-        .map_err(to_err)?
-        .join()
-        .map_err(to_err)?;
-    writer.DetachStream().map_err(to_err)?;
-    stream.Seek(0).map_err(to_err)?;
-
-    let decoder = BitmapDecoder::CreateAsync(&stream)
-        .map_err(to_err)?
-        .join()
-        .map_err(to_err)?;
-    let bitmap = decoder
-        .GetSoftwareBitmapAsync()
-        .map_err(to_err)?
-        .join()
-        .map_err(to_err)?;
-    let result = engine
-        .RecognizeAsync(&bitmap)
-        .map_err(to_err)?
-        .join()
-        .map_err(to_err)?;
-    let text = result.Text().map_err(to_err)?.to_string_lossy();
-    stream.Close().map_err(to_err)?;
-    Ok(text)
-}
-
 fn parse_score_text(text: &str) -> Option<u32> {
     let clean = text.chars()
         .filter(|c| c.is_ascii_digit())
@@ -690,12 +563,6 @@ fn lcs_len(left: &[u8], right: &[u8]) -> usize {
     prev[right.len()]
 }
 
-fn to_err(err: windows::core::Error) -> String {
-    err.message().to_string()
-}
-
-
-
 #[cfg(test)]
 mod tests {
     use super::{is_logo_keyword_match, normalize_alnum, parse_rate_text, parse_score_text};
@@ -746,7 +613,7 @@ mod tests {
                 bgra[idx + 2] = pixel[0]; // R
                 bgra[idx + 3] = pixel[3]; // A
             }
-            let frame = crate::capture::screen_capture::CapturedFrame {
+            let frame = crate::capture::frame::CapturedFrame {
                 width: w as i32,
                 height: h as i32,
                 bgra,

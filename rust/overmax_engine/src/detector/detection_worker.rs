@@ -2,7 +2,7 @@
 
 use crate::detector::detection_pipeline::{DetectionOutput, DetectionPipeline, JacketMatchStatus};
 use crate::capture::capture_engine::{CaptureEngine, AdaptiveCaptureEngine};
-use crate::capture::screen_capture::CapturedFrame;
+use crate::capture::frame::CapturedFrame;
 use crate::capture::window_tracker::WindowTracker;
 use overmax_core::{GameSessionState, Changed};
 use overmax_data::{DataCompatibility, ImageIndexDb, Settings};

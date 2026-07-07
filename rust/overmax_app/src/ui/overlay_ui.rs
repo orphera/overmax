@@ -398,6 +398,34 @@ fn draw_lite_panel(
     actions
 }
 
+fn draw_meta_badge(
+    painter: &egui::Painter,
+    text: &str,
+    current_x: f32,
+    center_y: f32,
+    scale: f32,
+    color: egui::Color32,
+) -> f32 {
+    let badge_w = (text.len() as f32 * 5.2 + 8.0) * scale;
+    let badge_rect = Rect::from_center_size(
+        egui::pos2(current_x + badge_w / 2.0, center_y),
+        Vec2::new(badge_w, 13.0 * scale),
+    );
+    painter.rect_filled(
+        badge_rect,
+        CornerRadius::same((3.0 * scale) as u8),
+        Theme::TAB_INACTIVE_BG,
+    );
+    painter.text(
+        badge_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        text,
+        FontId::proportional(9.0 * scale),
+        color,
+    );
+    current_x + badge_w
+}
+
 fn draw_header(
     ui: &mut egui::Ui,
     state: &GameSessionState,
@@ -534,48 +562,14 @@ fn draw_header(
             let center_y = row_rect.center().y;
 
             if let Some(r_txt) = &rate_text {
-                let badge_w = (r_txt.len() as f32 * 5.2 + 8.0) * scale;
-                let badge_rect = Rect::from_center_size(
-                    egui::pos2(current_x + badge_w / 2.0, center_y),
-                    Vec2::new(badge_w, 13.0 * scale),
-                );
-                ui.painter().rect_filled(
-                    badge_rect,
-                    CornerRadius::same((3.0 * scale) as u8),
-                    Theme::TAB_INACTIVE_BG,
-                );
-                ui.painter().text(
-                    badge_rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    r_txt,
-                    FontId::proportional(9.0 * scale),
-                    Theme::OK,
-                );
-                current_x += badge_w;
+                current_x = draw_meta_badge(ui.painter(), r_txt, current_x, center_y, scale, Theme::OK);
             }
 
             if let Some(c_txt) = &combo_text {
                 if has_rate {
                     current_x += 3.0 * scale;
                 }
-                let badge_w = (c_txt.len() as f32 * 5.2 + 8.0) * scale;
-                let badge_rect = Rect::from_center_size(
-                    egui::pos2(current_x + badge_w / 2.0, center_y),
-                    Vec2::new(badge_w, 13.0 * scale),
-                );
-                ui.painter().rect_filled(
-                    badge_rect,
-                    CornerRadius::same((3.0 * scale) as u8),
-                    Theme::TAB_INACTIVE_BG,
-                );
-                ui.painter().text(
-                    badge_rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    c_txt,
-                    FontId::proportional(9.0 * scale),
-                    Theme::TEXT_ACCENT,
-                );
-                current_x += badge_w;
+                current_x = draw_meta_badge(ui.painter(), c_txt, current_x, center_y, scale, Theme::TEXT_ACCENT);
             }
 
             if has_badge {

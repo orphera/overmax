@@ -97,6 +97,20 @@ fn main() {
 
     let mut paths: Vec<PathBuf> = Vec::new();
     
+    // 0. openmatch_songselect 폴더 수집
+    let openmatch_select_dir = Path::new("scratch/openmatch_songselect");
+    if openmatch_select_dir.exists() {
+        if let Ok(entries) = fs::read_dir(openmatch_select_dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+                if ext == "png" || ext == "jpg" || ext == "jpeg" {
+                    paths.push(path);
+                }
+            }
+        }
+    }
+
     // 0. openmatch3_results 폴더 수집
     let open3_results_dir = Path::new("scratch/openmatch3_results");
     if open3_results_dir.exists() {

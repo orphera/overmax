@@ -40,7 +40,7 @@ impl Default for GlobalRoiConfig {
         open_match_rois.insert("rate".to_string(), RoiRect { x: 201, y: 558, width: 93, height: 20 });
         open_match_rois.insert("score".to_string(), RoiRect { x: 81, y: 558, width: 96, height: 20 });
         open_match_rois.insert("btn_mode".to_string(), RoiRect { x: 60, y: 130, width: 5, height: 5 });
-        open_match_rois.insert("max_combo_badge".to_string(), RoiRect { x: 397, y: 601, width: 36, height: 36 });
+        open_match_rois.insert("max_combo_badge".to_string(), RoiRect { x: 398, y: 601, width: 36, height: 36 });
         open_match_rois.insert("diff_panel".to_string(), RoiRect { x: 82, y: 467, width: 116, height: 31 });
         scenes.insert(SceneType::OpenMatch, SceneRoiConfig { rois: open_match_rois.clone() });
 

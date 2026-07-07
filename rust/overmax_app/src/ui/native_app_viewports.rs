@@ -303,18 +303,18 @@ impl eframe::App for NativeApp {
         let settings_on = self.ui_state.settings_open.load(Ordering::Relaxed);
         let sync_on = self.ui_state.sync_open.load(Ordering::Relaxed);
 
-        if settings_on && !self.prev_settings_open {
+        let settings_open_changed = self.prev_settings_open.update(settings_on);
+        if settings_on && settings_open_changed {
             if let (Ok(m), Ok(mut d)) = (self.settings.merged.lock(), self.settings.draft.lock()) {
                 *d = m.clone();
             }
             self.refresh_steam_session("설정 창 열림");
         }
-        self.prev_settings_open = settings_on;
 
-        if sync_on && !self.prev_sync_open {
+        let sync_open_changed = self.prev_sync_open.update(sync_on);
+        if sync_on && sync_open_changed {
             self.refresh_steam_session("동기화 창 열림");
         }
-        self.prev_sync_open = sync_on;
 
         self.start_log_pump(ctx);
         ctx.request_repaint_after(std::time::Duration::from_secs(5));
@@ -330,9 +330,8 @@ impl eframe::App for NativeApp {
         self.drain_fetch_results();
         self.poll_delete_requests(ctx);
         self.drain_game_found_refresh_steam();
-        if self.prev_protected != Some(true) {
+        if self.prev_protected.update(Some(true)) {
             ctx.send_viewport_cmd(ViewportCommand::ContentProtected(true));
-            self.prev_protected = Some(true);
         }
 
         let scale = if let Ok(m) = self.settings.merged.lock() {
@@ -375,19 +374,27 @@ impl eframe::App for NativeApp {
         let game_found = self.game_rect.lock().map(|r| r.is_some()).unwrap_or(false);
         let overlay_on = game_found && self.confidence > 0.1;
 
-        if overlay_on != self.prev_overlay_on 
-            || (overlay_on && ((scale - self.prev_scale).abs() > 0.001 || is_lite != self.prev_is_lite))
+        let prev_overlay = *self.prev_overlay_on;
+        let prev_scale_val = *self.prev_scale;
+        let prev_lite = *self.prev_is_lite;
+
+        let scale_changed = (scale - prev_scale_val).abs() > 0.001 && self.prev_scale.update(scale);
+        let overlay_on_changed = self.prev_overlay_on.update(overlay_on);
+        let is_lite_changed = self.prev_is_lite.update(is_lite);
+
+        if overlay_on_changed 
+            || (overlay_on && (scale_changed || is_lite_changed))
         {
             debug_ui::push_log(
                 &self.debug_state.log_lines,
                 1000,
                 format!(
                     "[Overlay] 레이아웃 업데이트: ON={}->{}, Scale={:.2}->{:.2}, Lite={}->{} (Game: {}, Conf: {:.2})",
-                    self.prev_overlay_on,
+                    prev_overlay,
                     overlay_on,
-                    self.prev_scale,
+                    prev_scale_val,
                     scale,
-                    self.prev_is_lite,
+                    prev_lite,
                     is_lite,
                     game_found,
                     self.confidence
@@ -404,10 +411,6 @@ impl eframe::App for NativeApp {
             }
         }
 
-        self.prev_overlay_on = overlay_on;
-        self.prev_scale = scale;
-        self.prev_is_lite = is_lite;
-
         let _visible_size = Vec2::new(overlay_ui::BASE_WIDTH * scale, height * scale);
         let _hidden_size = Vec2::new(1.0, 1.0);
 
@@ -415,9 +418,8 @@ impl eframe::App for NativeApp {
         let local_mouse = get_local_mouse_pos(ctx, self.cached_hwnd);
         let is_over = local_mouse.is_some() || self.is_dragging;
         let passthrough = !overlay_on || !is_over;
-        if self.prev_passthrough != Some(passthrough) {
+        if self.prev_passthrough.update(Some(passthrough)) {
             ctx.send_viewport_cmd(ViewportCommand::MousePassthrough(passthrough));
-            self.prev_passthrough = Some(passthrough);
         }
 
         // 비활성 윈도우(WS_EX_NOACTIVATE) 상태에서 마우스가 위에 있을 때 egui/winit이 커서 아이콘을 실시간으로 갱신하도록 렌더링 강제
@@ -442,7 +444,7 @@ impl eframe::App for NativeApp {
         }
 
         let mut force_topmost = false;
-        if overlay_on && !self.prev_overlay_on {
+        if overlay_on && overlay_on_changed {
             force_topmost = true;
         }
 

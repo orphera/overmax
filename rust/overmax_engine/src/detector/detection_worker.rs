@@ -4,7 +4,7 @@ use crate::detector::detection_pipeline::{DetectionOutput, DetectionPipeline, Ja
 use crate::capture::capture_engine::{CaptureEngine, AdaptiveCaptureEngine};
 use crate::capture::screen_capture::CapturedFrame;
 use crate::capture::window_tracker::WindowTracker;
-use overmax_core::GameSessionState;
+use overmax_core::{GameSessionState, Changed};
 use overmax_data::{DataCompatibility, ImageIndexDb};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -54,11 +54,11 @@ struct DetectionWorker {
     was_found: bool,
     is_foreground: bool,
     ctx_holder: std::sync::Arc<std::sync::Mutex<Option<egui::Context>>>,
-    last_song_id: Option<u32>,
-    last_is_song_select: bool,
-    last_logo_detected: bool,
-    last_jacket_status: JacketMatchStatus,
-    last_is_fullscreen: bool,
+    last_song_id: Changed<Option<u32>>,
+    last_is_song_select: Changed<bool>,
+    last_logo_detected: Changed<bool>,
+    last_jacket_status: Changed<JacketMatchStatus>,
+    last_is_fullscreen: Changed<bool>,
     frame_buffer: CapturedFrame,
     window_scheduler: WindowQueryScheduler,
 }
@@ -84,11 +84,11 @@ impl DetectionWorker {
             was_found: false,
             is_foreground: false,
             ctx_holder,
-            last_song_id: None,
-            last_is_song_select: false,
-            last_logo_detected: false,
-            last_jacket_status: JacketMatchStatus::NotSongSelect,
-            last_is_fullscreen: false,
+            last_song_id: Changed::new(None),
+            last_is_song_select: Changed::new(false),
+            last_logo_detected: Changed::new(false),
+            last_jacket_status: Changed::new(JacketMatchStatus::NotSongSelect),
+            last_is_fullscreen: Changed::new(false),
             frame_buffer: CapturedFrame {
                 width: 0,
                 height: 0,
@@ -169,23 +169,17 @@ impl DetectionWorker {
                 out.state.is_fullscreen = tracker.is_fullscreen();
                 self.log_detection_summary(&out);
                 
-                let jacket_changed = match (&out.jacket_status, &self.last_jacket_status) {
-                    (JacketMatchStatus::Matched { song_id: id1, .. }, JacketMatchStatus::Matched { song_id: id2, .. }) => id1 != id2,
-                    (JacketMatchStatus::InvalidId { image_id: id1, .. }, JacketMatchStatus::InvalidId { image_id: id2, .. }) => id1 != id2,
-                    (s1, s2) => std::mem::discriminant(s1) != std::mem::discriminant(s2),
-                };
+                let jacket_changed = self.last_jacket_status.update(out.jacket_status.clone());
+                let song_changed = self.last_song_id.update(out.current_song_id);
+                let song_select_changed = self.last_is_song_select.update(out.is_song_select);
+                let logo_changed = self.last_logo_detected.update(out.logo_detected);
+                let fullscreen_changed = self.last_is_fullscreen.update(out.state.is_fullscreen);
 
-                let state_changed = out.current_song_id != self.last_song_id
-                    || out.is_song_select != self.last_is_song_select
-                    || out.logo_detected != self.last_logo_detected
-                    || out.state.is_fullscreen != self.last_is_fullscreen
+                let state_changed = song_changed
+                    || song_select_changed
+                    || logo_changed
+                    || fullscreen_changed
                     || jacket_changed;
-
-                self.last_song_id = out.current_song_id;
-                self.last_is_song_select = out.is_song_select;
-                self.last_logo_detected = out.logo_detected;
-                self.last_jacket_status = out.jacket_status.clone();
-                self.last_is_fullscreen = out.state.is_fullscreen;
 
                 let _ = self.detection_tx.send(out);
                 if state_changed {
@@ -273,7 +267,7 @@ impl DetectionWorker {
     fn sleep_duration(&self) -> Duration {
         if self.was_found {
             if self.is_foreground {
-                if self.last_is_song_select || self.last_logo_detected {
+                if *self.last_is_song_select || *self.last_logo_detected {
                     ACTIVE_SLEEP
                 } else {
                     Duration::from_millis(1000)

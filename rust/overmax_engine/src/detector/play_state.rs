@@ -3,7 +3,7 @@ use crate::capture::frame_utils::region_mean_bgr;
 use crate::detector::ocr_engine::{OcrDetector, OcrTelemetry};
 use crate::detector::roi::RoiManager;
 use crate::capture::screen_capture::CapturedFrame;
-use overmax_core::{GameSessionState, PlayContext};
+use overmax_core::{GameSessionState, PlayContext, Changed};
 use std::collections::VecDeque;
 
 pub const MIN_VALID_RATE: f32 = 80.0;
@@ -27,11 +27,11 @@ pub struct PlayStateDetector {
     last_rate_checksum: Option<u64>,
     last_rate_result: (Option<f32>, String, Option<OcrTelemetry>),
     last_rate_ocr_ts: f64,
-    last_detected_mode: Option<String>,
-    last_detected_diff: Option<String>,
-    last_song_id: Option<u32>,
-    last_mode: Option<String>,
-    last_diff: Option<String>,
+    last_detected_mode: Changed<Option<String>>,
+    last_detected_diff: Changed<Option<String>>,
+    last_song_id: Changed<Option<u32>>,
+    last_mode: Changed<Option<String>>,
+    last_diff: Changed<Option<String>>,
     result_rate_window: VecDeque<f32>,
 }
 
@@ -44,11 +44,11 @@ impl PlayStateDetector {
             last_rate_checksum: None,
             last_rate_result: (None, String::new(), None),
             last_rate_ocr_ts: 0.0,
-            last_detected_mode: None,
-            last_detected_diff: None,
-            last_song_id: None,
-            last_mode: None,
-            last_diff: None,
+            last_detected_mode: Changed::new(None),
+            last_detected_diff: Changed::new(None),
+            last_song_id: Changed::new(None),
+            last_mode: Changed::new(None),
+            last_diff: Changed::new(None),
             result_rate_window: VecDeque::new(),
         }
     }
@@ -60,22 +60,22 @@ impl PlayStateDetector {
         self.last_rate_result = (None, String::new(), None);
         self.last_rate_ocr_ts = 0.0;
         // 결과창 진입 시 복구용으로 사용하기 위해 last_detected_mode/diff 캐시는 reset 시에도 보존합니다.
-        self.last_song_id = None;
-        self.last_mode = None;
-        self.last_diff = None;
+        self.last_song_id.update(None);
+        self.last_mode.update(None);
+        self.last_diff.update(None);
         self.result_rate_window.clear();
     }
 
     pub fn clear_detected_cache(&mut self) {
-        self.last_detected_mode = None;
-        self.last_detected_diff = None;
+        self.last_detected_mode.update(None);
+        self.last_detected_diff.update(None);
     }
 
     /// 로고 OCR raw_text에서 파싱된 모드를 직접 주입합니다.
     /// detect_freestyle_mode 템플릿 매칭이 실패하는 결과 화면에서
     /// detection_pipeline이 로고 텍스트로부터 모드를 추출하여 세팅합니다.
     pub fn set_logo_mode(&mut self, mode: String) {
-        self.last_detected_mode = Some(mode);
+        self.last_detected_mode.update(Some(mode));
     }
 
     pub fn detect(
@@ -103,8 +103,8 @@ impl PlayStateDetector {
             is_max_combo = detect_max_combo_result(frame, rois);
             
             if self.last_detected_mode.is_some() && self.last_detected_diff.is_some() {
-                mode = self.last_detected_mode.clone();
-                diff = self.last_detected_diff.clone();
+                mode = self.last_detected_mode.get().clone();
+                diff = self.last_detected_diff.get().clone();
             } else {
                 match scene {
                     SceneType::ResultFreestyle => {
@@ -131,27 +131,27 @@ impl PlayStateDetector {
                 }
 
                 if self.last_detected_mode.is_none() {
-                    self.last_detected_mode = self.last_mode.clone();
+                    self.last_detected_mode.update(self.last_mode.get().clone());
                 }
                 if self.last_detected_diff.is_none() {
-                    self.last_detected_diff = self.last_diff.clone();
+                    self.last_detected_diff.update(self.last_diff.get().clone());
                 }
 
                 if mode.is_none() {
-                    mode = self.last_detected_mode.clone();
+                    mode = self.last_detected_mode.get().clone();
                 }
                 if diff.is_none() {
-                    diff = self.last_detected_diff.clone();
+                    diff = self.last_detected_diff.get().clone();
                 }
 
                 if mode.is_some() && diff.is_some() {
-                    self.last_detected_mode = mode.clone();
-                    self.last_detected_diff = diff.clone();
+                    self.last_detected_mode.update(mode.clone());
+                    self.last_detected_diff.update(diff.clone());
                 }
             }
         } else {
-            self.last_detected_mode = None;
-            self.last_detected_diff = None;
+            self.last_detected_mode.update(None);
+            self.last_detected_diff.update(None);
 
             mode = detect_button_mode(frame, rois);
             let (d, conf) = detect_difficulty(frame, rois);
@@ -160,13 +160,10 @@ impl PlayStateDetector {
             is_max_combo = detect_max_combo(frame, rois);
         }
 
-        let metadata_changed = self.last_song_id != song_id
-            || self.last_mode != mode
-            || self.last_diff != diff;
-
-        self.last_song_id = song_id;
-        self.last_mode = mode.clone();
-        self.last_diff = diff.clone();
+        let song_id_changed = self.last_song_id.update(song_id);
+        let mode_changed = self.last_mode.update(mode.clone());
+        let diff_changed = self.last_diff.update(diff.clone());
+        let metadata_changed = song_id_changed || mode_changed || diff_changed;
 
         let mut telemetry = None;
         println!("    [detect] song_id={:?}, mode={:?}, diff={:?}, confident={}", song_id, mode, diff, confident);

@@ -196,7 +196,7 @@ fn main() {
         let mut rois = RoiManager::new(frame.width, frame.height);
         
         // 1. Logo 분석을 통해 씬 판별
-        let mut scene = detect_scene_from_logo(&frame, &ocr, &rois);
+        let mut scene = detect_scene_from_logo(&frame, &ocr, &rois, &matcher);
         println!("  - Detected Scene: {:?}", scene);
         
         if scene == SceneType::Unknown {

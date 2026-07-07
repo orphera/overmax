@@ -26,7 +26,7 @@ impl Default for GlobalRoiConfig {
         
         // Freestyle ROI
         let mut freestyle_rois = HashMap::new();
-        freestyle_rois.insert("jacket".to_string(), RoiRect { x: 711, y: 534, width: 58, height: 58 });
+        freestyle_rois.insert("jacket".to_string(), RoiRect { x: 710, y: 533, width: 60, height: 60 });
         freestyle_rois.insert("rate".to_string(), RoiRect { x: 176, y: 583, width: 94, height: 22 });
         freestyle_rois.insert("score".to_string(), RoiRect { x: 177, y: 558, width: 94, height: 24 });
         freestyle_rois.insert("btn_mode".to_string(), RoiRect { x: 80, y: 130, width: 5, height: 5 });
@@ -36,7 +36,7 @@ impl Default for GlobalRoiConfig {
 
         // OpenMatch ROI
         let mut open_match_rois = HashMap::new();
-        open_match_rois.insert("jacket".to_string(), RoiRect { x: 664, y: 534, width: 60, height: 58 });
+        open_match_rois.insert("jacket".to_string(), RoiRect { x: 664, y: 533, width: 60, height: 60 });
         open_match_rois.insert("rate".to_string(), RoiRect { x: 201, y: 558, width: 93, height: 20 });
         open_match_rois.insert("score".to_string(), RoiRect { x: 81, y: 558, width: 96, height: 20 });
         open_match_rois.insert("btn_mode".to_string(), RoiRect { x: 60, y: 130, width: 5, height: 5 });

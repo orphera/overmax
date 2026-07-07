@@ -284,6 +284,43 @@ impl DetectionPipeline {
             }
         }
 
+        // 로고 OCR, 뱃지 OCR, 결과창 엣지 디텍션이 모두 실패한 경우, 오픈매치 선곡창 재킷 엣지 + 유사도 교차 매칭으로 구원
+        if scene_res == SceneType::Unknown {
+            if let Some(jacket_roi) = self.rois.get_roi_for_scene("jacket", SceneType::OpenMatch) {
+                let margin = 8;
+                let ext_roi = crate::detector::roi::RoiRect {
+                    x1: jacket_roi.x1 - margin,
+                    y1: jacket_roi.y1 - margin,
+                    x2: jacket_roi.x2 + margin,
+                    y2: jacket_roi.y2 + margin,
+                };
+                if let Some(ext_img) = crop_roi(frame, ext_roi) {
+                    if let Ok(edge_strength) = overmax_cv::detect_rect_edges(
+                        &ext_img.bgra,
+                        ext_img.width as usize,
+                        ext_img.height as usize,
+                        margin as usize,
+                    ) {
+                        if edge_strength >= 25.0 {
+                            if let Some(jacket_img) = crop_roi(frame, jacket_roi) {
+                                if let Some(match_res) = self.jacket_matcher.match_jacket(
+                                    &jacket_img.bgra,
+                                    jacket_img.width as usize,
+                                    jacket_img.height as usize,
+                                    4,
+                                ) {
+                                    if match_res.similarity >= 0.65 {
+                                        scene_res = SceneType::OpenMatch;
+                                        debug_println!("    [detect_logo_if_due] Bypassed logo OCR: OpenMatch screen detected via jacket edge ({:.2}) and similarity ({:.4})!", edge_strength, match_res.similarity);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if scene_res == SceneType::Unknown && is_prev_result {
             let norm_logo = raw_text.to_uppercase();
             let has_logo_keyword = norm_logo.contains("BUTTON")
@@ -513,7 +550,12 @@ pub fn check_open_match_badge(frame: &CapturedFrame, rois: &RoiManager) -> Optio
     None
 }
 
-pub fn detect_scene_from_logo(frame: &CapturedFrame, ocr: &OcrDetector, rois: &RoiManager) -> SceneType {
+pub fn detect_scene_from_logo(
+    frame: &CapturedFrame,
+    ocr: &OcrDetector,
+    rois: &RoiManager,
+    matcher: &overmax_data::JacketMatcher,
+) -> SceneType {
     let logo_roi = match rois.get_roi("logo") {
         Some(roi) => roi,
         None => return SceneType::Unknown,
@@ -550,6 +592,42 @@ pub fn detect_scene_from_logo(frame: &CapturedFrame, ocr: &OcrDetector, rois: &R
                 ) {
                     if edge_strength >= 15.0 {
                         scene = SceneType::ResultFreestyle;
+                    }
+                }
+            }
+        }
+    }
+
+    // 3단계 오픈매치 선곡창 재킷 엣지 + 유사도 폴백
+    if scene == SceneType::Unknown {
+        if let Some(jacket_roi) = rois.get_roi_for_scene("jacket", SceneType::OpenMatch) {
+            let margin = 8;
+            let ext_roi = crate::detector::roi::RoiRect {
+                x1: jacket_roi.x1 - margin,
+                y1: jacket_roi.y1 - margin,
+                x2: jacket_roi.x2 + margin,
+                y2: jacket_roi.y2 + margin,
+            };
+            if let Some(ext_img) = crop_roi(frame, ext_roi) {
+                if let Ok(edge_strength) = overmax_cv::detect_rect_edges(
+                    &ext_img.bgra,
+                    ext_img.width as usize,
+                    ext_img.height as usize,
+                    margin as usize,
+                ) {
+                    if edge_strength >= 25.0 {
+                        if let Some(jacket_img) = crop_roi(frame, jacket_roi) {
+                            if let Some(match_res) = matcher.match_jacket(
+                                &jacket_img.bgra,
+                                jacket_img.width as usize,
+                                jacket_img.height as usize,
+                                4,
+                            ) {
+                                if match_res.similarity >= 0.65 {
+                                    scene = SceneType::OpenMatch;
+                                }
+                            }
+                        }
                     }
                 }
             }

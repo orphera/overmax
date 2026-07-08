@@ -8,12 +8,7 @@ use std::collections::VecDeque;
 
 pub const MIN_VALID_RATE: f32 = 80.0;
 
-macro_rules! debug_println {
-    ($($arg:tt)*) => {
-        #[cfg(debug_assertions)]
-        println!($($arg)*);
-    };
-}
+
 
 const BTN_MODE_MAX_DIST: f32 = 60.0;
 const DIFF_MIN_BRIGHTNESS: f32 = 45.0;

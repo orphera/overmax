@@ -7,12 +7,7 @@ use crate::capture::screen_capture::CapturedFrame;
 use overmax_core::{GameSessionState, SceneType};
 use overmax_data::ImageIndexDb;
 
-macro_rules! debug_println {
-    ($($arg:tt)*) => {
-        #[cfg(debug_assertions)]
-        println!($($arg)*);
-    };
-}
+
 
 const JACKET_MATCH_INTERVAL: f64 = 0.25;
 const JACKET_CHANGE_THRESHOLD: f32 = 2.5;

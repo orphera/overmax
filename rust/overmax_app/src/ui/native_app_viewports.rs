@@ -265,6 +265,31 @@ impl NativeApp {
 }
 
 
+struct OverlaySettingsSnapshot {
+    scale: f32,
+    opacity: f32,
+    is_lite: bool,
+    snap_position: String,
+}
+
+fn read_overlay_settings(settings: &std::sync::Arc<std::sync::Mutex<serde_json::Value>>) -> OverlaySettingsSnapshot {
+    let Ok(m) = settings.lock() else {
+        return OverlaySettingsSnapshot {
+            scale: 1.0,
+            opacity: 0.8,
+            is_lite: false,
+            snap_position: "manual".into(),
+        };
+    };
+    let overlay = m.get("overlay");
+    OverlaySettingsSnapshot {
+        scale: overlay.and_then(|o| o.get("scale")).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+        opacity: overlay.and_then(|o| o.get("base_opacity")).and_then(|v| v.as_f64()).unwrap_or(0.8) as f32,
+        is_lite: overlay.and_then(|o| o.get("lite_mode")).and_then(|v| v.as_bool()).unwrap_or(false),
+        snap_position: overlay.and_then(|o| o.get("position")).and_then(|p| p.get("snap")).and_then(|v| v.as_str()).unwrap_or("manual").to_string(),
+    }
+}
+
 impl eframe::App for NativeApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if let Ok(mut holder) = self.ctx_holder.lock() {
@@ -301,6 +326,75 @@ impl eframe::App for NativeApp {
             return;
         }
 
+        self.poll_and_drain_events(ctx);
+
+        let ovs = read_overlay_settings(&self.settings.merged);
+        let scale = ovs.scale;
+        let opacity = ovs.opacity;
+        let snap_position = ovs.snap_position;
+
+        let height = if ovs.is_lite {
+            overlay_ui::LITE_BASE_HEIGHT
+        } else {
+            overlay_ui::BASE_HEIGHT
+        };
+
+        // game_rect 락 단 1회 획득으로 통합하여 경합 방지
+        let game_rect_val = self.game_rect.lock().map(|r| *r).unwrap_or(None);
+        let game_found = game_rect_val.is_some();
+        let overlay_on = game_found && self.confidence > 0.1;
+
+        let overlay_on_changed = self.state_tracker.prev_overlay_on.update(overlay_on);
+
+        let mut force_topmost = self.update_overlay_geometry(
+            ctx,
+            scale,
+            height,
+            &snap_position,
+            game_rect_val,
+            overlay_on,
+            overlay_on_changed,
+        );
+
+        self.show_debug_viewport(ctx);
+        self.show_settings_viewport(ctx);
+        self.show_sync_viewport(ctx);
+
+        self.render_overlay_panel(ctx, scale, height, &snap_position, overlay_on, &mut force_topmost);
+
+        // Windows 전용: 전체 창 투명도 및 최상위 권한 적용
+        #[cfg(target_os = "windows")]
+        {
+            if overlay_on {
+                let found = self.apply_window_opacity(opacity, force_topmost);
+                if !found {
+                    if !self.win_cache.logged_opacity_fail {
+                        debug_ui::push_log(&self.debug_state.log_lines, self.max_log_lines(), format!("[Overlay] 투명도 조절용 창 핸들을 찾지 못함 (Opacity: {:.2})", opacity));
+                        self.win_cache.logged_opacity_fail = true;
+                    }
+                }
+            } else {
+                // 숨겨질 때: 투명도를 즉시 0.0(완전 투명)으로 덮어씌워 윈도우 잔상 소멸을 보장
+                if let Some(hwnd) = self.find_overlay_window() {
+                    unsafe {
+                        windows_sys::Win32::UI::WindowsAndMessaging::SetLayeredWindowAttributes(hwnd as _, 0, 0, 0x00000002);
+                    }
+                }
+                self.win_cache.cached_hwnd = None;
+                self.win_cache.last_applied_opacity = None;
+            }
+        }
+    }
+
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        // [R, G, B, A] - 윈도우 버퍼를 완전 투명하게 설정.
+        // OS 레벨의 전역 투명도(Layered Window Alpha)와 함께 작동함.
+        [0.0, 0.0, 0.0, 0.0]
+    }
+}
+
+impl NativeApp {
+    fn poll_and_drain_events(&mut self, ctx: &egui::Context) {
         let settings_on = self.ui_state.settings_open.load(Ordering::Relaxed);
         let sync_on = self.ui_state.sync_open.load(Ordering::Relaxed);
 
@@ -334,29 +428,24 @@ impl eframe::App for NativeApp {
         if self.state_tracker.prev_protected.update(Some(true)) {
             ctx.send_viewport_cmd(ViewportCommand::ContentProtected(true));
         }
+    }
 
-        let settings = self.settings.get_merged();
-        let overlay = settings.overlay();
-        let scale = overlay.scale as f32;
-        let opacity = overlay.base_opacity as f32;
-        let is_lite = overlay.lite_mode;
-        let snap_position = overlay.position.snap.clone();
-
-        let height = if is_lite {
-            overlay_ui::LITE_BASE_HEIGHT
-        } else {
-            overlay_ui::BASE_HEIGHT
-        };
-
-        let game_found = self.game_rect.lock().map(|r| r.is_some()).unwrap_or(false);
-        let overlay_on = game_found && self.confidence > 0.1;
-
+    fn update_overlay_geometry(
+        &mut self,
+        ctx: &egui::Context,
+        scale: f32,
+        height: f32,
+        snap_position: &str,
+        game_rect_val: Option<overmax_engine::capture::window_tracker::WindowRect>,
+        overlay_on: bool,
+        overlay_on_changed: bool,
+    ) -> bool {
         let prev_overlay = *self.state_tracker.prev_overlay_on;
         let prev_scale_val = *self.state_tracker.prev_scale;
         let prev_lite = *self.state_tracker.prev_is_lite;
 
         let scale_changed = (scale - prev_scale_val).abs() > 0.001 && self.state_tracker.prev_scale.update(scale);
-        let overlay_on_changed = self.state_tracker.prev_overlay_on.update(overlay_on);
+        let is_lite = height == overlay_ui::LITE_BASE_HEIGHT;
         let is_lite_changed = self.state_tracker.prev_is_lite.update(is_lite);
 
         if overlay_on_changed 
@@ -373,7 +462,7 @@ impl eframe::App for NativeApp {
                     scale,
                     prev_lite,
                     is_lite,
-                    game_found,
+                    game_rect_val.is_some(),
                     self.confidence
                 ),
             );
@@ -387,9 +476,6 @@ impl eframe::App for NativeApp {
                 ctx.send_viewport_cmd(ViewportCommand::InnerSize(Vec2::new(1.0, 1.0)));
             }
         }
-
-        let _visible_size = Vec2::new(overlay_ui::BASE_WIDTH * scale, height * scale);
-        let _hidden_size = Vec2::new(1.0, 1.0);
 
         // 마우스가 오버레이 영역 위에 있을 때만 상호작용 가능하게 함 (보조창 조작을 위해)
         let local_mouse = get_local_mouse_pos(ctx, self.win_cache.cached_hwnd);
@@ -425,10 +511,70 @@ impl eframe::App for NativeApp {
             force_topmost = true;
         }
 
-        self.show_debug_viewport(ctx);
-        self.show_settings_viewport(ctx);
-        self.show_sync_viewport(ctx);
+        // Windows 전용: 라이트 모드 구석 고정 위치 강제 적용
+        #[cfg(target_os = "windows")]
+        {
+            if overlay_on && snap_position != "manual" {
+                if let Some(hwnd_val) = self.win_cache.cached_hwnd {
+                    if let Some(g_rect) = game_rect_val {
+                        use windows_sys::Win32::UI::WindowsAndMessaging::*;
+                        let hwnd = hwnd_val as HWND;
+                        let ppi = ctx.pixels_per_point();
+                        let overlay_w_px = (((overlay_ui::BASE_WIDTH * scale).ceil() + 2.0) * ppi) as i32;
+                        let overlay_h_px = (((height * scale).ceil() + 2.0) * ppi) as i32;
+                        let margin_px = (16.0 * ppi) as i32;
+                        
+                        let (px, py) = match snap_position {
+                            "top_left" => {
+                                (g_rect.left + margin_px, g_rect.top + margin_px)
+                            }
+                            "top_right" => {
+                                (g_rect.left + g_rect.width - overlay_w_px - margin_px, g_rect.top + margin_px)
+                            }
+                            "bottom_left" => {
+                                (g_rect.left + margin_px, g_rect.top + g_rect.height - overlay_h_px - margin_px)
+                            }
+                            _ => { // bottom_right
+                                (g_rect.left + g_rect.width - overlay_w_px - margin_px, g_rect.top + g_rect.height - overlay_h_px - margin_px)
+                            }
+                        };
+                        
+                        // 이전 설정 좌표 및 크기와 다른 경우에만 SetWindowPos 호출
+                        let current_geom = (px, py, overlay_w_px, overlay_h_px);
+                        let geom_changed = self.win_cache.prev_snap_geometry != Some(current_geom);
 
+                        if geom_changed {
+                            unsafe {
+                                SetWindowPos(
+                                    hwnd,
+                                    HWND_TOPMOST,
+                                    px,
+                                    py,
+                                    overlay_w_px,
+                                    overlay_h_px,
+                                    SWP_NOACTIVATE,
+                                );
+                            }
+                            self.win_cache.prev_snap_geometry = Some(current_geom);
+                        }
+                    }
+                }
+            }
+        }
+
+        force_topmost
+    }
+
+    fn render_overlay_panel(
+        &mut self,
+        ctx: &egui::Context,
+        scale: f32,
+        height: f32,
+        snap_position: &str,
+        overlay_on: bool,
+        force_topmost: &mut bool,
+    ) {
+        let local_mouse = get_local_mouse_pos(ctx, self.win_cache.cached_hwnd);
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(Color32::from_rgba_unmultiplied(0, 0, 0, 0)))
             .show(ctx, |ui| {
@@ -454,7 +600,7 @@ impl eframe::App for NativeApp {
                         scale,
                         varchive_upload_needed: self.current_pattern_needs_upload(),
                         varchive_account_configured: self.is_varchive_account_configured(),
-                        lite_mode: is_lite,
+                        lite_mode: height == overlay_ui::LITE_BASE_HEIGHT,
                         is_snap_manual: snap_position == "manual",
                         record_manager: &self.record_manager,
                         session_initial_record: self.session_initial_record,
@@ -476,7 +622,6 @@ impl eframe::App for NativeApp {
                 self.handle_window_drag(ctx, actions.start_drag);
 
                 if actions.restore_game_focus {
-
                     let max_log_lines = self.max_log_lines();
                     let settings = self.settings.get_merged();
                     window_tracker::restore_foreground_by_title(game_window_title(&settings));
@@ -520,7 +665,7 @@ impl eframe::App for NativeApp {
                     ctx.request_repaint();
                 }
                 if actions.restore_game_focus || actions.start_drag {
-                    force_topmost = true;
+                    *force_topmost = true;
                 }
                 if let Some(mouse_pos) = local_mouse {
                     // 비활성 윈도우 마우스 커서 숨김 제약을 우회하기 위해 가상 커서를 마우스 위치에 직접 렌더링
@@ -528,89 +673,8 @@ impl eframe::App for NativeApp {
                 }
                 self.last_painted_rect = actions.response_rect;
             });
-
-        // Windows 전용: 라이트 모드 구석 고정 위치 강제 적용
-        #[cfg(target_os = "windows")]
-        {
-            if overlay_on && snap_position != "manual" {
-                if let Some(hwnd_val) = self.win_cache.cached_hwnd {
-                    if let Ok(g_rect_opt) = self.game_rect.try_lock() {
-                        if let Some(g_rect) = *g_rect_opt {
-                            use windows_sys::Win32::UI::WindowsAndMessaging::*;
-                            let hwnd = hwnd_val as HWND;
-                            let ppi = ctx.pixels_per_point();
-                            let overlay_w_px = (((overlay_ui::BASE_WIDTH * scale).ceil() + 2.0) * ppi) as i32;
-                            let overlay_h_px = (((height * scale).ceil() + 2.0) * ppi) as i32;
-                            let margin_px = (16.0 * ppi) as i32;
-                            
-                            let (px, py) = match snap_position.as_str() {
-                                "top_left" => {
-                                    (g_rect.left + margin_px, g_rect.top + margin_px)
-                                }
-                                "top_right" => {
-                                    (g_rect.left + g_rect.width - overlay_w_px - margin_px, g_rect.top + margin_px)
-                                }
-                                "bottom_left" => {
-                                    (g_rect.left + margin_px, g_rect.top + g_rect.height - overlay_h_px - margin_px)
-                                }
-                                _ => { // bottom_right
-                                    (g_rect.left + g_rect.width - overlay_w_px - margin_px, g_rect.top + g_rect.height - overlay_h_px - margin_px)
-                                }
-                            };
-                            
-                            // 이전 설정 좌표 및 크기와 다른 경우에만 SetWindowPos 호출
-                            let current_geom = (px, py, overlay_w_px, overlay_h_px);
-                            let geom_changed = self.win_cache.prev_snap_geometry != Some(current_geom);
-
-                            if geom_changed {
-                                unsafe {
-                                    SetWindowPos(
-                                        hwnd,
-                                        HWND_TOPMOST,
-                                        px,
-                                        py,
-                                        overlay_w_px,
-                                        overlay_h_px,
-                                        SWP_NOACTIVATE,
-                                    );
-                                }
-                                self.win_cache.prev_snap_geometry = Some(current_geom);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Windows 전용: 전체 창 투명도 및 최상위 권한 적용
-        #[cfg(target_os = "windows")]
-        {
-            if overlay_on {
-                let found = self.apply_window_opacity(opacity, force_topmost);
-                if !found {
-                    if !self.win_cache.logged_opacity_fail {
-                        debug_ui::push_log(&self.debug_state.log_lines, self.max_log_lines(), format!("[Overlay] 투명도 조절용 창 핸들을 찾지 못함 (Opacity: {:.2})", opacity));
-                        self.win_cache.logged_opacity_fail = true;
-                    }
-                }
-            } else {
-                // 숨겨질 때: 투명도를 즉시 0.0(완전 투명)으로 덮어씌워 윈도우 잔상 소멸을 보장
-                if let Some(hwnd) = self.find_overlay_window() {
-                    unsafe {
-                        windows_sys::Win32::UI::WindowsAndMessaging::SetLayeredWindowAttributes(hwnd as _, 0, 0, 0x00000002);
-                    }
-                }
-                self.win_cache.cached_hwnd = None;
-                self.win_cache.last_applied_opacity = None;
-            }
-        }
     }
 
-    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        // [R, G, B, A] - 윈도우 버퍼를 완전 투명하게 설정.
-        // OS 레벨의 전역 투명도(Layered Window Alpha)와 함께 작동함.
-        [0.0, 0.0, 0.0, 0.0]
-    }
 }
 
 #[cfg(target_os = "windows")]

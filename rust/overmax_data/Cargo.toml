@@ -11,6 +11,20 @@ workspace = true
 name = "overmax_data"
 path = "src/lib.rs"
 
+[[bin]]
+name = "db_builder"
+path = "src/bin/db_builder.rs"
+required-features = ["db_builder"]
+
+[[bin]]
+name = "hash_only_test"
+path = "src/bin/hash_only_test.rs"
+required-features = ["db_builder"]
+
+[features]
+default = []
+db_builder = ["dep:clap", "dep:rayon", "dep:image"]
+
 [dependencies]
 overmax-core = { path = "../overmax_core" }
 overmax_cv = { path = "../overmax_cv" }
@@ -18,7 +32,7 @@ rusqlite = { version = "0.39.0", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive", "rc"] }
 serde_json = "1"
 strsim = "0.11.1"
-clap = { version = "4.5", features = ["derive"] }
-rayon = "1.10"
-image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+clap = { version = "4.5", features = ["derive"], optional = true }
+rayon = { version = "1.10", optional = true }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"], optional = true }
 

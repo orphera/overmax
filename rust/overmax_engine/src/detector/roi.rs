@@ -67,9 +67,14 @@ impl RoiManager {
         self.calculate_transform();
     }
 
+    fn logo_roi(&self) -> RoiRect {
+        // logo ROI는 씬과 무관하게 고정 좌표를 가짐 (씬 판별의 트리거 역할이므로 config 밖에 존재)
+        self.transform_roi(RoiRect { x1: 0, y1: 18, x2: 340, y2: 93 })
+    }
+
     pub fn get_roi_for_scene(&self, name: &str, scene: SceneType) -> Option<RoiRect> {
         if name == "logo" {
-            return Some(self.transform_roi(RoiRect { x1: 0, y1: 18, x2: 340, y2: 93 }));
+            return Some(self.logo_roi());
         }
         let roi = self.config.scenes.get(&scene)?.rois.get(name)?;
         Some(self.transform_roi(RoiRect::from(roi.clone())))

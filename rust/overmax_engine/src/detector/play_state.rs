@@ -38,12 +38,10 @@ pub struct PlayStateDetector {
 }
 
 impl PlayStateDetector {
-    fn should_run_rate_ocr(&self, is_result: bool, metadata_changed: bool, now: f64) -> bool {
-        let is_rate_cached = self.last_rate_result.0.is_some();
-        // 선곡창(!is_result)에서는 실시간 수치 변화를 놓치지 않도록 항상 OCR을 실행하고,
-        // 결과창(is_result)에서는 성능 최적화를 위해 메타데이터가 변경되거나 캐시가 없을 때만 OCR을 허용합니다.
-        let should_ocr = !is_result || metadata_changed || !is_rate_cached;
-        should_ocr && now - self.last_rate_ocr_ts >= 0.20
+    fn should_run_rate_ocr(&self, now: f64) -> bool {
+        // 결과창과 선곡창 모두에서 캐싱 없이 실시간 수치 변경을 실시간 감지하기 위해 항상 OCR을 시도합니다.
+        // 다만 불필요한 매 프레임 연산을 막기 위해 최소 200ms 간격 제한만 수행합니다.
+        now - self.last_rate_ocr_ts >= 0.20
     }
 
     fn apply_rate_ocr_result(&mut self, is_result: bool, mut res: (Option<f32>, String, Option<OcrTelemetry>)) {
@@ -255,10 +253,9 @@ impl PlayStateDetector {
             is_max_combo = detect_max_combo(frame, rois);
         }
 
-        let song_id_changed = self.last_song_id.update(song_id);
-        let mode_changed = self.last_mode.update(mode.clone());
-        let diff_changed = self.last_diff.update(diff.clone());
-        let metadata_changed = song_id_changed || mode_changed || diff_changed;
+        self.last_song_id.update(song_id);
+        self.last_mode.update(mode.clone());
+        self.last_diff.update(diff.clone());
 
         let mut telemetry = None;
         debug_println!("    [detect] song_id={:?}, mode={:?}, diff={:?}, confident={}", song_id, mode, diff, confident);
@@ -266,7 +263,7 @@ impl PlayStateDetector {
             if confident {
                 let mut rate = 0.0;
                 if let Some(rate_roi) = rois.get_roi("rate") {
-                    if self.should_run_rate_ocr(is_result, metadata_changed, now) {
+                    if self.should_run_rate_ocr(now) {
                         if let Some(rate_img) = crop_roi(frame, rate_roi) {
                             let mut rate_res = ocr.detect_rate(&rate_img);
                             self.last_rate_ocr_ts = now;

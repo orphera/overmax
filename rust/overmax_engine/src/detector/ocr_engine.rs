@@ -95,48 +95,12 @@ impl OcrDetector {
     /// 절대로 3-pass 등의 다중 패스 루프를 이곳에 재도입하지 마십시오. (AGENTS.md 및 CONTEXT.md 제약 조건)
     /// OCR 인식 실패나 오작동 대응은 `PlayStateDetector`의 히스토리 버퍼(`stable_raw` 다수결)를 통해 해결합니다.
     pub fn detect_rate(&self, rate: &ImageRegion) -> (Option<f32>, String, Option<OcrTelemetry>) {
-        let w = rate.width as usize;
-        let h = rate.height as usize;
-
         let cv_templates = get_digit_templates();
-
-        // 1. 고휘도 이진화 전처리
-        let (binary, threshold, max_y) = binarize_by_luminance(
-            rate,
-            |max, _| {
-                if max > 80 {
-                    ((max as f32 * 0.80) as u8).max(max.saturating_sub(45))
-                } else {
-                    180
-                }
-            },
-            255,
-        );
-
-        // 2. 수직 투영 분할
-        let segments = match overmax_cv::segment_characters(&binary, w, h) {
-            Ok(segs) => segs,
+        let matched = match match_digits_template(rate, &cv_templates) {
+            Ok(m) => m,
             Err(_) => return (None, String::new(), None),
         };
-
-        // 3. 템플릿 매칭 판독
-        let mut matched_str = String::new();
-        for &(x1, x2) in &segments {
-            let char_w = x2 - x1;
-            let char_h = h;
-            let mut char_bin = vec![0u8; char_w * char_h];
-            for y in 0..char_h {
-                for x in 0..char_w {
-                    char_bin[y * char_w + x] = binary[y * w + (x1 + x)];
-                }
-            }
-
-            if let Ok(Some((ch, _score))) = overmax_cv::match_character(&char_bin, char_w, char_h, &cv_templates) {
-                matched_str.push(ch);
-            } else {
-                matched_str.push('?');
-            }
-        }
+        let (matched_str, binary, threshold, max_y) = matched;
 
         // 만약 수집이 안 된 문자(예: 5)가 들어오거나 일부 오독 시 Windows OCR(하이브리드 예외 처리)로 자동 폴백하여 안정성 100% 보장
         if matched_str.is_empty() || matched_str.contains('?') {
@@ -155,8 +119,8 @@ impl OcrDetector {
             bg_mean: max_y as f32,
             use_invert: false,
             image_pixels: binary,
-            image_width: w,
-            image_height: h,
+            image_width: rate.width as usize,
+            image_height: rate.height as usize,
         };
 
         (rate_val, matched_str, Some(telemetry))
@@ -164,50 +128,12 @@ impl OcrDetector {
 
     /// Score 영역을 템플릿 매칭 또는 OCR을 통해 정수로 파싱합니다.
     pub fn detect_score(&self, score: &ImageRegion) -> Option<u32> {
-        let w = score.width as usize;
-        let h = score.height as usize;
-
         let cv_templates = get_digit_templates();
-
-        // 1. 고휘도 이진화 전처리
-        let (binary, _, _) = binarize_by_luminance(
-            score,
-            |max, _| {
-                if max > 80 {
-                    ((max as f32 * 0.80) as u8).max(max.saturating_sub(45))
-                } else {
-                    180
-                }
-            },
-            255,
-        );
-
-        // 2. 수직 투영 분할
-        let segments = match overmax_cv::segment_characters(&binary, w, h) {
-            Ok(segs) => segs,
+        let matched = match match_digits_template(score, &cv_templates) {
+            Ok(m) => m,
             Err(_) => return None,
         };
-
-        // 3. 템플릿 매칭 판독
-        let mut matched_str = String::new();
-        for &(x1, x2) in &segments {
-            let char_w = x2 - x1;
-            let char_h = h;
-            let mut char_bin = vec![0u8; char_w * char_h];
-            for y in 0..char_h {
-                for x in 0..char_w {
-                    char_bin[y * char_w + x] = binary[y * w + (x1 + x)];
-                }
-            }
-
-            if let Ok(Some((ch, _score))) = overmax_cv::match_character(&char_bin, char_w, char_h, &cv_templates) {
-                if ch.is_ascii_digit() {
-                    matched_str.push(ch);
-                }
-            } else {
-                matched_str.push('?');
-            }
-        }
+        let matched_str = matched.0;
 
         // 실패나 오독이 포함되면 Windows OCR로 즉각 안전 폴백
         if matched_str.is_empty() || matched_str.contains('?') {
@@ -399,6 +325,54 @@ fn scene_label(scene: SceneType) -> String {
         SceneType::ResultOpen2 => "RESULT_OPEN2".to_string(),
         _ => "UNKNOWN".to_string(),
     }
+}
+
+fn match_digits_template(
+    img: &ImageRegion,
+    cv_templates: &[overmax_cv::CvTemplate],
+) -> Result<(String, Vec<u8>, u8, u8), String> {
+    let w = img.width as usize;
+    let h = img.height as usize;
+
+    // 1. 고휘도 이진화 전처리
+    let (binary, threshold, max_y) = binarize_by_luminance(
+        img,
+        |max, _| {
+            if max > 80 {
+                ((max as f32 * 0.80) as u8).max(max.saturating_sub(45))
+            } else {
+                180
+            }
+        },
+        255,
+    );
+
+    // 2. 수직 투영 분할
+    let segments = overmax_cv::segment_characters(&binary, w, h)
+        .map_err(|e| e.to_string())?;
+
+    // 3. 템플릿 매칭 판독
+    let mut matched_str = String::new();
+    for &(x1, x2) in &segments {
+        let char_w = x2 - x1;
+        let char_h = h;
+        let mut char_bin = vec![0u8; char_w * char_h];
+        for y in 0..char_h {
+            for x in 0..char_w {
+                char_bin[y * char_w + x] = binary[y * w + (x1 + x)];
+            }
+        }
+
+        if let Ok(Some((ch, _score))) = overmax_cv::match_character(&char_bin, char_w, char_h, cv_templates) {
+            if ch.is_ascii_digit() {
+                matched_str.push(ch);
+            }
+        } else {
+            matched_str.push('?');
+        }
+    }
+
+    Ok((matched_str, binary, threshold, max_y))
 }
 
 fn binarize_by_luminance(

@@ -410,10 +410,7 @@ impl NativeApp {
 
         detection_worker::spawn(
             (*root).clone(),
-            merged_settings
-                .lock()
-                .map_err(|_| "settings lock poisoned")?
-                .clone(),
+            app_settings.clone(),
             log_tx.clone(),
             game_found_tx,
             detection_tx,

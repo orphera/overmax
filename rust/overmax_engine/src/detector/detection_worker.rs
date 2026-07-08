@@ -5,8 +5,7 @@ use crate::capture::capture_engine::{CaptureEngine, AdaptiveCaptureEngine};
 use crate::capture::screen_capture::CapturedFrame;
 use crate::capture::window_tracker::WindowTracker;
 use overmax_core::{GameSessionState, Changed};
-use overmax_data::{DataCompatibility, ImageIndexDb};
-use serde_json::Value;
+use overmax_data::{DataCompatibility, ImageIndexDb, Settings};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
@@ -17,7 +16,7 @@ const LOG_INTERVAL: Duration = Duration::from_secs(3);
 
 pub fn spawn(
     root: PathBuf,
-    settings: Value,
+    settings: Settings,
     log_tx: Sender<String>,
     game_found_tx: Sender<()>,
     detection_tx: Sender<DetectionOutput>,
@@ -44,7 +43,7 @@ fn initialize_winrt(_log_tx: &Sender<String>) {}
 
 struct DetectionWorker {
     root: PathBuf,
-    settings: Value,
+    settings: Settings,
     log_tx: Sender<String>,
     game_found_tx: Sender<()>,
     detection_tx: Sender<DetectionOutput>,
@@ -66,7 +65,7 @@ struct DetectionWorker {
 impl DetectionWorker {
     fn new(
         root: PathBuf,
-        settings: Value,
+        settings: Settings,
         log_tx: Sender<String>,
         game_found_tx: Sender<()>,
         detection_tx: Sender<DetectionOutput>,
@@ -317,55 +316,54 @@ fn jacket_status_label(status: &JacketMatchStatus) -> String {
     }
 }
 
-fn window_title(settings: &Value) -> String {
+fn window_title(settings: &Settings) -> String {
     settings
-        .get("window_tracker")
-        .and_then(|v| v.get("window_title"))
-        .and_then(Value::as_str)
-        .unwrap_or("DJMAX RESPECT V")
-        .to_string()
+        .window_tracker
+        .as_ref()
+        .map(|t| t.window_title.clone())
+        .unwrap_or_else(|| "DJMAX RESPECT V".to_string())
 }
 
-fn image_index_path(root: &Path, settings: &Value) -> PathBuf {
+fn image_index_path(root: &Path, settings: &Settings) -> PathBuf {
     let fallback = DataCompatibility::current().image_index_db;
     let rel = settings
-        .get("jacket_matcher")
-        .and_then(|v| v.get("db_path"))
-        .and_then(Value::as_str)
+        .jacket_matcher
+        .as_ref()
+        .map(|j| j.db_path.as_str())
         .unwrap_or(fallback);
     root.join(rel)
 }
 
-fn threshold(settings: &Value) -> f32 {
+fn threshold(settings: &Settings) -> f32 {
     settings
-        .get("jacket_matcher")
-        .and_then(|v| v.get("similarity_threshold"))
-        .and_then(Value::as_f64)
+        .jacket_matcher
+        .as_ref()
+        .map(|j| j.similarity_threshold)
         .unwrap_or(0.6) as f32
 }
 
-fn idle_sleep(settings: &Value) -> f64 {
+fn idle_sleep(settings: &Settings) -> f64 {
     settings
-        .get("screen_capture")
-        .and_then(|v| v.get("idle_sleep_sec"))
-        .and_then(Value::as_f64)
+        .screen_capture
+        .as_ref()
+        .map(|s| s.idle_sleep_sec)
         .unwrap_or(1.0)
         .max(0.5)
 }
 
-fn disable_hog(settings: &Value) -> bool {
+fn disable_hog(settings: &Settings) -> bool {
     settings
-        .get("jacket_matcher")
-        .and_then(|v| v.get("disable_hog"))
-        .and_then(Value::as_bool)
+        .jacket_matcher
+        .as_ref()
+        .map(|j| j.disable_hog)
         .unwrap_or(true)
 }
 
-fn margin_threshold(settings: &Value) -> f32 {
+fn margin_threshold(settings: &Settings) -> f32 {
     settings
-        .get("jacket_matcher")
-        .and_then(|v| v.get("margin_threshold"))
-        .and_then(Value::as_f64)
+        .jacket_matcher
+        .as_ref()
+        .map(|j| j.margin_threshold)
         .unwrap_or(3.0) as f32
 }
 

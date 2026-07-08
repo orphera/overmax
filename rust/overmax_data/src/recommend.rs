@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 
 const DIFFICULTIES: &[&str] = &["NM", "HD", "MX", "SC"];
 const SC_GROUP: &[&str] = &["SC"];
+const MODES: &[&str] = &["4B", "5B", "6B", "8B"];
 
 type RecordKey = (i32, String, String);
 
@@ -223,7 +224,7 @@ impl Recommender {
         let modes_to_check = if params.same_mode_only {
             vec![params.target_mode]
         } else {
-            vec!["4B", "5B", "6B", "8B"]
+            MODES.to_vec()
         };
 
         let mut candidates = Vec::new();
@@ -320,14 +321,7 @@ impl Recommender {
                 Ok(id) => id,
                 Err(_) => continue,
             };
-            for m_idx in 0..4 {
-                let mode = match m_idx {
-                    0 => "4B",
-                    1 => "5B",
-                    2 => "6B",
-                    3 => "8B",
-                    _ => unreachable!(),
-                };
+            for (m_idx, &mode) in MODES.iter().enumerate() {
                 for d_idx in 0..4 {
                     let diff = match d_idx {
                         0 => "NM",
@@ -478,7 +472,7 @@ impl Recommender {
         let modes = if same_mode_only {
             vec![button_mode]
         } else {
-            vec!["4B", "5B", "6B", "8B"]
+            MODES.to_vec()
         };
 
         let mut total = 0;

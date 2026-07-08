@@ -165,17 +165,18 @@ impl DetectionWorker {
                 out.state.is_fullscreen = tracker.is_fullscreen();
                 self.log_detection_summary(&out);
                 
+                // IMPORTANT: `.update()` has side effects (mutates cached state).
+                // All five calls must execute before combining — do NOT inline into `||` or allow short-circuit.
                 let jacket_changed = self.last_jacket_status.update(out.jacket_status.clone());
                 let song_changed = self.last_song_id.update(out.current_song_id);
                 let song_select_changed = self.last_is_song_select.update(out.is_song_select);
                 let logo_changed = self.last_logo_detected.update(out.logo_detected);
                 let fullscreen_changed = self.last_is_fullscreen.update(out.state.is_fullscreen);
-
-                let state_changed = song_changed
-                    || song_select_changed
-                    || logo_changed
-                    || fullscreen_changed
-                    || jacket_changed;
+                let state_changed = jacket_changed
+                    | song_changed
+                    | song_select_changed
+                    | logo_changed
+                    | fullscreen_changed;
 
                 let _ = self.detection_tx.send(out);
                 if state_changed {

@@ -23,7 +23,10 @@ struct RoiRect {
     height: i32,
 }
 
-// overmax_app의 RoiManager 로직을 로컬에 모사하여 종횡비별 스케일 및 레터박스 오프셋 적용
+// NOTE: overmax-data와 overmax-engine 간의 순환 의존성(Circular Dependency) 제약으로 인해
+// overmax_engine::detector::roi::RoiManager를 직접 임포트하지 못하므로,
+// 해당 변환 로직(calculate_transform / transform_point)을 로컬에 모사하여 종횡비별 스케일 및 레터박스 오프셋 적용.
+// 만약 RoiManager의 좌표 계산 방식이 변경될 경우 여기의 get_scaled_roi도 동기화되어야 함.
 fn get_scaled_roi(w: u32, h: u32, base_roi: RoiRect) -> (u32, u32, u32, u32) {
     let w = w as f32;
     let h = h as f32;

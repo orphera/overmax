@@ -24,7 +24,8 @@ fn main() {
     }
     
     println!("Refreshing startup caches...");
-    cache_update::refresh_startup_caches(root, &merged, &mut |msg| {
+    let settings: overmax_data::Settings = serde_json::from_value(merged).unwrap_or_default();
+    cache_update::refresh_startup_caches(root, &settings, &mut |msg| {
         println!("{}", msg);
     });
     println!("Refresh done!");

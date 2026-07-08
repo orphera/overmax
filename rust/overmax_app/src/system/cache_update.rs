@@ -8,8 +8,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 const USER_AGENT_VALUE: &str = concat!("overmax-rs/", env!("CARGO_PKG_VERSION"));
-const SONGS_API_FALLBACK: &str = "https://v-archive.net/db/v2/songs.json";
-const DLCS_API_FALLBACK: &str = "https://v-archive.net/db/dlcs.json";
 const PATTERN_META_CACHE: &str = "cache/pattern_meta.json";
 const IMAGE_DB_OWNER: &str = "orphera";
 const IMAGE_DB_REPO: &str = "overmax-image-db";
@@ -27,7 +25,7 @@ const SHEET_GIDS: &[(&str, &str)] = &[
 
 type LogFn<'a> = &'a mut dyn FnMut(String);
 
-pub fn refresh_startup_caches(root: &Path, settings: &Value, log: LogFn<'_>) {
+pub fn refresh_startup_caches(root: &Path, settings: &overmax_data::Settings, log: LogFn<'_>) {
     refresh_songs_json(root, settings, &mut *log);
     refresh_dlcs_json(root, settings, &mut *log);
 
@@ -48,19 +46,15 @@ pub fn refresh_startup_caches(root: &Path, settings: &Value, log: LogFn<'_>) {
     refresh_image_index(root, settings, &mut *log);
 }
 
-fn refresh_songs_json(root: &Path, settings: &Value, log: LogFn<'_>) {
-    let path = root.join(setting_str(
-        settings,
-        "varchive",
-        "cache_path",
-        "cache/songs.json",
-    ));
-    let ttl = setting_u64(settings, "varchive", "cache_ttl_sec", DAY.as_secs());
+fn refresh_songs_json(root: &Path, settings: &overmax_data::Settings, log: LogFn<'_>) {
+    let varchive = settings.varchive();
+    let path = root.join(&varchive.cache_path);
+    let ttl = varchive.cache_ttl_sec;
     if !is_stale(&path, Duration::from_secs(ttl)) {
         return;
     }
-    let url = setting_str(settings, "varchive", "songs_api_url", SONGS_API_FALLBACK);
-    let timeout = setting_u64(settings, "varchive", "download_timeout_sec", 10);
+    let url = &varchive.songs_api_url;
+    let timeout = varchive.download_timeout_sec;
     match download_bytes(url, Duration::from_secs(timeout)) {
         Ok(bytes) => {
             if let Err(e) = write_atomic(&path, &bytes) {
@@ -73,19 +67,15 @@ fn refresh_songs_json(root: &Path, settings: &Value, log: LogFn<'_>) {
     }
 }
 
-fn refresh_dlcs_json(root: &Path, settings: &Value, log: LogFn<'_>) {
-    let path = root.join(setting_str(
-        settings,
-        "varchive",
-        "dlcs_cache_path",
-        "cache/dlcs.json",
-    ));
-    let ttl = setting_u64(settings, "varchive", "cache_ttl_sec", DAY.as_secs());
+fn refresh_dlcs_json(root: &Path, settings: &overmax_data::Settings, log: LogFn<'_>) {
+    let varchive = settings.varchive();
+    let path = root.join(&varchive.dlcs_cache_path);
+    let ttl = varchive.cache_ttl_sec;
     if !is_stale(&path, Duration::from_secs(ttl)) {
         return;
     }
-    let url = setting_str(settings, "varchive", "dlcs_api_url", DLCS_API_FALLBACK);
-    let timeout = setting_u64(settings, "varchive", "download_timeout_sec", 10);
+    let url = &varchive.dlcs_api_url;
+    let timeout = varchive.download_timeout_sec;
     match download_bytes(url, Duration::from_secs(timeout)) {
         Ok(bytes) => {
             if let Err(e) = write_atomic(&path, &bytes) {
@@ -131,13 +121,8 @@ fn refresh_pattern_meta(root: &Path, varchive_db: &overmax_data::varchive::VArch
     }
 }
 
-fn refresh_image_index(root: &Path, settings: &Value, log: LogFn<'_>) {
-    let path = root.join(setting_str(
-        settings,
-        "jacket_matcher",
-        "db_path",
-        "cache/image_index.db",
-    ));
+fn refresh_image_index(root: &Path, settings: &overmax_data::Settings, log: LogFn<'_>) {
+    let path = root.join(&settings.jacket_matcher().db_path);
     let Ok((tag, url)) = latest_release_asset(IMAGE_DB_OWNER, IMAGE_DB_REPO, IMAGE_DB_ASSET) else {
         log("[ImageDBUpdater] 릴리즈 정보 조회 실패".into());
         return;
@@ -246,21 +231,7 @@ fn is_stale(path: &Path, ttl: Duration) -> bool {
     SystemTime::now().duration_since(modified).unwrap_or(ttl) >= ttl
 }
 
-fn setting_str<'a>(settings: &'a Value, section: &str, key: &str, fallback: &'a str) -> &'a str {
-    settings
-        .get(section)
-        .and_then(|v| v.get(key))
-        .and_then(Value::as_str)
-        .unwrap_or(fallback)
-}
 
-fn setting_u64(settings: &Value, section: &str, key: &str, fallback: u64) -> u64 {
-    settings
-        .get(section)
-        .and_then(|v| v.get(key))
-        .and_then(Value::as_u64)
-        .unwrap_or(fallback)
-}
 
 fn local_version(db_path: &Path) -> Option<String> {
     std::fs::read_to_string(version_path(db_path))

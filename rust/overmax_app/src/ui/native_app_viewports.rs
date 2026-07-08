@@ -12,11 +12,11 @@ use crate::ui::settings_ui;
 use crate::ui::sync_ui;
 use overmax_engine::capture::window_tracker;
 
-fn game_window_title(settings: &serde_json::Value) -> &str {
+fn game_window_title(settings: &overmax_data::Settings) -> &str {
     settings
-        .get("window_tracker")
-        .and_then(|v| v.get("window_title"))
-        .and_then(serde_json::Value::as_str)
+        .window_tracker
+        .as_ref()
+        .map(|t| t.window_title.as_str())
         .unwrap_or("DJMAX RESPECT V")
 }
 
@@ -476,12 +476,13 @@ impl eframe::App for NativeApp {
                 if actions.restore_game_focus {
 
                     let max_log_lines = self.max_log_lines();
-                    if let Ok(mut settings) = self.settings.merged.lock() {
-                        window_tracker::restore_foreground_by_title(game_window_title(&settings));
-                        
-                        if let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
-                            if let Ok(mut draft) = self.settings.draft.lock() {
-                                let mut overlay = settings.get("overlay").cloned().unwrap_or_else(|| serde_json::json!({}));
+                    let settings = self.settings.get_merged();
+                    window_tracker::restore_foreground_by_title(game_window_title(&settings));
+                    
+                    if let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
+                        if let Ok(mut draft) = self.settings.draft.lock() {
+                            if let Ok(mut merged_lock) = self.settings.merged.lock() {
+                                let mut overlay = merged_lock.get("overlay").cloned().unwrap_or_else(|| serde_json::json!({}));
                                 if let Some(overlay_obj) = overlay.as_object_mut() {
                                     let mut position_map = overlay_obj
                                         .get("position")
@@ -492,7 +493,7 @@ impl eframe::App for NativeApp {
                                     position_map.insert("y".to_string(), serde_json::json!(rect.min.y as i32));
                                     overlay_obj.insert("position".to_string(), serde_json::Value::Object(position_map));
                                 }
-                                settings["overlay"] = overlay.clone();
+                                merged_lock["overlay"] = overlay.clone();
                                 draft["overlay"] = overlay;
 
                                 let base_g = self.settings.base.lock().map(|g| g.clone()).unwrap_or_default();
@@ -501,7 +502,7 @@ impl eframe::App for NativeApp {
                                     self.settings.defaults.as_ref(),
                                     &base_g,
                                     &mut draft,
-                                    &mut settings,
+                                    &mut merged_lock,
                                 );
                                 debug_ui::push_log(
                                     &self.debug_state.log_lines,
@@ -722,11 +723,8 @@ impl NativeApp {
         let mut g_hwnd = self.win_cache.cached_game_hwnd.map(|h| h as HWND);
         let is_valid = g_hwnd.map(|h| unsafe { IsWindow(h) } != 0).unwrap_or(false);
         if !is_valid {
-            let game_title = if let Ok(m) = self.settings.merged.lock() {
-                game_window_title(&m).to_string()
-            } else {
-                "DJMAX RESPECT V".to_string()
-            };
+            let settings = self.settings.get_merged();
+            let game_title = game_window_title(&settings).to_string();
             let title_wide = window_tracker::encode_wide(&game_title);
             g_hwnd = window_tracker::find_hwnd_by_title(&title_wide);
             self.win_cache.cached_game_hwnd = g_hwnd.map(|h| h as isize);

@@ -325,7 +325,8 @@ impl NativeApp {
         let (game_found_tx, game_found_rx) = mpsc::channel();
         let (detection_tx, detection_rx) = mpsc::channel();
 
-        cache_update::refresh_startup_caches(root.as_ref(), &merged, &mut |msg| {
+        let app_settings: overmax_data::Settings = serde_json::from_value(merged.clone()).unwrap_or_default();
+        cache_update::refresh_startup_caches(root.as_ref(), &app_settings, &mut |msg| {
             let _ = log_tx.send(msg);
         });
 
@@ -364,8 +365,7 @@ impl NativeApp {
         ));
 
         let steam0 = {
-            let settings: overmax_data::Settings = serde_json::from_value(merged.clone()).unwrap_or_default();
-            let mut sid = first_steam_from_settings(&settings);
+            let mut sid = first_steam_from_settings(&app_settings);
             if sid.is_empty() {
                 sid = recent_steam.unwrap_or_default();
             }
@@ -386,8 +386,7 @@ impl NativeApp {
         let (fetch_res_tx, fetch_res_rx) = mpsc::channel();
 
         // 시작 시 자동 갱신
-        let startup_settings: overmax_data::Settings = serde_json::from_value(merged.clone()).unwrap_or_default();
-        let varchive_settings = startup_settings.varchive();
+        let varchive_settings = app_settings.varchive();
         if varchive_settings.auto_refresh {
             if let Some(user_info) = varchive_settings.user_map.get(&steam0) {
                 if let Some(v_id) = &user_info.v_id {
@@ -814,12 +813,9 @@ impl NativeApp {
     }
 
     pub(crate) fn handle_auto_refresh(&mut self) {
-        let merged = match self.settings.merged.lock() {
-            Ok(g) => g.clone(),
-            Err(_) => return,
-        };
-        let auto_refresh = merged.get("varchive").and_then(|v| v.get("auto_refresh")).and_then(|v| v.as_bool()).unwrap_or(false);
-        if !auto_refresh {
+        let settings = self.settings.get_merged();
+        let varchive = settings.varchive();
+        if !varchive.auto_refresh {
             return;
         }
 
@@ -828,13 +824,11 @@ impl NativeApp {
             return;
         }
 
-        let user_map = merged.get("varchive").and_then(|v| v.get("user_map")).and_then(|v| v.as_object());
-        let entry = user_map.and_then(|m| m.get(&sid));
-        let v_id = match entry {
-            Some(Value::Object(o)) => o.get("v_id").and_then(|v| v.as_str()).unwrap_or(""),
-            Some(Value::String(s)) => s.as_str(),
-            _ => "",
-        };
+        let v_id = varchive
+            .user_map
+            .get(&sid)
+            .and_then(|u| u.v_id.as_deref())
+            .unwrap_or("");
 
         if !v_id.is_empty() {
             debug_ui::push_log(

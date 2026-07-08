@@ -102,7 +102,7 @@ impl RecordDB {
 
     pub fn set_steam_id(&self, steam_id: Option<&str>) -> (bool, String, String) {
         let new_sid = Self::normalize_steam_id(steam_id);
-        let mut guard = self.steam_id.lock().unwrap();
+        let mut guard = self.steam_id.lock().unwrap_or_else(|e| e.into_inner());
         let old_sid = guard.clone();
         let changed = old_sid != new_sid;
         *guard = new_sid.clone();
@@ -110,7 +110,7 @@ impl RecordDB {
     }
 
     pub fn get_steam_id(&self) -> String {
-        self.steam_id.lock().unwrap().clone()
+        self.steam_id.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     pub fn upsert(

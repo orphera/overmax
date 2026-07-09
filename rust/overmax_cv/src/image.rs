@@ -480,3 +480,83 @@ pub fn diff_panel_threshold(max: u8, min: u8) -> u8 {
         120
     }
 }
+
+pub fn adaptive_threshold_bradley_roth(
+    bgra: &[u8],
+    width: usize,
+    height: usize,
+    method: LumaMethod,
+    block_size: usize,
+    t: f32,
+    foreground_value: u8,
+) -> Vec<u8> {
+    let total = width * height;
+    let mut luma_vals = vec![0u8; total];
+    for y in 0..height {
+        for x in 0..width {
+            let idx = (y * width + x) * 4;
+            let b = bgra[idx];
+            let g = bgra[idx + 1];
+            let r = bgra[idx + 2];
+            
+            let luma = match method {
+                LumaMethod::Weighted => ((77 * r as u32 + 150 * g as u32 + 29 * b as u32) >> 8) as u8,
+                LumaMethod::Average => ((r as u32 + g as u32 + b as u32) / 3) as u8,
+                LumaMethod::MaxRGB => r.max(g).max(b),
+            };
+            luma_vals[y * width + x] = luma;
+        }
+    }
+
+    // 1. 적분 이미지 계산 (Integral Image)
+    let mut integral = vec![0u64; total];
+    for y in 0..height {
+        let mut sum = 0u64;
+        for x in 0..width {
+            sum += luma_vals[y * width + x] as u64;
+            if y == 0 {
+                integral[y * width + x] = sum;
+            } else {
+                integral[y * width + x] = integral[(y - 1) * width + x] + sum;
+            }
+        }
+    }
+
+    // 2. 임계값 비교 및 이진화
+    let mut binary = vec![0u8; total];
+    let half_s = (block_size / 2) as isize;
+    let factor = 1.0 - t;
+
+    for y in 0..height {
+        for x in 0..width {
+            let x1 = (x as isize - half_s).max(0) as usize;
+            let x2 = (x as isize + half_s).min(width as isize - 1) as usize;
+            let y1 = (y as isize - half_s).max(0) as usize;
+            let y2 = (y as isize + half_s).min(height as isize - 1) as usize;
+
+            let count = (x2 - x1 + 1) * (y2 - y1 + 1);
+
+            let mut sum = integral[y2 * width + x2] as i64;
+            if x1 > 0 {
+                sum -= integral[y2 * width + (x1 - 1)] as i64;
+            }
+            if y1 > 0 {
+                sum -= integral[(y1 - 1) * width + x2] as i64;
+            }
+            if x1 > 0 && y1 > 0 {
+                sum += integral[(y1 - 1) * width + (x1 - 1)] as i64;
+            }
+
+            let luma = luma_vals[y * width + x] as f32;
+            let avg = sum.max(0) as f32 / count as f32;
+
+            binary[y * width + x] = if luma >= avg * factor {
+                foreground_value
+            } else {
+                0
+            };
+        }
+    }
+
+    binary
+}

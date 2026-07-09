@@ -130,4 +130,4 @@ pub fn match_character(
     Ok(image::match_character(char_bin, char_w, char_h, templates))
 }
 
-pub use image::{LumaMethod, binarize_by_luminance, diff_panel_threshold};
+pub use image::{LumaMethod, binarize_by_luminance, diff_panel_threshold, adaptive_threshold_bradley_roth};

@@ -180,8 +180,23 @@ fn main() {
             } else {
                 img_report.push_str("  [Score ROI] Crop failed.\n");
             }
-        } else {
-            img_report.push_str("  [Score ROI] Missing in scene configuration.\n");
+        }
+        // 3. Mode 분석
+        if let Some(mode_roi) = rois.get_roi("mode_digit") {
+            if let Some(mode_img) = crop_roi(&frame, mode_roi) {
+                let detected_mode = ocr.detect_freestyle_mode(&mode_img);
+                img_report.push_str(&format!("  [Mode Digit ROI]\n"));
+                img_report.push_str(&format!("    - detect_freestyle_mode() result: {:?}\n", detected_mode));
+            }
+        }
+
+        // 4. Difficulty 분석
+        if let Some(diff_roi) = rois.get_roi("diff_panel") {
+            if let Some(diff_img) = crop_roi(&frame, diff_roi) {
+                let detected_diff = ocr.detect_result_difficulty(&diff_img);
+                img_report.push_str(&format!("  [Diff Panel ROI]\n"));
+                img_report.push_str(&format!("    - detect_result_difficulty() result: {:?}\n", detected_diff));
+            }
         }
 
         img_report.push_str("\n");

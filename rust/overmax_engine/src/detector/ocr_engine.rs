@@ -156,7 +156,15 @@ impl OcrDetector {
             return None;
         }
 
-        let (binary, _, _) = binarize_by_luminance(mode_img, |_, _| 120, 1);
+        let binary = overmax_cv::adaptive_threshold_bradley_roth(
+            &mode_img.bgra,
+            w,
+            h,
+            overmax_cv::LumaMethod::Average,
+            16,
+            0.15,
+            1,
+        );
         let (target_w, target_h) = (50usize, 68usize);
         let resized_binary = resize_binary(&binary, w, h, target_w, target_h);
 

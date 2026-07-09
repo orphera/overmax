@@ -579,7 +579,10 @@ impl NativeApp {
         overlay_on: bool,
         force_topmost: &mut bool,
     ) {
+        #[cfg(target_os = "windows")]
         let local_mouse = get_local_mouse_pos(ctx, self.win_cache.cached_hwnd);
+        #[cfg(not(target_os = "windows"))]
+        let local_mouse = get_local_mouse_pos(ctx, None);
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(Color32::from_rgba_unmultiplied(0, 0, 0, 0)))
             .show(ctx, |ui| {

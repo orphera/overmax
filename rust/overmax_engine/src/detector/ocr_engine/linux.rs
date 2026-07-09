@@ -29,14 +29,14 @@ impl OcrEngine {
         _image: &ImageRegion,
         _force_invert: bool,
         _binarize: bool,
-    ) -> Result<(String, u8, f32, bool, Vec<u8>, usize, usize), String> {
-        Ok((String::new(), 0, 0.0, false, Vec::new(), 0, 0))
+    ) -> Result<(String, overmax_cv::OcrPreprocessResult), String> {
+        Ok((String::new(), overmax_cv::OcrPreprocessResult::default()))
     }
 
     pub(super) fn recognize_color_with_telemetry(
         &self,
         _image: &ImageRegion,
-    ) -> Result<(String, u8, f32, bool, Vec<u8>, usize, usize), String> {
-        Ok((String::new(), 0, 0.0, false, Vec::new(), 0, 0))
+    ) -> Result<(String, overmax_cv::OcrPreprocessResult), String> {
+        Ok((String::new(), overmax_cv::OcrPreprocessResult::default()))
     }
 }

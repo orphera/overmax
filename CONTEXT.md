@@ -84,7 +84,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 - **PlayState 감지**:
   - **버튼 모드 (Button Mode)**: `btn_mode` ROI의 평균 BGR 색상과 미리 정의된 대표색(4B/5B/6B/8B)의 Euclidean 거리가 60 이하인 모드 중 최적 매칭값 선택.
   - **난이도 (Difficulty)**: 각 난이도 패널 ROI(NM/HD/MX/SC)의 평균 밝기를 계산. 상위 1위 밝기가 최소 밝기(45) 이상이고 2위와의 차이(margin)가 15.0 이상일 때 유효(confident)한 난이도로 판정.
-  - **Max Combo**: 결과창 및 선곡창의 `max_combo_badge` ROI 영역에 대해 사전에 수집된 대표 뱃지 이미지 템플릿과의 이미지 해시(pHash, dHash, aHash) 비교를 수행. 가중 해밍 거리가 10.0 이하인 경우에 한해 True로 판정하여, 연출 그래픽 변화나 노이즈에 의한 Jitter 및 오인식을 완벽하게 차단.
+  - **Max Combo**: 결과창 및 선곡창의 `max_combo_badge` ROI 영역에 대해 사전에 수집된 대표 뱃지 이미지 템플릿과의 이미지 해시(pHash, dHash, ahash) 비교를 수행. 결과창의 경우 가중 해밍 거리가 20.0 이하(선곡창은 10.0 이하)인 경우에 한해 True로 판정하여, 연출 그래픽 변화나 노이즈에 의한 Jitter 및 오인식을 완벽하게 차단.
   - **Rate**: `rate` ROI 영역의 Windows OCR 멀티패스(Color → Grayscale → Grayscale Inverted) 결과를 실수값(`f32`)으로 실시간 수집. 유효 파싱값이 나온 첫 번째 패스 결과를 채택.
   - **Score & Rate Cross-Validation**: 결과창 및 선곡창에서 `score` ROI 영역을 단일 패스 OCR로 추출하여 판정율을 역산(`Rate = Score / 10,000`)합니다. 두 OCR 결과(Rate vs. Score 역산값) 간에 불일치가 발생할 경우, 오차가 0.1% 이내이면 정밀한 스코어 역산값으로 보정하고, 오차가 클 경우 각 값의 정확도 범위(`90%~100%`, `70%~90%` 등)를 기준으로 타당성(Plausibility) 신뢰도를 평가해 더 상식적이고 가능성이 높은 값을 최종 채택합니다. 추가로 선곡창 자릿수 오인식에 대비해 신뢰 범위 가드(MIN_VALID_RATE인 80% ~ 100%)를 둡니다.
 - **원자적 안정화**:
@@ -164,4 +164,6 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-10 | 곡 제목 영역 width 고정 및 페이드 아웃 마스크 적용 | 긴 곡 제목으로 인해 오버레이 창 width가 늘어나는 문제를 해결하기 위해, 가용 너비를 제한하고 우측 끝에 그라디언트 투명도 마스크를 적용 | [overlay_ui.rs](rust/overmax_app/src/ui/overlay_ui.rs) |
 | 2026-07-10 | 선곡창 Rate 템플릿 매칭 이진화 롤백 및 조건 확장 | 적응형 이진화의 세그멘테이션 실패 결함 해결(휘도 기반 복원) 및 '.'과 '%' 문자 추가 허용, '?' 섞임 시 파싱 우선 채택을 통해 Windows OCR fallback 루프 차단 | [ocr_engine.rs](rust/overmax_engine/src/detector/ocr_engine.rs) |
 | 2026-07-10 | 선곡창 및 오픈매치 Rate/Score ROI 가로 폭 확장 | 창모드 등 해상도 찌그러짐 시 스케일링 소수점 오차로 글자 앞부분이 잘리는 문제를 해결하기 위해 default ROI 가로 영역 좌측 4px, 우측 6px 확장 | [scene_config.rs](rust/overmax_data/src/config/scene_config.rs) |
+| 2026-07-10 | 결과창 뱃지 매칭 임계치 완화 (10.0 -> 20.0) | 결과창에서 일부 Perfect/FC 뱃지의 해시 매칭 거리가 10.0을 초과해 감지 실패하는 현상 해결 (NONE 이미지들의 해시 거리는 30 이상이므로 오인식 우려 없음) | [play_state.rs](rust/overmax_engine/src/detector/play_state.rs) |
+
 

@@ -507,7 +507,7 @@ pub fn detect_max_combo_result(frame: &CapturedFrame, rois: &RoiManager) -> bool
     };
     let score_perfect = calculate_hash_score(phash, dhash, ahash, TEMPLATE_RESULT_PERFECT_PHASH, TEMPLATE_RESULT_PERFECT_DHASH, TEMPLATE_RESULT_PERFECT_AHASH);
     let score_mc = calculate_hash_score(phash, dhash, ahash, TEMPLATE_RESULT_MC_PHASH, TEMPLATE_RESULT_MC_DHASH, TEMPLATE_RESULT_MC_AHASH);
-    score_perfect <= 10.0 || score_mc <= 10.0
+    score_perfect <= 20.0 || score_mc <= 20.0
 }
 
 fn button_colors() -> [ButtonColorEntry; 4] {

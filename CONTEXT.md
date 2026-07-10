@@ -162,4 +162,6 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-09 | 결과창 스코어용 얇은 폰트 템플릿 수집 및 추가 | 결과창의 얇은 폰트 조건에서 스코어 '8'이 '3'으로 오독되는 문제를 새로운 템플릿 마스크 추가로 완벽 해결 | [generate_templates_code.rs](rust/overmax_app/src/bin/generate_templates_code.rs) |
 | 2026-07-09 | 결과창 모드 매칭에 Bradley-Roth 적응형 이진화 적용 | BGA 배경이 밝아져 '8B' 등 모드 글자가 배경에 묻히는 문제를 적분 이미지 기반 적응형 이진화 도입으로 완벽 해결 | [ocr_engine.rs](rust/overmax_engine/src/detector/ocr_engine.rs) |
 | 2026-07-10 | 곡 제목 영역 width 고정 및 페이드 아웃 마스크 적용 | 긴 곡 제목으로 인해 오버레이 창 width가 늘어나는 문제를 해결하기 위해, 가용 너비를 제한하고 우측 끝에 그라디언트 투명도 마스크를 적용 | [overlay_ui.rs](rust/overmax_app/src/ui/overlay_ui.rs) |
+| 2026-07-10 | 선곡창 Rate 템플릿 매칭 이진화 롤백 및 조건 확장 | 적응형 이진화의 세그멘테이션 실패 결함 해결(휘도 기반 복원) 및 '.'과 '%' 문자 추가 허용, '?' 섞임 시 파싱 우선 채택을 통해 Windows OCR fallback 루프 차단 | [ocr_engine.rs](rust/overmax_engine/src/detector/ocr_engine.rs) |
+| 2026-07-10 | 선곡창 및 오픈매치 Rate/Score ROI 가로 폭 확장 | 창모드 등 해상도 찌그러짐 시 스케일링 소수점 오차로 글자 앞부분이 잘리는 문제를 해결하기 위해 default ROI 가로 영역 좌측 4px, 우측 6px 확장 | [scene_config.rs](rust/overmax_data/src/config/scene_config.rs) |
 

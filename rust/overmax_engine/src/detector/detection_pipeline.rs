@@ -605,7 +605,6 @@ pub fn detect_scene_from_logo(
 mod tests {
     use super::{DetectionPipeline, JacketMatchStatus};
     use crate::capture::frame::CapturedFrame;
-    use crate::detector::hysteresis::HysteresisBuffer;
     use overmax_data::ImageIndexDb;
 
     #[test]
@@ -676,7 +675,7 @@ mod tests {
             let mut pipeline = DetectionPipeline::new(ImageIndexDb::new(db_path_str, 0.6));
             let _ = pipeline.image_db.load();
 
-            let img = image::io::Reader::open(&path).expect("Failed to open file")
+            let img = image::ImageReader::open(&path).expect("Failed to open file")
                 .with_guessed_format().expect("Failed to guess format")
                 .decode().expect("Failed to decode image");
             let (w, h) = img.dimensions();

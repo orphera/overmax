@@ -16,7 +16,7 @@ overmax-core = { path = "../overmax_core" }
 overmax-data = { path = "../overmax_data" }
 overmax_cv = { path = "../overmax_cv" }
 serde_json = "1"
-image = { version = "0.25", default-features = false, features = ["png", "ico"] }
+image = { version = "0.25", default-features = false, features = ["png", "ico", "jpeg"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = [

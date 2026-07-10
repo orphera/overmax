@@ -146,7 +146,7 @@ impl Recommender {
         };
 
         let current_pattern = crate::community::client::Mode::from_str(button_mode)
-            .and_then(|m| crate::community::client::Difficulty::from_str(difficulty).map(|d| (m, d)))
+            .zip(crate::community::client::Difficulty::from_str(difficulty))
             .and_then(|(m, d)| current_song.patterns[m as usize][d as usize].as_ref());
 
         let p = match current_pattern {

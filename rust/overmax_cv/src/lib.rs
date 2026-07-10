@@ -130,4 +130,21 @@ pub fn match_character(
     Ok(image::match_character(char_bin, char_w, char_h, templates))
 }
 
+pub fn binarize_by_global_contrast(
+    data: &[u8],
+    width: usize,
+    height: usize,
+    method: LumaMethod,
+    foreground_value: u8,
+) -> Result<(Vec<u8>, u8, u8), error::CvError> {
+    image::validate_image(data, width, height, 4, "binarize_by_global_contrast")?;
+    Ok(image::binarize_by_global_contrast(
+        data,
+        width,
+        height,
+        method,
+        foreground_value,
+    ))
+}
+
 pub use image::{LumaMethod, binarize_by_luminance, diff_panel_threshold, adaptive_threshold_bradley_roth};

@@ -28,18 +28,18 @@ impl Default for GlobalRoiConfig {
         // Freestyle ROI
         let mut freestyle_rois = HashMap::new();
         freestyle_rois.insert("jacket".to_string(), RoiRect { x: 710, y: 533, width: 60, height: 60 });
-        freestyle_rois.insert("rate".to_string(), RoiRect { x: 176, y: 583, width: 94, height: 22 });
-        freestyle_rois.insert("score".to_string(), RoiRect { x: 177, y: 558, width: 94, height: 24 });
+        freestyle_rois.insert("rate".to_string(), RoiRect { x: 172, y: 583, width: 104, height: 22 });
+        freestyle_rois.insert("score".to_string(), RoiRect { x: 173, y: 558, width: 104, height: 24 });
         freestyle_rois.insert("btn_mode".to_string(), RoiRect { x: 80, y: 130, width: 5, height: 5 });
         freestyle_rois.insert("max_combo_badge".to_string(), RoiRect { x: 409, y: 585, width: 36, height: 36 });
         freestyle_rois.insert("diff_panel".to_string(), RoiRect { x: 98, y: 488, width: 110, height: 28 });
         scenes.insert(SceneType::Freestyle, SceneRoiConfig { rois: freestyle_rois });
-
+ 
         // OpenMatch ROI
         let mut open_match_rois = HashMap::new();
         open_match_rois.insert("jacket".to_string(), RoiRect { x: 664, y: 533, width: 60, height: 60 });
-        open_match_rois.insert("rate".to_string(), RoiRect { x: 201, y: 558, width: 93, height: 20 });
-        open_match_rois.insert("score".to_string(), RoiRect { x: 81, y: 558, width: 96, height: 20 });
+        open_match_rois.insert("rate".to_string(), RoiRect { x: 197, y: 558, width: 103, height: 20 });
+        open_match_rois.insert("score".to_string(), RoiRect { x: 77, y: 558, width: 106, height: 20 });
         open_match_rois.insert("btn_mode".to_string(), RoiRect { x: 60, y: 130, width: 5, height: 5 });
         open_match_rois.insert("max_combo_badge".to_string(), RoiRect { x: 398, y: 601, width: 36, height: 36 });
         open_match_rois.insert("diff_panel".to_string(), RoiRect { x: 82, y: 467, width: 116, height: 31 });

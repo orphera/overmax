@@ -107,41 +107,36 @@ impl OcrDetector {
         };
         let (matched_str, binary, threshold, max_y) = matched;
 
-        // 만약 수집이 안 된 문자(예: 5)가 들어오거나 일부 오독 시 Windows OCR(하이브리드 예외 처리)로 자동 폴백하여 안정성 100% 보장
-        if matched_str.is_empty() || matched_str.contains('?') {
-            debug_println!("    [ocr_engine::detect_rate] fallback: matched_str='{}' (empty or unresolved char)", matched_str);
-            if let Some((val, txt, tel)) = self.attempt_rate_ocr(rate, true, false) {
-                debug_println!("    [ocr_engine::detect_rate] source=ocr_fallback val={:?} text='{}'", val, txt);
-                return (val, txt, Some(tel));
-            } else {
-                debug_println!("    [ocr_engine::detect_rate] source=ocr_fallback FAILED");
-                return (None, String::new(), None);
+        // 우선 템플릿 매칭 결과에서 ?를 제거하고 파싱을 시도
+        let mut rate_val = None;
+        let mut template_success = false;
+        if !matched_str.is_empty() {
+            let clean_str = matched_str.replace('?', "");
+            if let Some(val) = parse_rate_text(&clean_str) {
+                rate_val = Some(val);
+                template_success = true;
             }
         }
 
-        let rate_val = parse_rate_text(&matched_str);
+        if template_success {
+            let telemetry = OcrTelemetry {
+                rate_text: matched_str.clone(),
+                threshold,
+                bg_mean: max_y as f32,
+                use_invert: false,
+                image_pixels: binary,
+                image_width: rate.width as usize,
+                image_height: rate.height as usize,
+            };
+            return (rate_val, matched_str, Some(telemetry));
+        }
 
-        if rate_val.is_none() {
-            debug_println!("    [ocr_engine::detect_rate] fallback: matched_str='{}' but parse failed", matched_str);
-            if let Some((val, txt, tel)) = self.attempt_rate_ocr(rate, true, false) {
-                debug_println!("    [ocr_engine::detect_rate] source=ocr_fallback(parse) val={:?} text='{}'", val, txt);
-                return (val, txt, Some(tel));
-            }
+        // 템플릿 매칭 실패 시 Windows OCR fallback으로 전환
+        if let Some((val, txt, tel)) = self.attempt_rate_ocr(rate, true, false) {
+            (val, txt, Some(tel))
         } else {
-            debug_println!("    [ocr_engine::detect_rate] source=template matched_str='{}' val={:?}", matched_str, rate_val);
+            (None, String::new(), None)
         }
-
-        let telemetry = OcrTelemetry {
-            rate_text: matched_str.clone(),
-            threshold,
-            bg_mean: max_y as f32,
-            use_invert: false,
-            image_pixels: binary,
-            image_width: rate.width as usize,
-            image_height: rate.height as usize,
-        };
-
-        (rate_val, matched_str, Some(telemetry))
     }
 
     /// Score 영역을 템플릿 매칭 또는 OCR을 통해 정수로 파싱합니다.
@@ -151,24 +146,18 @@ impl OcrDetector {
             Ok(m) => m,
             Err(_) => return None,
         };
-        let matched_str = matched.0;
+        let (matched_str, _binary, _threshold, _max_y) = matched;
 
         // 실패나 오독이 포함되면 Windows OCR로 즉각 안전 폴백
         if matched_str.is_empty() || matched_str.contains('?') {
-            debug_println!("    [ocr_engine::detect_score] fallback: matched_str='{}' (empty or unresolved char)", matched_str);
             return if let Ok(text) = self.engine.recognize_logo_color(score) {
-                let val = parse_score_text(&text);
-                debug_println!("    [ocr_engine::detect_score] source=ocr_fallback val={:?} text='{}'", val, text);
-                val
+                parse_score_text(&text)
             } else {
-                debug_println!("    [ocr_engine::detect_score] source=ocr_fallback FAILED");
                 None
             };
         }
 
-        let val = parse_score_text(&matched_str);
-        debug_println!("    [ocr_engine::detect_score] source=template matched_str='{}' val={:?}", matched_str, val);
-        val
+        parse_score_text(&matched_str)
     }
 
     /// 결과창 뱃지 이미지로부터 모드(4B~8B)와 난이도(NM~SC)를 감지합니다.
@@ -363,17 +352,13 @@ fn match_digits_template(
     let h = img.height as usize;
 
     // 1. 고휘도 이진화 전처리
-    let (binary, threshold, max_y) = binarize_by_luminance(
-        img,
-        |max, _| {
-            if max > 80 {
-                ((max as f32 * 0.80) as u8).max(max.saturating_sub(45))
-            } else {
-                180
-            }
-        },
+    let (binary, threshold, max_y) = overmax_cv::binarize_by_global_contrast(
+        &img.bgra,
+        w,
+        h,
+        overmax_cv::LumaMethod::Average,
         255,
-    );
+    ).map_err(|e| e.to_string())?;
 
     // 2. 수직 투영 분할
     let segments = overmax_cv::segment_characters(&binary, w, h)
@@ -392,7 +377,7 @@ fn match_digits_template(
         }
 
         if let Ok(Some((ch, _score))) = overmax_cv::match_character(&char_bin, char_w, char_h, cv_templates) {
-            if ch.is_ascii_digit() {
+            if ch.is_ascii_digit() || ch == '.' || ch == '%' {
                 matched_str.push(ch);
             }
         } else {
@@ -401,21 +386,6 @@ fn match_digits_template(
     }
 
     Ok((matched_str, binary, threshold, max_y))
-}
-
-fn binarize_by_luminance(
-    img: &ImageRegion,
-    threshold_calc: impl FnOnce(u8, u8) -> u8,
-    foreground_value: u8,
-) -> (Vec<u8>, u8, u8) {
-    overmax_cv::binarize_by_luminance(
-        &img.bgra,
-        img.width as usize,
-        img.height as usize,
-        overmax_cv::LumaMethod::Average,
-        threshold_calc,
-        foreground_value,
-    )
 }
 
 fn resize_binary(
@@ -622,7 +592,7 @@ mod tests {
             if !path.exists() {
                 continue;
             }
-            let img = image::io::Reader::open(&path).expect("Failed to open file")
+            let img = image::ImageReader::open(&path).expect("Failed to open file")
                 .with_guessed_format().expect("Failed to guess format")
                 .decode().expect("Failed to decode image");
             let (w, h) = img.dimensions();

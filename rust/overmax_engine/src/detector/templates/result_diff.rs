@@ -1,6 +1,5 @@
 /// 결과 화면 전용 난이도 패널 템플릿 (90x18, threshold=120)
 /// ROI: (709, 86, 90, 18)
-
 pub struct ResultDiffTemplate {
     pub name: &'static str,
     pub width: usize,

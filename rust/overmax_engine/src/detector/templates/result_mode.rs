@@ -1,6 +1,5 @@
 /// 결과 화면 전용 모드 숫자 템플릿 (50x68, threshold=120)
 /// ROI: (78, 28, 50, 68) -> 크롭 시 (50x68) 해상도 획득
-
 pub struct ResultModeTemplate {
     pub mode_label: &'static str,
     pub width: usize,

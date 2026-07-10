@@ -473,6 +473,31 @@ pub fn binarize_by_luminance(
     (binary, threshold, max_y)
 }
 
+/// 전역 대비(Global Contrast) 기반 유동 임계치를 사용하여 이미지의 휘도를 이진화합니다.
+pub fn binarize_by_global_contrast(
+    bgra: &[u8],
+    width: usize,
+    height: usize,
+    method: LumaMethod,
+    foreground_value: u8,
+) -> (Vec<u8>, u8, u8) {
+    binarize_by_luminance(
+        bgra,
+        width,
+        height,
+        method,
+        |max, min| {
+            if max > 40 && max.saturating_sub(min) > 15 {
+                let calculated = ((max as f32 * 0.80) as u8).max(max.saturating_sub(45));
+                calculated.max(min + 5)
+            } else {
+                180
+            }
+        },
+        foreground_value,
+    )
+}
+
 pub fn diff_panel_threshold(max: u8, min: u8) -> u8 {
     if max - min > 30 {
         (min as f32 + (max - min) as f32 * 0.55) as u8

@@ -295,13 +295,10 @@ pub fn close_if_requested(ctx: &egui::Context, open: &Arc<AtomicBool>) {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Default)]
 enum SyncSortMode {
+    #[default]
     Title,
     RateDiff,
 }
 
-impl Default for SyncSortMode {
-    fn default() -> Self {
-        SyncSortMode::Title
-    }
-}

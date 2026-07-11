@@ -358,11 +358,10 @@ impl VArchiveDB {
             // 4. Composer in note check
             let note_lower = note.to_lowercase();
             let comp_lower = song.composer.to_lowercase();
-            if !note_lower.is_empty() && !comp_lower.is_empty() {
-                if note_lower.contains(&comp_lower) || comp_lower.contains(&note_lower) {
+            if !note_lower.is_empty() && !comp_lower.is_empty()
+                && (note_lower.contains(&comp_lower) || comp_lower.contains(&note_lower)) {
                     score += match_score::COMPOSER_IN_NOTE;
                 }
-            }
 
             if score > best_score {
                 best_score = score;

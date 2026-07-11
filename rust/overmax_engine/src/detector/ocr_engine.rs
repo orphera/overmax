@@ -55,6 +55,12 @@ pub struct OcrDetector {
     engine: PlatformOcrEngine,
 }
 
+impl Default for OcrDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OcrDetector {
     pub fn new() -> Self {
         Self {
@@ -186,8 +192,8 @@ impl OcrDetector {
             .map(|t| MatchTemplateInfo {
                 width: t.width,
                 height: t.height,
-                mask: &t.mask,
-                label: &t.mode_label,
+                mask: t.mask,
+                label: t.mode_label,
             })
             .collect();
 
@@ -219,8 +225,8 @@ impl OcrDetector {
             .map(|t| MatchTemplateInfo {
                 width: t.width,
                 height: t.height,
-                mask: &t.mask,
-                label: &t.name,
+                mask: t.mask,
+                label: t.name,
             })
             .collect();
 
@@ -252,8 +258,8 @@ impl OcrDetector {
             .map(|t| MatchTemplateInfo {
                 width: t.width,
                 height: t.height,
-                mask: &t.mask,
-                label: &t.name,
+                mask: t.mask,
+                label: t.name,
             })
             .collect();
 

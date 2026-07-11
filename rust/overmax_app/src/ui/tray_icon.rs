@@ -217,7 +217,7 @@ unsafe fn create_hicon_from_png(bytes: &[u8]) -> Option<HICON> {
             biPlanes: 1,
             biBitCount: 32,
             biCompression: 0, // BI_RGB
-            biSizeImage: (width * height * 4) as u32,
+            biSizeImage: (width * height * 4),
             biXPelsPerMeter: 0,
             biYPelsPerMeter: 0,
             biClrUsed: 0,
@@ -276,8 +276,7 @@ unsafe fn show_context_menu(hwnd: HWND) {
     }
     append_item(menu, CMD_SETTINGS, "설정");
     append_item(menu, CMD_SYNC, "V-Archive 동기화");
-    let debug_enabled = ACTIONS.get()
-        .and_then(|a| Some(overmax_core::lock_or_recover(&a.settings)))
+    let debug_enabled = ACTIONS.get().map(|a| overmax_core::lock_or_recover(&a.settings))
         .and_then(|s| s.get("debug").and_then(|v| v.as_bool()))
         .unwrap_or(false);
     if debug_enabled {

@@ -302,7 +302,7 @@ impl eframe::App for NativeApp {
         #[cfg(debug_assertions)]
         {
             thread_local! {
-                static STYLE_INIT: std::cell::Cell<bool> = std::cell::Cell::new(false);
+                static STYLE_INIT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
             }
             STYLE_INIT.with(|init| {
                 if !init.get() {
@@ -368,12 +368,11 @@ impl eframe::App for NativeApp {
         {
             if overlay_on {
                 let found = self.apply_window_opacity(opacity, force_topmost);
-                if !found {
-                    if !self.win_cache.logged_opacity_fail {
+                if !found
+                    && !self.win_cache.logged_opacity_fail {
                         debug_ui::push_log(&self.debug_state.log_lines, self.max_log_lines(), format!("[Overlay] 투명도 조절용 창 핸들을 찾지 못함 (Opacity: {:.2})", opacity));
                         self.win_cache.logged_opacity_fail = true;
                     }
-                }
             } else {
                 // 숨겨질 때: 투명도를 즉시 0.0(완전 투명)으로 덮어씌워 윈도우 잔상 소멸을 보장
                 if let Some(hwnd) = self.find_overlay_window() {

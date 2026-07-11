@@ -229,7 +229,7 @@ fn main() {
         let mut rate_val = None;
         let clean: String = raw_txt.chars().filter(|c| c.is_ascii_digit() || *c == '.').collect();
         if let Ok(v) = clean.parse::<f32>() {
-            if v >= 0.0 && v <= 100.0 {
+            if (0.0..=100.0).contains(&v) {
                 rate_val = Some(v);
             }
         }

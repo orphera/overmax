@@ -115,7 +115,7 @@ fn main() {
                 // 기존 파이프라인의 detect_rate 실행
                 let (parsed_val, matched_str, telemetry_opt) = ocr.detect_rate(&rate_img);
                 
-                img_report.push_str(&format!("  [Rate ROI]\n"));
+                img_report.push_str("  [Rate ROI]\n");
                 img_report.push_str(&format!("    - ROI Coord: x1={}, y1={}, x2={}, y2={}\n", rate_roi.x1, rate_roi.y1, rate_roi.x2, rate_roi.y2));
                 img_report.push_str(&format!("    - Raw Crop Saved: {} ({})\n", rate_raw_path.display(), if saved_raw { "OK" } else { "Failed" }));
                 img_report.push_str(&format!("    - detect_rate() result: parsed={:?}, matched_str='{}'\n", parsed_val, matched_str));
@@ -151,7 +151,7 @@ fn main() {
                 // 기존 파이프라인의 detect_score 실행
                 let parsed_val = ocr.detect_score(&score_img);
 
-                img_report.push_str(&format!("  [Score ROI]\n"));
+                img_report.push_str("  [Score ROI]\n");
                 img_report.push_str(&format!("    - ROI Coord: x1={}, y1={}, x2={}, y2={}\n", score_roi.x1, score_roi.y1, score_roi.x2, score_roi.y2));
                 img_report.push_str(&format!("    - Raw Crop Saved: {} ({})\n", score_raw_path.display(), if saved_raw { "OK" } else { "Failed" }));
                 img_report.push_str(&format!("    - detect_score() result: parsed={:?}\n", parsed_val));
@@ -194,7 +194,7 @@ fn main() {
         if let Some(mode_roi) = rois.get_roi("mode_digit") {
             if let Some(mode_img) = crop_roi(&frame, mode_roi) {
                 let detected_mode = ocr.detect_freestyle_mode(&mode_img);
-                img_report.push_str(&format!("  [Mode Digit ROI]\n"));
+                img_report.push_str("  [Mode Digit ROI]\n");
                 img_report.push_str(&format!("    - detect_freestyle_mode() result: {:?}\n", detected_mode));
             }
         }
@@ -203,12 +203,12 @@ fn main() {
         if let Some(diff_roi) = rois.get_roi("diff_panel") {
             if let Some(diff_img) = crop_roi(&frame, diff_roi) {
                 let detected_diff = ocr.detect_result_difficulty(&diff_img);
-                img_report.push_str(&format!("  [Diff Panel ROI]\n"));
+                img_report.push_str("  [Diff Panel ROI]\n");
                 img_report.push_str(&format!("    - detect_result_difficulty() result: {:?}\n", detected_diff));
             }
         }
 
-        img_report.push_str("\n");
+        img_report.push('\n');
         println!("{}", img_report);
         analysis_report.push_str(&img_report);
     }

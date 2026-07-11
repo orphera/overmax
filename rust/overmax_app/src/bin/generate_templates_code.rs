@@ -102,7 +102,7 @@ fn main() {
             for x in 0..t.width {
                 code.push_str(&format!("{}, ", t.mask[y * t.width + x]));
             }
-            code.push_str("\n");
+            code.push('\n');
         }
         code.push_str("];\n\n");
     }

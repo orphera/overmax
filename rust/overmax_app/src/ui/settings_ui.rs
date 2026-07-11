@@ -143,7 +143,7 @@ fn overlay_section(ui: &mut egui::Ui, draft: &mut Value) {
         let (rect, _response) = ui.allocate_exact_size(egui::vec2(280.0, 120.0), egui::Sense::hover());
         ui.painter().rect(
             rect,
-            egui::CornerRadius::same(Theme::R_SM as u8),
+            egui::CornerRadius::same(Theme::R_SM),
             egui::Color32::from_black_alpha(220),
             egui::Stroke::new(1.0, Theme::STROKE),
             egui::StrokeKind::Inside,

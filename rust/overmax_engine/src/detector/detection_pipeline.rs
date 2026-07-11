@@ -221,10 +221,7 @@ impl DetectionPipeline {
             return None;
         }
 
-        let logo_roi = match self.rois.get_roi("logo") {
-            Some(roi) => roi,
-            None => return None,
-        };
+        let logo_roi = self.rois.get_roi("logo")?;
 
         let Some(logo) = crop_roi(frame, logo_roi) else {
             debug_println!("    [detect_logo_if_due] logo crop failed! now={}", now);

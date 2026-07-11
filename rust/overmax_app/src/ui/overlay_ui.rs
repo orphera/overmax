@@ -312,11 +312,10 @@ fn draw_lite_panel(
                             response_upload.on_hover_text("V-Archive 계정 연동 필요 (설정에서 account.txt 경로를 지정해주세요)")
                         };
                         
-                        if response_upload.clicked() {
-                            if props.varchive_account_configured {
+                        if response_upload.clicked()
+                            && props.varchive_account_configured {
                                 actions.command = Some(UiCommand::UploadCurrentPattern);
                             }
-                        }
                     }
                     
                     // [CRITICAL LAYOUT NOTE]
@@ -609,11 +608,10 @@ fn draw_header(
                                 .unwrap_or(response.rect.min.x),
                         );
                         
-                        if response.clicked() {
-                            if varchive_account_configured {
+                        if response.clicked()
+                            && varchive_account_configured {
                                 actions.command = Some(UiCommand::UploadCurrentPattern);
                             }
-                        }
                     }
                 });
             });

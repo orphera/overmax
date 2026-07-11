@@ -71,7 +71,7 @@ fn main() {
 
         // 마스크 배열 출력
         println!("[{}] Mask ({}x{}):", label, roi_w, roi_h);
-        print!("const RESULT_DIFF_MASK_{}: [u8; {}] = [\n", label, roi_w as usize * roi_h as usize);
+        println!("const RESULT_DIFF_MASK_{}: [u8; {}] = [", label, roi_w as usize * roi_h as usize);
         for y in 0..roi_h {
             print!("    ");
             for x in 0..roi_w {

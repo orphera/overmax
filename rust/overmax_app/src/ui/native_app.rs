@@ -246,6 +246,12 @@ pub struct AppStateTracker {
     pub prev_protected: Changed<Option<bool>>,
 }
 
+impl Default for AppStateTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AppStateTracker {
     pub fn new() -> Self {
         Self {

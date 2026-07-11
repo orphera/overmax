@@ -126,7 +126,7 @@ fn render_ocr_telemetry(
     }
     
     let mut texture_guard = rate_ocr_texture.lock().unwrap();
-    update_ocr_texture(ui.ctx(), &info, &mut *texture_guard);
+    update_ocr_texture(ui.ctx(), &info, &mut texture_guard);
     
     ui.group(|ui| {
         ui.horizontal(|ui| {

@@ -1,8 +1,8 @@
+use overmax_core::{RecordKey, RecordValue};
 use rusqlite::{params, Connection, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use overmax_core::{RecordKey, RecordValue};
 
 pub struct RecordDB {
     db_path: PathBuf,

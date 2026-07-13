@@ -1,3 +1,4 @@
+pub mod components;
 pub mod debug_ui;
 pub mod native_app;
 pub mod native_app_commands;

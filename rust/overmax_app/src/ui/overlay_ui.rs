@@ -1,3 +1,4 @@
+use crate::ui::components::FadeClippedLabel;
 use crate::ui::overlay_recommend_ui::{
     avg_rate_text, draw_diff_tabs, draw_recommendations, pattern_count_text, PatternTabInfo,
 };
@@ -353,14 +354,13 @@ fn draw_lite_panel(ui: &mut egui::Ui, props: &OverlayProps) -> OverlayActions {
                     let title_w = ui.available_width();
                     ui.with_layout(Layout::left_to_right(Align::Center).with_main_align(egui::Align::Min), |ui| {
                         ui.set_max_width(title_w);
-                        draw_fade_title(
-                            ui,
-                            props.song_label,
-                            FontId::proportional(13.0 * props.scale),
-                            Theme::TEXT_PRIMARY,
-                            title_w.max(0.0),
-                            Theme::PANEL_BG,
-                            props.scale,
+                        ui.add(
+                            FadeClippedLabel::new(props.song_label)
+                                .font(FontId::proportional(13.0 * props.scale))
+                                .color(Theme::TEXT_PRIMARY)
+                                .max_width(title_w.max(0.0))
+                                .bg_color(Theme::PANEL_BG)
+                                .scale(props.scale),
                         );
                     });
                 });
@@ -585,14 +585,13 @@ fn draw_header(
                 let spacing = ui.spacing().item_spacing.x;
                 let max_w = ui.available_width() - right_w - spacing * 2.0 - 4.0 * px.scale;
 
-                draw_fade_title(
-                    ui,
-                    song_label,
-                    FontId::proportional(14.0 * px.scale),
-                    Theme::TEXT_PRIMARY,
-                    max_w.max(0.0),
-                    Theme::HEADER_BG,
-                    px.scale,
+                ui.add(
+                    FadeClippedLabel::new(song_label)
+                        .font(FontId::proportional(14.0 * px.scale))
+                        .color(Theme::TEXT_PRIMARY)
+                        .max_width(max_w.max(0.0))
+                        .bg_color(Theme::HEADER_BG)
+                        .scale(px.scale),
                 );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.spacing_mut().button_padding = Vec2::ZERO;
@@ -688,81 +687,6 @@ fn drag_rect_excluding_buttons(header: Rect, buttons_left_x: Option<f32>) -> Rec
     let mut rect = header;
     rect.max.x = (left_x - 4.0).max(rect.min.x);
     rect
-}
-
-fn draw_fade_title(
-    ui: &mut egui::Ui,
-    title: &str,
-    font_id: FontId,
-    color: Color32,
-    max_w: f32,
-    bg_color: Color32,
-    scale: f32,
-) {
-    let widget_text: egui::WidgetText = RichText::new(title)
-        .color(color)
-        .font(font_id)
-        .strong()
-        .into();
-
-    let galley = widget_text.into_galley(
-        ui,
-        Some(egui::TextWrapMode::Extend),
-        f32::INFINITY,
-        egui::FontSelection::Default,
-    );
-    let title_w = galley.size().x;
-    let height = galley.size().y;
-
-    if title_w <= max_w {
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(title_w, height), egui::Sense::hover());
-        ui.painter().galley(rect.min, galley, color);
-    } else {
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(max_w, height), egui::Sense::hover());
-
-        let old_clip_rect = ui.clip_rect();
-        let clip_rect = rect.intersect(old_clip_rect);
-
-        let clipped_painter = ui.painter().with_clip_rect(clip_rect);
-        clipped_painter.galley(rect.min, galley, color);
-
-        let fade_w = 28.0 * scale;
-        let fade_rect = Rect::from_min_max(egui::pos2(rect.max.x - fade_w, rect.min.y), rect.max);
-
-        let mut mesh = egui::Mesh::default();
-        let c_start = Color32::TRANSPARENT;
-        let c_end = bg_color;
-
-        mesh.vertices.push(egui::epaint::Vertex {
-            pos: fade_rect.left_top(),
-            color: c_start,
-            uv: egui::pos2(0.0, 0.0),
-        });
-        mesh.vertices.push(egui::epaint::Vertex {
-            pos: fade_rect.right_top(),
-            color: c_end,
-            uv: egui::pos2(1.0, 0.0),
-        });
-        mesh.vertices.push(egui::epaint::Vertex {
-            pos: fade_rect.right_bottom(),
-            color: c_end,
-            uv: egui::pos2(1.0, 1.0),
-        });
-        mesh.vertices.push(egui::epaint::Vertex {
-            pos: fade_rect.left_bottom(),
-            color: c_start,
-            uv: egui::pos2(0.0, 1.0),
-        });
-
-        mesh.indices.push(0);
-        mesh.indices.push(1);
-        mesh.indices.push(2);
-        mesh.indices.push(0);
-        mesh.indices.push(2);
-        mesh.indices.push(3);
-
-        ui.painter().add(egui::Shape::mesh(mesh));
-    }
 }
 
 fn draw_status_lamp(ui: &mut egui::Ui, stable: bool, px: &Px) {

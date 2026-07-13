@@ -167,5 +167,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-10 | 결과창 뱃지 매칭 임계치 완화 (10.0 -> 20.0) | 결과창에서 일부 Perfect/FC 뱃지의 해시 매칭 거리가 10.0을 초과해 감지 실패하는 현상 해결 (NONE 이미지들의 해시 거리는 30 이상이므로 오인식 우려 없음) | [play_state.rs](rust/overmax_engine/src/detector/play_state.rs) |
 | 2026-07-13 | 결과창 MaxCombo 연출 지연에 따른 동기화 누락 수정 | recorded_states 캐시를 HashMap으로 변경해 결과창 내에서 rate/maxcombo가 향상되었을 때만 DB upsert를 재수행하여 연출 지연 시 누락 결함 해결 | [native_app_recommend.rs](rust/overmax_app/src/ui/native_app_recommend.rs) |
 | 2026-07-13 | RecordKey 및 RecordValue의 overmax_core 이전 | 핵심 도메인 별칭인 RecordKey 및 RecordValue를 가장 하위인 overmax_core로 옮겨 의존성 정방향 상속 및 여러 크레이트 간 공유 실현 | [game_state.rs](rust/overmax_core/src/game_state.rs) / [lib.rs](rust/overmax_data/src/lib.rs) |
+| 2026-07-13 | 긴 제목 뭉개기 버그 수정 및 FadeClippedLabel 위젯 격리 | 넘치는 제목 마스킹 그라데이션의 c_start 색상을 Color32::TRANSPARENT 대신 bg_color의 알파만 0으로 조정한 색상으로 수정해 보간 시 발생하는 탁한 회색빛 노이즈 해결. 동시에 egui::Widget을 구현하는 FadeClippedLabel 구조체 위젯으로 분리 | [overlay_ui.rs](rust/overmax_app/src/ui/overlay_ui.rs) |
+| 2026-07-13 | FadeClippedLabel 위젯의 별도 모듈 분리 | UI 컴포넌트 모듈성 강화를 위해 FadeClippedLabel 위젯을 독립 파일로 쪼개고 ui/components 모듈 구성 | [fade_clipped_label.rs](rust/overmax_app/src/ui/components/fade_clipped_label.rs) |
 
 

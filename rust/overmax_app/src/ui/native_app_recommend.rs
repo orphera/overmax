@@ -47,18 +47,13 @@ impl NativeApp {
             if output.state.is_valid() {
                 if let Some(ctx_val) = &output.state.context {
                     if ctx_val.rate >= overmax_engine::detector::play_state::MIN_VALID_RATE {
-                        let key = (
-                            ctx_val.song_id,
-                            ctx_val.mode.clone(),
-                            ctx_val.diff.clone(),
-                        );
-                        let should_upsert = if let Some(&(prev_rate, prev_mc)) =
-                            self.recorded_states.get(&key)
-                        {
-                            ctx_val.rate > prev_rate || (ctx_val.is_max_combo && !prev_mc)
-                        } else {
-                            true
-                        };
+                        let key = (ctx_val.song_id, ctx_val.mode.clone(), ctx_val.diff.clone());
+                        let should_upsert =
+                            if let Some(&(prev_rate, prev_mc)) = self.recorded_states.get(&key) {
+                                ctx_val.rate > prev_rate || (ctx_val.is_max_combo && !prev_mc)
+                            } else {
+                                true
+                            };
 
                         if should_upsert {
                             debug_ui::push_log(

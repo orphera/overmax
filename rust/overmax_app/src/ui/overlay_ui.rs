@@ -1,4 +1,4 @@
-use crate::ui::components::{FadeClippedLabel, PlayMetaRow};
+use crate::ui::components::{FadeClippedLabel, ModeBadge, PlayMetaRow, StatusLamp};
 use crate::ui::overlay_recommend_ui::{
     avg_rate_text, draw_diff_tabs, draw_recommendations, pattern_count_text, PatternTabInfo,
 };
@@ -54,9 +54,6 @@ impl Px {
     }
     fn header_meta_gap(&self) -> f32 {
         4.0 * self.scale
-    }
-    fn status_dot(&self) -> f32 {
-        7.0 * self.scale
     }
     fn mode_badge_w(&self) -> f32 {
         28.0 * self.scale
@@ -261,11 +258,11 @@ fn draw_lite_panel(ui: &mut egui::Ui, props: &OverlayProps) -> OverlayActions {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0 * props.scale;
 
-                draw_status_lamp(ui, props.state.is_stable, &px);
+                ui.add(StatusLamp::new(props.state.is_stable).scale(px.scale));
 
                 if let Some(ctx) = &props.state.context {
                     // 1. Mode 뱃지
-                    draw_mode_badge(ui, Some(&ctx.mode), &px);
+                    ui.add(ModeBadge::new(Some(&ctx.mode)).scale(px.scale));
 
                     // 2. Diff 뱃지
                     let color = diff_color(&ctx.diff);
@@ -421,8 +418,8 @@ fn draw_header(
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = px.header_row_gap();
-                draw_status_lamp(ui, state.is_stable, px);
-                draw_mode_badge(ui, state.context.as_ref().map(|ctx| ctx.mode.as_str()), px);
+                ui.add(StatusLamp::new(state.is_stable).scale(px.scale));
+                ui.add(ModeBadge::new(state.context.as_ref().map(|ctx| ctx.mode.as_str())).scale(px.scale));
 
                 let right_w = if varchive_upload_needed {
                     (24.0 + 18.0 + 4.0) * px.scale
@@ -527,45 +524,6 @@ fn drag_rect_excluding_buttons(header: Rect, buttons_left_x: Option<f32>) -> Rec
     rect
 }
 
-fn draw_status_lamp(ui: &mut egui::Ui, stable: bool, px: &Px) {
-    let color = if stable { Theme::OK } else { Theme::WARN };
-    let (rect, _) = ui.allocate_exact_size(
-        Vec2::new(px.status_dot(), px.mode_badge_h()),
-        egui::Sense::hover(),
-    );
-    ui.painter()
-        .circle_filled(rect.center(), 3.5 * px.scale, color);
-}
-
-pub(crate) fn mode_color(mode: &str) -> Color32 {
-    match mode {
-        "4B" => Color32::from_rgb(0x2D, 0x4F, 0x55),
-        "5B" => Color32::from_rgb(0x44, 0xA9, 0xC6),
-        "6B" => Color32::from_rgb(0xED, 0x94, 0x30),
-        "8B" => Color32::from_rgb(0x1D, 0x14, 0x31),
-        _ => Color32::from_rgb(0x6A, 0x4D, 0x3D),
-    }
-}
-
-fn draw_mode_badge(ui: &mut egui::Ui, mode: Option<&str>, px: &Px) {
-    let text = mode.unwrap_or("—");
-    let color = mode.map_or(Color32::from_rgb(0x6A, 0x4D, 0x3D), mode_color);
-
-    let (rect, _) = ui.allocate_exact_size(
-        Vec2::new(px.mode_badge_w(), px.mode_badge_h()),
-        egui::Sense::hover(),
-    );
-    ui.painter()
-        .rect_filled(rect, CornerRadius::same((3.0 * px.scale) as u8), color);
-    ui.painter().text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        text,
-        FontId::proportional(12.0 * px.scale),
-        Theme::TEXT_PRIMARY,
-    );
-}
-
 fn draw_body(
     ui: &mut egui::Ui,
     state: &GameSessionState,
@@ -634,8 +592,6 @@ fn draw_footer(
             });
         });
 }
-
-
 
 pub(crate) fn diff_color(diff: &str) -> Color32 {
     match diff {

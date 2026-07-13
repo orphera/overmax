@@ -248,7 +248,8 @@ fn candidate_row<F: Fn(usize), D: Fn(usize)>(
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
                         // Button Mode Badge
-                        let mode_color = crate::ui::overlay_ui::mode_color(&c.button_mode);
+                        let mode_color =
+                            crate::ui::components::ModeBadge::mode_color(&c.button_mode);
                         badge(ui, &c.button_mode, mode_color, Theme::TEXT_PRIMARY);
                         ui.add_space(4.0);
                         // Difficulty Badge

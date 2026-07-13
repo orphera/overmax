@@ -170,5 +170,6 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-13 | 긴 제목 뭉개기 버그 수정 및 FadeClippedLabel 위젯 격리 | 넘치는 제목 마스킹 그라데이션의 c_start 색상을 Color32::TRANSPARENT 대신 bg_color의 알파만 0으로 조정한 색상으로 수정해 보간 시 발생하는 탁한 회색빛 노이즈 해결. 동시에 egui::Widget을 구현하는 FadeClippedLabel 구조체 위젯으로 분리 | [overlay_ui.rs](rust/overmax_app/src/ui/overlay_ui.rs) |
 | 2026-07-13 | FadeClippedLabel 위젯의 별도 모듈 분리 | UI 컴포넌트 모듈성 강화를 위해 FadeClippedLabel 위젯을 독립 파일로 쪼개고 ui/components 모듈 구성 | [fade_clipped_label.rs](rust/overmax_app/src/ui/components/fade_clipped_label.rs) |
 | 2026-07-13 | PlayMetaRow 위젯의 분리 및 모듈 격리 | overlay_ui.rs의 복잡도 개선을 위해 뱃지 계산 및 메타 레이아웃 렌더링을 담당하는 PlayMetaRow 위젯을 components/play_meta_row.rs로 분리 | [play_meta_row.rs](rust/overmax_app/src/ui/components/play_meta_row.rs) |
+| 2026-07-13 | StatusLamp 및 ModeBadge 위젯 분리 | 헤더 및 라이트 패널 코드 간소화를 위해 StatusLamp 및 ModeBadge 위젯을 components/로 모듈화하고, sync_ui.rs 등에서 공용으로 사용하던 mode_color 헬퍼 함수를 ModeBadge의 연관 함수로 이전 | [status_lamp.rs](rust/overmax_app/src/ui/components/status_lamp.rs) / [mode_badge.rs](rust/overmax_app/src/ui/components/mode_badge.rs) |
 
 

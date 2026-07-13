@@ -234,7 +234,11 @@ pub(crate) fn get_result_rate_comparison(
             comparison_str = rate_diff_str;
         }
     } else if current_rate > 0.0 {
-        let badge_str = if current_rate >= 100.0 { "New Perfect!" } else { "New Record!" };
+        let badge_str = if current_rate >= 100.0 {
+            "New Perfect!"
+        } else {
+            "New Record!"
+        };
         comparison_str = badge_str.to_string();
     }
 

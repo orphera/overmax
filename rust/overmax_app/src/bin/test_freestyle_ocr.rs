@@ -275,25 +275,95 @@ fn main() {
         }
         // 3. Mode 분석
         if let Some(mode_roi) = rois.get_roi("mode_digit") {
+            let mode_raw_path = crops_dir.join(format!("{}_mode_raw.png", file_stem));
+            let saved_raw = save_crop(&frame, mode_roi, &mode_raw_path);
+
             if let Some(mode_img) = crop_roi(&frame, mode_roi) {
                 let detected_mode = ocr.detect_freestyle_mode(&mode_img);
                 img_report.push_str("  [Mode Digit ROI]\n");
                 img_report.push_str(&format!(
+                    "    - Raw Crop Saved: {} ({})\n",
+                    mode_raw_path.display(),
+                    if saved_raw { "OK" } else { "Failed" }
+                ));
+                img_report.push_str(&format!(
                     "    - detect_freestyle_mode() result: {:?}\n",
                     detected_mode
                 ));
+
+                let w = mode_img.width as usize;
+                let h = mode_img.height as usize;
+                if w * h > 0 {
+                    let (binary, _, _) = match overmax_cv::binarize_by_global_contrast(
+                        &mode_img.bgra,
+                        w,
+                        h,
+                        overmax_cv::LumaMethod::Average,
+                        1,
+                    ) {
+                        Ok(b) => b,
+                        Err(_) => (vec![], 0, 0),
+                    };
+                    let visual_binary: Vec<u8> = binary
+                        .iter()
+                        .map(|&x| if x == 1 { 255 } else { 0 })
+                        .collect();
+                    let mode_bin_path = crops_dir.join(format!("{}_mode_bin.png", file_stem));
+                    let saved_bin =
+                        save_binary_crop(&visual_binary, w as u32, h as u32, &mode_bin_path);
+                    img_report.push_str(&format!(
+                        "    - Binary Crop Saved: {} ({})\n",
+                        mode_bin_path.display(),
+                        if saved_bin { "OK" } else { "Failed" }
+                    ));
+                }
             }
         }
 
         // 4. Difficulty 분석
         if let Some(diff_roi) = rois.get_roi("diff_panel") {
+            let diff_raw_path = crops_dir.join(format!("{}_diff_raw.png", file_stem));
+            let saved_raw = save_crop(&frame, diff_roi, &diff_raw_path);
+
             if let Some(diff_img) = crop_roi(&frame, diff_roi) {
                 let detected_diff = ocr.detect_result_difficulty(&diff_img);
                 img_report.push_str("  [Diff Panel ROI]\n");
                 img_report.push_str(&format!(
+                    "    - Raw Crop Saved: {} ({})\n",
+                    diff_raw_path.display(),
+                    if saved_raw { "OK" } else { "Failed" }
+                ));
+                img_report.push_str(&format!(
                     "    - detect_result_difficulty() result: {:?}\n",
                     detected_diff
                 ));
+
+                let w = diff_img.width as usize;
+                let h = diff_img.height as usize;
+                if w * h > 0 {
+                    let (binary, _, _) = match overmax_cv::binarize_by_global_contrast(
+                        &diff_img.bgra,
+                        w,
+                        h,
+                        overmax_cv::LumaMethod::Average,
+                        1,
+                    ) {
+                        Ok(b) => b,
+                        Err(_) => (vec![], 0, 0),
+                    };
+                    let visual_binary: Vec<u8> = binary
+                        .iter()
+                        .map(|&x| if x == 1 { 255 } else { 0 })
+                        .collect();
+                    let diff_bin_path = crops_dir.join(format!("{}_diff_bin.png", file_stem));
+                    let saved_bin =
+                        save_binary_crop(&visual_binary, w as u32, h as u32, &diff_bin_path);
+                    img_report.push_str(&format!(
+                        "    - Binary Crop Saved: {} ({})\n",
+                        diff_bin_path.display(),
+                        if saved_bin { "OK" } else { "Failed" }
+                    ));
+                }
             }
         }
 

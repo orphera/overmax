@@ -178,5 +178,8 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-13 | LitePanel 컴포넌트 분리 | overlay_ui.rs의 복잡도 개선을 위해 라이트 모드 오버레이 전체의 2열 뱃지 레이아웃과 닫기/설정/업로드 버튼이 포함된 패널 전체 영역을 LitePanel 컴포넌트(components/lite_panel.rs)로 격리 | [lite_panel.rs](rust/overmax_app/src/ui/components/lite_panel.rs) |
 | 2026-07-13 | 캡처 FPS 및 GUI 렌더링 스팸 최적화 | ScreenCaptureSettings에 active_sleep_ms/background_sleep_ms를 추가해 분석 주기를 유연하게 설정하고, 마우스 오버 시 실제 이동/드래그가 발생할 때만 request_repaint()를 호출하여 무의미한 CPU/GPU 낭비 억제 | [settings.rs](rust/overmax_data/src/config/settings.rs) / [native_app_viewports.rs](rust/overmax_app/src/ui/native_app_viewports.rs) / [detection_worker.rs](rust/overmax_engine/src/detector/detection_worker.rs) |
 | 2026-07-13 | 이미지 매칭 캐시 레이어 도입 | JacketMatcher 내부에 LRU 캐시(최대 8개)를 도입하여, 이미지 캡처 시 캐시를 우선 비교하고 만족하는 경우 전체 DB 탐색 및 정렬을 생략하고 조기 리턴하여 CPU 소모 대폭 최적화 | [jacket_matcher.rs](rust/overmax_data/src/service/jacket_matcher.rs) |
+| 2026-07-14 | 결과창 4B 모드 매칭 임계치 완화 (0.80 -> 0.75) | 경계 부근에서 4B 템플릿의 매칭 점수가 0.7879 등으로 미달되어 인식 실패하는 버그 해결 | [ocr_engine.rs](rust/overmax_engine/src/detector/ocr_engine.rs) |
+| 2026-07-14 | 스코어 파싱 실패 시 이진화 OCR 폴백 적용 | 템플릿 매칭이 '98.560' 처럼 비숫자 문자를 오인하여 글자수 불일치 발생 시 즉시 실패하는 대신, 이진화 OCR(1-pass)로 폴백하여 '981560'을 온전히 파싱할 수 있게 개선 | [ocr_engine.rs](rust/overmax_engine/src/detector/ocr_engine.rs) |
+| 2026-07-14 | 결과창 모드/난이도 글로벌 명암 이진화 전환 | BGA 간섭 노이즈가 심한 로컬 적응형(Bradley-Roth) 대신, 대비 분리가 강한 글로벌 이진화로 전환하여 18개 테스트셋 인식률 100% 달성 및 CPU 연산 효율 개선 | [ocr_engine.rs](rust/overmax_engine/src/detector/ocr_engine.rs) |
 
 

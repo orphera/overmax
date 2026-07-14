@@ -151,20 +151,35 @@ impl OcrDetector {
         let cv_templates = get_digit_templates();
         let matched = match match_digits_template(score, &cv_templates) {
             Ok(m) => m,
-            Err(_) => return None,
+            Err(e) => {
+                println!(
+                    "      [Debug Score] match_digits_template failed with error: {}",
+                    e
+                );
+                // 이진화 OCR (1-pass) 폴백
+                return if let Ok(text) = self.engine.recognize_logo(score, false, true) {
+                    parse_score_text(&text)
+                } else {
+                    None
+                };
+            }
         };
         let (matched_str, _binary, _threshold, _max_y) = matched;
 
-        // 실패나 오독이 포함되면 Windows OCR로 즉각 안전 폴백
-        if matched_str.is_empty() || matched_str.contains('?') {
-            return if let Ok(text) = self.engine.recognize_logo_color(score) {
+        let parsed = parse_score_text(&matched_str);
+
+        // 파싱 결과가 올바르지 않거나(글자수 미달/초과 등) '?'가 섞여있으면 폴백 실행
+        if parsed.is_none() || matched_str.contains('?') {
+            println!("      [Debug Score] Template matching failed/invalid. Matched String: '{}', Parsed: {:?}", matched_str, parsed);
+            // 이진화 OCR (1-pass) 폴백
+            return if let Ok(text) = self.engine.recognize_logo(score, false, true) {
                 parse_score_text(&text)
             } else {
                 None
             };
         }
 
-        parse_score_text(&matched_str)
+        parsed
     }
 
     /// 결과창 뱃지 이미지로부터 모드(4B~8B)와 난이도(NM~SC)를 감지합니다.
@@ -176,15 +191,16 @@ impl OcrDetector {
             return None;
         }
 
-        let binary = overmax_cv::adaptive_threshold_bradley_roth(
+        let (binary, _, _) = match overmax_cv::binarize_by_global_contrast(
             &mode_img.bgra,
             w,
             h,
             overmax_cv::LumaMethod::Average,
-            16,
-            0.15,
             1,
-        );
+        ) {
+            Ok(b) => b,
+            Err(_) => return None,
+        };
         let (target_w, target_h) = (50usize, 68usize);
         let resized_binary = resize_binary(&binary, w, h, target_w, target_h);
 
@@ -199,7 +215,7 @@ impl OcrDetector {
                 })
                 .collect();
 
-        match_best_template(&resized_binary, target_w, target_h, &t_infos, 0.80, |_| 0)
+        match_best_template(&resized_binary, target_w, target_h, &t_infos, 0.75, |_| 0)
     }
 
     /// 결과 화면 전용 난이도 패널 영역을 템플릿 매칭으로 감지합니다.
@@ -210,15 +226,16 @@ impl OcrDetector {
             return None;
         }
 
-        let binary = overmax_cv::adaptive_threshold_bradley_roth(
+        let (binary, _, _) = match overmax_cv::binarize_by_global_contrast(
             &diff_img.bgra,
             w,
             h,
             overmax_cv::LumaMethod::Average,
-            80,
-            0.03,
             1,
-        );
+        ) {
+            Ok(b) => b,
+            Err(_) => return None,
+        };
         let (target_w, target_h) = (90usize, 18usize);
         let resized_binary = resize_binary(&binary, w, h, target_w, target_h);
 
@@ -480,6 +497,31 @@ fn match_best_template(
             best_score = score;
             best_label = Some(t.label.to_string());
         }
+    }
+    if best_label.is_none() {
+        let mut max_candidate_score = 0.0f32;
+        let mut max_candidate_label = "None";
+        for t in templates {
+            if t.width != target_w || t.height != target_h {
+                continue;
+            }
+            let safe_x = safe_x_calc(t.label);
+            let mut matches = 0usize;
+            for dy in 0..target_h {
+                for dx in 0..target_w {
+                    let i = dy * target_w + dx;
+                    if dx < safe_x || resized_binary[i] == t.mask[i] {
+                        matches += 1;
+                    }
+                }
+            }
+            let score = matches as f32 / compare_total as f32;
+            if score > max_candidate_score {
+                max_candidate_score = score;
+                max_candidate_label = t.label;
+            }
+        }
+        println!("      [Debug Template] Matching failed. Best candidate: '{}' with score {:.4} (min_score: {:.4})", max_candidate_label, max_candidate_score, min_score);
     }
     best_label
 }

@@ -204,7 +204,7 @@ impl<'a> egui::Widget for PlayMetaRow<'a> {
     }
 }
 
-pub(crate) fn get_result_rate_comparison(
+fn get_result_rate_comparison(
     ctx: &overmax_core::PlayContext,
     session_initial_record: Option<RecordValue>,
 ) -> (String, Option<&'static str>, String) {
@@ -216,36 +216,44 @@ pub(crate) fn get_result_rate_comparison(
         None
     };
 
-    let mut comparison_str = String::new();
-    if let Some((prev_rate, prev_mc)) = session_initial_record {
-        let diff = current_rate - prev_rate;
-        let sign = if diff > 0.0 { "+" } else { "" };
-        let rate_diff_str = format!("({sign}{diff:.2}%)");
+    let mut prev_rate = None;
+    let mut prev_mc = false;
 
-        let mut mc_upgraded = false;
-        if ctx.is_max_combo && !prev_mc {
-            mc_upgraded = true;
+    if let Some((r, mc)) = session_initial_record {
+        if r >= overmax_engine::detector::play_state::MIN_VALID_RATE {
+            prev_rate = Some(r);
+            prev_mc = mc;
         }
-
-        if mc_upgraded {
-            let badge = if current_rate >= 100.0 { "P" } else { "M" };
-            comparison_str = format!("{rate_diff_str} New {badge}!");
-        } else if diff != 0.0 {
-            comparison_str = rate_diff_str;
-        }
-    } else if current_rate > 0.0 {
-        let badge_str = if current_rate >= 100.0 {
-            "New Perfect!"
-        } else {
-            "New Record!"
-        };
-        comparison_str = badge_str.to_string();
     }
+
+    let format_prev = |rate: f32, is_mc: bool| -> String {
+        let mc_symbol = if is_mc {
+            if rate >= 100.0 {
+                " P"
+            } else {
+                " M"
+            }
+        } else {
+            ""
+        };
+        format!("{:.2}%{}", rate, mc_symbol)
+    };
+
+    let comparison_str = if let Some(p_rate) = prev_rate {
+        if current_rate > p_rate {
+            let diff = current_rate - p_rate;
+            format!("({} +{:.2}%)", format_prev(p_rate, prev_mc), diff)
+        } else {
+            format!("({})", format_prev(p_rate, prev_mc))
+        }
+    } else {
+        "(NEW!)".to_string()
+    };
 
     (current_rate_str, current_mc, comparison_str)
 }
 
-pub(crate) fn meta_text(state: &GameSessionState, pattern_tabs: &[PatternTabInfo]) -> String {
+fn meta_text(state: &GameSessionState, pattern_tabs: &[PatternTabInfo]) -> String {
     let Some(ctx) = &state.context else {
         return "—".to_string();
     };
@@ -270,5 +278,44 @@ pub(crate) fn meta_text(state: &GameSessionState, pattern_tabs: &[PatternTabInfo
         "—".to_string()
     } else {
         badges.join(" | ")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ui::components::play_meta_row::meta_text;
+    use crate::ui::overlay_recommend_ui::PatternTabInfo;
+    use overmax_core::{GameSessionState, PlayContext};
+
+    #[test]
+    fn formats_empty_meta_like_pyqt_header() {
+        assert_eq!(meta_text(&GameSessionState::detecting(), &[]), "—");
+    }
+
+    #[test]
+    fn formats_sheet_meta_like_pyqt_header() {
+        let state = GameSessionState {
+            scene: overmax_core::SceneType::Unknown,
+            context: Some(PlayContext {
+                song_id: 1,
+                mode: "5B".into(),
+                diff: "SC".into(),
+                rate: 0.0,
+                is_max_combo: false,
+            }),
+            is_stable: true,
+            is_fullscreen: false,
+        };
+        let patterns = vec![PatternTabInfo {
+            diff: "SC".into(),
+            level: Some(12),
+            floor_name: Some("12.3".into()),
+            gold: "O".into(),
+            note: "개인차".into(),
+            assist_key: "Y".into(),
+            keypart: false,
+        }];
+
+        assert_eq!(meta_text(&state, &patterns), "황배:O | 보조:Y | 개인차");
     }
 }

@@ -317,44 +317,11 @@ pub(crate) fn diff_color(diff: &str) -> Color32 {
 #[cfg(test)]
 mod tests {
     use super::{diff_color, install_cjk_fonts};
-    use crate::ui::components::play_meta_row::meta_text;
     use crate::ui::overlay_recommend_ui::PatternTabInfo;
     use eframe::egui::{self, Color32, Context};
-    use overmax_core::{GameSessionState, PlayContext};
+    use overmax_core::GameSessionState;
 
-    #[test]
-    fn formats_empty_meta_like_pyqt_header() {
-        assert_eq!(meta_text(&GameSessionState::detecting(), &[]), "—");
-    }
-
-    #[test]
-    fn formats_sheet_meta_like_pyqt_header() {
-        let state = GameSessionState {
-            scene: overmax_core::SceneType::Unknown,
-            context: Some(PlayContext {
-                song_id: 1,
-                mode: "5B".into(),
-                diff: "SC".into(),
-                rate: 0.0,
-                is_max_combo: false,
-            }),
-            is_stable: true,
-            is_fullscreen: false,
-        };
-        let patterns = vec![PatternTabInfo {
-            diff: "SC".into(),
-            level: Some(12),
-            floor_name: Some("12.3".into()),
-            gold: "O".into(),
-            note: "개인차".into(),
-            assist_key: "Y".into(),
-            keypart: false,
-        }];
-
-        assert_eq!(meta_text(&state, &patterns), "황배:O | 보조:Y | 개인차");
-    }
-
-    #[test]
+     #[test]
     fn uses_existing_diff_colors() {
         assert_eq!(diff_color("SC"), Color32::from_rgb(0x9B, 0x59, 0xB6));
     }

@@ -75,23 +75,24 @@ impl JacketMatcher {
             Vec::new()
         };
 
-        let mut best_cached: Option<(usize, f32)> = None;
+        let mut best_cached: Option<(usize, u32)> = None;
         for &idx in &cached_indices {
             if idx >= self.entries.len() {
                 continue;
             }
             let entry = &self.entries[idx];
-            let p_dist = (entry.phash ^ q_phash).count_ones() as f32;
-            let d_dist = (entry.dhash ^ q_dhash).count_ones() as f32;
-            let a_dist = (entry.ahash ^ q_ahash).count_ones() as f32;
-            let score = 0.5 * p_dist + 0.3 * d_dist + 0.2 * a_dist;
+            let p_dist = (entry.phash ^ q_phash).count_ones();
+            let d_dist = (entry.dhash ^ q_dhash).count_ones();
+            let a_dist = (entry.ahash ^ q_ahash).count_ones();
+            let score_int = 5 * p_dist + 3 * d_dist + 2 * a_dist;
 
-            if best_cached.is_none() || score < best_cached.unwrap().1 {
-                best_cached = Some((idx, score));
+            if best_cached.is_none() || score_int < best_cached.unwrap().1 {
+                best_cached = Some((idx, score_int));
             }
         }
 
-        if let Some((idx, score)) = best_cached {
+        if let Some((idx, score_int)) = best_cached {
+            let score = score_int as f32 * 0.1;
             let hash_sim = (1.0 - score / 64.0).clamp(0.0, 1.0);
             if self.config.disable_hog {
                 if hash_sim >= self.config.similarity_threshold {
@@ -118,37 +119,38 @@ impl JacketMatcher {
             }
         }
 
-        // 2단계: 캐시 미스 시 전체 DB 곡에 대해 해시 거리(Hamming Distance) 스코어링
+        // 2단계: 캐시 미스 시 전체 DB 곡에 대해 해시 거리(Hamming Distance) 스코어링 (정수형 최적화)
         let mut candidates = self
             .entries
             .iter()
             .enumerate()
             .map(|(idx, entry)| {
-                let p_dist = (entry.phash ^ q_phash).count_ones() as f32;
-                let d_dist = (entry.dhash ^ q_dhash).count_ones() as f32;
-                let a_dist = (entry.ahash ^ q_ahash).count_ones() as f32;
-                let score = 0.5 * p_dist + 0.3 * d_dist + 0.2 * a_dist;
-                (idx, score)
+                let p_dist = (entry.phash ^ q_phash).count_ones();
+                let d_dist = (entry.dhash ^ q_dhash).count_ones();
+                let a_dist = (entry.ahash ^ q_ahash).count_ones();
+                let score_int = 5 * p_dist + 3 * d_dist + 2 * a_dist;
+                (idx, score_int)
             })
             .collect::<Vec<_>>();
 
-        // 해시 스코어 정렬 (낮을수록 가까움)
-        candidates.sort_by(|a, b| a.1.total_cmp(&b.1));
+        // 해시 스코어 정렬 (낮을수록 가까움, 정수 비교로 최적화)
+        candidates.sort_by_key(|a| a.1);
 
         if candidates.is_empty() {
             return None;
         }
 
         let first_idx = candidates[0].0;
-        let first_score = candidates[0].1;
+        let first_score_int = candidates[0].1;
+        let first_score = first_score_int as f32 * 0.1;
         let first_hash_sim = (1.0 - first_score / 64.0).clamp(0.0, 1.0);
 
         // 3단계: HOG 연산 스킵 여부 판정
         let skip_hog = if self.config.disable_hog {
             true
         } else if candidates.len() > 1 {
-            let second_score = candidates[1].1;
-            let margin = second_score - first_score;
+            let second_score_int = candidates[1].1;
+            let margin = (second_score_int - first_score_int) as f32 * 0.1;
             margin >= self.config.margin_threshold || first_score == 0.0
         } else {
             true
@@ -175,8 +177,9 @@ impl JacketMatcher {
         let mut final_candidates = candidates
             .into_iter()
             .take(top_k.min(self.entries.len()))
-            .map(|(idx, score)| {
+            .map(|(idx, score_int)| {
                 let entry = &self.entries[idx];
+                let score = score_int as f32 * 0.1;
                 let hash_sim = (1.0 - score / 64.0).clamp(0.0, 1.0);
                 let hog_sim = dot(&entry.hog, &q_hog) / (entry.hog_norm * q_hog_norm);
                 let similarity = 0.45 * hash_sim + 0.55 * hog_sim;
@@ -205,11 +208,17 @@ impl JacketMatcher {
 }
 
 fn dot(left: &[f32], right: &[f32]) -> f32 {
-    left.iter().zip(right).map(|(a, b)| a * b).sum()
+    let len = left.len();
+    assert_eq!(len, right.len());
+    let mut sum = 0.0;
+    for i in 0..len {
+        sum += left[i] * right[i];
+    }
+    sum
 }
 
 fn vector_norm(values: &[f32]) -> f32 {
-    values.iter().map(|value| value * value).sum::<f32>().sqrt()
+    values.iter().map(|&v| v * v).sum::<f32>().sqrt()
 }
 
 #[cfg(test)]

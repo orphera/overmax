@@ -589,25 +589,24 @@ pub fn detect_scene_from_logo(
     };
     let (mut scene, _raw_text, _) = ocr.detect_logo(&logo_img);
 
-    // 1단계 오픈매치 배지 BGR 폴백
+    // 1단계 결과창 재킷 엣지 디텍션 폴킷
     if scene == SceneType::Unknown {
-        if let Some(fallback_scene) = check_open_match_badge(frame, rois) {
-            scene = fallback_scene;
-        }
-    }
-
-    // 2단계 엣지 디텍션 폴백 (실제 DetectionPipeline과 동일한 엣지 구원 로직)
-    if scene == SceneType::Unknown {
+        // ResultFreestyle, ResultOpen3, ResultOpen2 재킷 ROI는 같은 위치를 공유함
+        // 따라서 ResultFreestyle 재킷 ROI를 기준으로 엣지 디텍션을 수행하고, 추가 확인을 통해 분기함
         if let Some(jacket_roi) = rois.get_roi_for_scene("jacket", SceneType::ResultFreestyle) {
             if let Some(edge_strength) = detect_jacket_edges(frame, jacket_roi) {
                 if edge_strength >= 15.0 {
-                    scene = SceneType::ResultFreestyle;
+                    if let Some(fallback_scene) = check_open_match_badge(frame, rois) {
+                        scene = fallback_scene;
+                    } else {
+                        scene = SceneType::ResultFreestyle;
+                    }
                 }
             }
         }
     }
 
-    // 3단계 오픈매치 선곡창 재킷 엣지 + 유사도 폴백
+    // 2단계 오픈매치 선곡창 재킷 엣지 + 유사도 폴백
     if scene == SceneType::Unknown {
         if let Some(jacket_roi) = rois.get_roi_for_scene("jacket", SceneType::OpenMatch) {
             if let Some(edge_strength) = detect_jacket_edges(frame, jacket_roi) {

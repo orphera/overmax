@@ -17,6 +17,7 @@ pub enum SceneType {
 }
 
 impl SceneType {
+    #[inline]
     pub fn is_result(&self) -> bool {
         matches!(
             self,

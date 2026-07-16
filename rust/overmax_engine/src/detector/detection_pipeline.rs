@@ -11,6 +11,7 @@ const JACKET_MATCH_INTERVAL: f64 = 0.25;
 const JACKET_CHANGE_THRESHOLD: f32 = 2.5;
 const JACKET_FORCE_RECHECK_SEC: f64 = 2.0;
 const JACKET_FORCE_RECHECK_LONG_SEC: f64 = 30.0;
+const JACKET_EDGE_THRESHOLD: f32 = 15.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct DetectionOutput {
@@ -460,7 +461,7 @@ fn detect_result_scene_via_edge(
     // 따라서 ResultFreestyle 재킷 ROI를 기준으로 엣지 디텍션을 수행하고, 추가 확인을 통해 분기함
     let jacket_roi = rois.get_roi_for_scene("jacket", SceneType::ResultFreestyle)?;
     if let Some(edge_strength) = detect_jacket_edges(frame, jacket_roi) {
-        if edge_strength >= 15.0 {
+        if edge_strength >= JACKET_EDGE_THRESHOLD {
             // 결과창 재킷 매칭 시도
             let mut song_id = None;
             if let Some(jacket_img) = crop_roi(frame, jacket_roi) {
@@ -503,7 +504,7 @@ fn detect_freestyle_scene_via_edge(
 ) -> Option<(SceneType, i32)> {
     let jacket_roi = rois.get_roi_for_scene("jacket", SceneType::Freestyle)?;
     if let Some(edge_strength) = detect_jacket_edges(frame, jacket_roi) {
-        if edge_strength >= 25.0 {
+        if edge_strength >= JACKET_EDGE_THRESHOLD {
             if let Some(jacket_img) = crop_roi(frame, jacket_roi) {
                 if let Some(match_res) = matcher.match_jacket(
                     &jacket_img.bgra,
@@ -532,7 +533,7 @@ fn detect_openmatch_scene_via_edge(
 ) -> Option<(SceneType, i32)> {
     let jacket_roi = rois.get_roi_for_scene("jacket", SceneType::OpenMatch)?;
     if let Some(edge_strength) = detect_jacket_edges(frame, jacket_roi) {
-        if edge_strength >= 25.0 {
+        if edge_strength >= JACKET_EDGE_THRESHOLD {
             if let Some(jacket_img) = crop_roi(frame, jacket_roi) {
                 if let Some(match_res) = matcher.match_jacket(
                     &jacket_img.bgra,

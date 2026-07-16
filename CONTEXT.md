@@ -182,5 +182,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-15 | 오버레이 내부 Detail 영역 활용한 Toast 구현 | 오버레이 창 크기 변동 없이 Normal/Lite 모드에 일관된 결과 피드백을 주기 위해 공통 컴포넌트인 OverlayHeaderDetail을 일시적으로 대체 렌더링 | [overlay_header_detail.rs](rust/overmax_app/src/ui/components/overlay_header_detail.rs) / [native_app.rs](rust/overmax_app/src/ui/native_app.rs) |
 | 2026-07-16 | 단일 곡 조회 API 활용한 캐시 최적화 | 업로드 성공 시 전체 캐시 갱신 대신 단일 곡 조회 API(?title=song_id)를 호출하여 로컬 캐시 JSON에 머지함으로써 디스크 I/O 렉 방지 및 네트워크 비용 최적화 | [native_app.rs](rust/overmax_app/src/ui/native_app.rs) / [sync.rs](rust/overmax_data/src/community/sync.rs) / [varchive_upload.rs](rust/overmax_app/src/system/varchive_upload.rs) |
 | 2026-07-16 | since 파라미터 활용한 캐시 증분 조회 최적화 | 시작 시 및 설정창 갱신 시 로컬 캐시의 최종 updatedAt을 파악하여 API에 since 파라미터로 넘겨주고 변경분만 받아와 머지(Merge) 처리하는 고효율 증분 동기화 적용 | [native_app.rs](rust/overmax_app/src/ui/native_app.rs) / [sync.rs](rust/overmax_data/src/community/sync.rs) / [varchive_upload.rs](rust/overmax_app/src/system/varchive_upload.rs) |
+| 2026-07-16 | 시작 시 자동 갱신 옵션 제거 및 상시 활성화 | since 기반 초경량 증분 조회 기능이 안전하게 작동하므로, UI의 auto_refresh 옵션을 제거하고 앱 시작 시 무조건 자동 동기화(Sync)가 진행되도록 개선 | [settings.rs](rust/overmax_data/src/config/settings.rs) / [native_app.rs](rust/overmax_app/src/ui/native_app.rs) / [settings_ui.rs](rust/overmax_app/src/ui/settings_ui.rs) |
+
 
 

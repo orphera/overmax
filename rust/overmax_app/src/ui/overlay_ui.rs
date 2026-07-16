@@ -56,10 +56,10 @@ impl Px {
         4.0 * self.scale
     }
     pub(crate) fn mode_badge_w(&self) -> f32 {
-        28.0 * self.scale
+        24.0 * self.scale
     }
     pub(crate) fn mode_badge_h(&self) -> f32 {
-        22.0 * self.scale
+        18.0 * self.scale
     }
     pub(crate) fn settings_btn(&self) -> f32 {
         24.0 * self.scale

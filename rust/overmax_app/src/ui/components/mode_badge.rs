@@ -51,8 +51,9 @@ impl<'a> egui::Widget for ModeBadge<'a> {
             .mode
             .map_or(Color32::from_rgb(0x6A, 0x4D, 0x3D), Self::mode_color);
 
-        let width = self.width.unwrap_or(24.0 * self.scale);
-        let height = self.height.unwrap_or(18.0 * self.scale);
+        let px = crate::ui::overlay_ui::Px::new(self.scale);
+        let width = self.width.unwrap_or(px.mode_badge_w());
+        let height = self.height.unwrap_or(px.mode_badge_h());
 
         let (rect, response) =
             ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::hover());

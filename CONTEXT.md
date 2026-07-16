@@ -185,6 +185,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-16 | 시작 시 자동 갱신 옵션 제거 및 상시 활성화 | since 기반 초경량 증분 조회 기능이 안전하게 작동하므로, UI의 auto_refresh 옵션을 제거하고 앱 시작 시 무조건 자동 동기화(Sync)가 진행되도록 개선 | [settings.rs](rust/overmax_data/src/config/settings.rs) / [native_app.rs](rust/overmax_app/src/ui/native_app.rs) / [settings_ui.rs](rust/overmax_app/src/ui/settings_ui.rs) |
 | 2026-07-16 | V-Archive 캐시 SQLite DB 내장화 및 생성 컬럼 최적화 | 기존 JSON 파일 캐시를 SQLite DB(varchive_records)로 통합 및 자동 마이그레이션 적용. score, max_combo, updated_at, rating을 생성형(STORED) 물리 컬럼으로 빼고 복합 인덱스를 적용해 렉 없는 O(1) 조회 성능 확보 | [record_db.rs](rust/overmax_data/src/store/record_db.rs) / [native_app.rs](rust/overmax_app/src/ui/native_app.rs) / [record_manager.rs](rust/overmax_data/src/service/record_manager.rs) |
 | 2026-07-16 | 업로드 후 TOP 50 랭킹 및 순위 알림 | 업로드 완료 시 SQLite DB의 rating 컬럼을 기반으로 실시간 TOP 50 내 순위를 O(1)로 조회하여 오버레이 토스트 메시지(예: 8B TOP 29위 달성!)로 출력 | [native_app.rs](rust/overmax_app/src/ui/native_app.rs) / [record_db.rs](rust/overmax_data/src/store/record_db.rs) |
+| 2026-07-16 | 라이트모드 오버레이 모드/난이도 뱃지 높이 일치화 및 구조화 | 라이트모드 뱃지 높이 불일치 문제를 해결하기 위해 Px::mode_badge_h()를 18.0으로 조정하고, ModeBadge 컴포넌트 내부 기본 크기 계산도 Px 구조체 값을 사용하도록 일원화 | [overlay_ui.rs](rust/overmax_app/src/ui/overlay_ui.rs) / [mode_badge.rs](rust/overmax_app/src/ui/components/mode_badge.rs) |
 
 
 

@@ -193,6 +193,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-16 | 재킷 인식 임계치 설정값 연동 및 일관화 적용 | 기존에 하드코딩되어 제각각 적용되던 씬 판별용 자켓 유사도 임계치를 설정의 similarity_threshold와 일치시켜 모든 씬에서 오프셋 없이 기본값 그대로 일관되게 동작하도록 통일 | [jacket_matcher.rs](rust/overmax_data/src/service/jacket_matcher.rs) / [detection_pipeline.rs](rust/overmax_engine/src/detector/detection_pipeline.rs) |
 | 2026-07-16 | 재킷 엣지 강도 임계치 15.0 통일 적용 | 씬(결과창, 선곡창, 오픈매치)별로 다르게 하드코딩(15.0 / 25.0)되어 있던 재킷 엣지 강도 기준값을 JACKET_EDGE_THRESHOLD = 15.0 상수로 일관되게 일치시킴 | [detection_pipeline.rs](rust/overmax_engine/src/detector/detection_pipeline.rs) |
 | 2026-07-17 | 카테고리 띠 단색 감지 및 씬 판별 조건 결합 | 자켓 외곽선이 흐려 엣지가 잘 잡히지 않는 이미지 오인식 예외를 해소하고자, 자켓 우측의 곡 카테고리 띠(5x60)가 검은색이 아닌 고른 단색(Solid)일 때도 씬 판단을 승인해 자켓 매칭을 시도하도록 구현 | [detection_pipeline.rs](rust/overmax_engine/src/detector/detection_pipeline.rs) |
+| 2026-07-17 | JacketMatcher 최근 매칭 캐시(LRU) 우선 우회 로직 제거 | 자켓 변경 시 이전 곡 정보가 캐시에 남아 오인식이 지속되는 부작용을 해결하기 위해, JacketMatcher에서 MatchCache 우선 조회를 통한 Early Return 우회를 제거하고 매 프레임 독립 매칭을 수행하도록 개정 | [jacket_matcher.rs](rust/overmax_data/src/service/jacket_matcher.rs) |
 
 
 

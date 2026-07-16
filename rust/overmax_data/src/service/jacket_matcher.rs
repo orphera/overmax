@@ -72,58 +72,7 @@ impl JacketMatcher {
         let (q_phash, q_dhash, q_ahash) =
             overmax_cv::compute_image_hashes(data, width, height, channels).ok()?;
 
-        // 캐시 우선 매칭 시도
-        let cached_indices = if let Ok(guard) = self.cache.lock() {
-            guard.recent_indices.clone()
-        } else {
-            Vec::new()
-        };
-
-        let mut best_cached: Option<(usize, u32)> = None;
-        for &idx in &cached_indices {
-            if idx >= self.entries.len() {
-                continue;
-            }
-            let entry = &self.entries[idx];
-            let p_dist = (entry.phash ^ q_phash).count_ones();
-            let d_dist = (entry.dhash ^ q_dhash).count_ones();
-            let a_dist = (entry.ahash ^ q_ahash).count_ones();
-            let score_int = 5 * p_dist + 3 * d_dist + 2 * a_dist;
-
-            if best_cached.is_none() || score_int < best_cached.unwrap().1 {
-                best_cached = Some((idx, score_int));
-            }
-        }
-
-        if let Some((idx, score_int)) = best_cached {
-            let score = score_int as f32 * 0.1;
-            let hash_sim = (1.0 - score / 64.0).clamp(0.0, 1.0);
-            if self.config.disable_hog {
-                if hash_sim >= self.config.similarity_threshold {
-                    self.update_cache(idx);
-                    return Some(ImageMatch {
-                        image_id: self.entries[idx].image_id.clone(),
-                        similarity: hash_sim,
-                    });
-                }
-            } else if hash_sim >= self.config.similarity_threshold - 0.15 {
-                if let Ok(q_hog) = overmax_cv::compute_image_hog(data, width, height, channels) {
-                    let q_hog_norm = vector_norm(&q_hog).max(1.0);
-                    let entry = &self.entries[idx];
-                    let hog_sim = dot(&entry.hog, &q_hog) / (entry.hog_norm * q_hog_norm);
-                    let similarity = 0.45 * hash_sim + 0.55 * hog_sim;
-                    if similarity >= self.config.similarity_threshold {
-                        self.update_cache(idx);
-                        return Some(ImageMatch {
-                            image_id: entry.image_id.clone(),
-                            similarity,
-                        });
-                    }
-                }
-            }
-        }
-
-        // 2단계: 캐시 미스 시 전체 DB 곡에 대해 해시 거리(Hamming Distance) 스코어링 (정수형 최적화)
+        // 2단계: 전체 DB 곡에 대해 해시 거리(Hamming Distance) 스코어링 (정수형 최적화)
         let mut candidates = self
             .entries
             .iter()

@@ -511,7 +511,7 @@ fn detect_freestyle_scene_via_edge(
                     jacket_img.height as usize,
                     4,
                 ) {
-                    let threshold = matcher.similarity_threshold() - 0.10;
+                    let threshold = matcher.similarity_threshold();
                     if match_res.similarity >= threshold {
                         if let Ok(song_id) = match_res.image_id.parse::<i32>() {
                             debug_println!("    [detect_freestyle_scene_via_edge] Bypassed logo OCR: Freestyle screen detected via jacket edge ({:.2}) and similarity ({:.4})!", edge_strength, match_res.similarity);
@@ -540,7 +540,7 @@ fn detect_openmatch_scene_via_edge(
                     jacket_img.height as usize,
                     4,
                 ) {
-                    let threshold = matcher.similarity_threshold() - 0.05;
+                    let threshold = matcher.similarity_threshold();
                     if match_res.similarity >= threshold {
                         if let Ok(song_id) = match_res.image_id.parse::<i32>() {
                             debug_println!("    [detect_openmatch_scene_via_edge] Bypassed logo OCR: OpenMatch screen detected via jacket edge ({:.2}) and similarity ({:.4})!", edge_strength, match_res.similarity);

@@ -72,7 +72,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 - **egui 마우스 호버 렌더링 스팸 억제**: 비활성 창 상태에서 십자선 소프트웨어 커서 렌더링을 위해 마우스 호버 시 매 프레임 `request_repaint()`를 스팸하던 문제를 해결하여, 마우스 이동 또는 드래그가 감지된 경우에만 repainting하도록 억제했습니다.
 
 ## 2. 씬 감지 및 동적 ROI (Scene-Aware ROI)
-- **재킷 엣지/유사도 기반 씬 우선 판독 (Bypass logo OCR)**: 결과창(Result), 오픈매치(OpenMatch), 프리스타일(Freestyle) 씬의 경우, 상단 로고의 Windows OCR을 수행하기 전에 재킷 영역의 엣지 강도 및 DB 재킷 이미지 매칭을 최우선으로 시도합니다. 이때 사용되는 재킷 매칭 임계값은 설정 파일의 `similarity_threshold`를 기준으로 각 씬에 최적화된 오프셋(Result: 기준값, OpenMatch: 기준값-0.05, Freestyle: 기준값-0.10) 형태로 자동 연동됩니다. 매칭에 성공하면 Windows OCR을 전혀 호출하지 않고 즉시 해당 씬과 곡 ID를 확정하여 씬 감지 반응성을 대폭 개선하고 CPU 부하를 경감합니다.
+- **재킷 엣지/유사도 기반 씬 우선 판독 (Bypass logo OCR)**: 결과창(Result), 오픈매치(OpenMatch), 프리스타일(Freestyle) 씬의 경우, 상단 로고의 Windows OCR을 수행하기 전에 재킷 영역의 엣지 강도 및 DB 재킷 이미지 매칭을 최우선으로 시도합니다. 이때 사용되는 재킷 매칭 임계값은 설정 파일의 `similarity_threshold` 값을 모든 씬에서 오프셋 없이 100% 동일하게 일관되게 연동하여 사용합니다. 매칭에 성공하면 Windows OCR을 전혀 호출하지 않고 즉시 해당 씬과 곡 ID를 확정하여 씬 감지 반응성을 대폭 개선하고 CPU 부하를 경감합니다.
 - **로고 OCR 감지 (비활성화됨)**: 씬 감지의 정확성과 반응 속도를 엣지/재킷 이미지 매칭으로 100% 보장함에 따라, 최종 폴백으로 수행되던 `logo` ROI 영역에 대한 Windows OCR 분석은 완전히 비활성화되었습니다. (씬 판독 시 의존성 100% 제거)
 - **동적 ROI 전환**: `RoiManager`가 감지된 씬(`SceneType`)에 따라 최적의 ROI 세트(Freestyle / Online)를 동적으로 전환.
   - `logo` ROI는 씬과 독립적으로 상단 고정 좌표를 가지며, 씬 판별의 트리거 역할을 수행.
@@ -190,7 +190,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-16 | 재킷 매칭 기반 Freestyle 씬 우선 판독 및 OCR Bypass | 선곡창 최초 진입 시 OCR 쿨다운 대기 지연을 해소하고 CPU 사용량을 최적화하기 위해, 재킷 엣지/이미지 매칭 성공 시 OCR 호출을 생략(Bypass)하도록 파이프라인 개선 | [detection_pipeline.rs](rust/overmax_engine/src/detector/detection_pipeline.rs) |
 | 2026-07-16 | 결과창 재킷 매칭 및 씬 우선 감지 파이프라인 정립 | 결과창 씬 판정 단계에서 재킷 매칭이 성공했을 때만 씬을 확정하도록 (SceneType, i32) 반환 타입을 엄격화하고, commit_result_scene은 Hysteresis 필터링 역할만 담당하도록 극대 단순화 | [detection_pipeline.rs](rust/overmax_engine/src/detector/detection_pipeline.rs) |
 | 2026-07-16 | Windows OCR 로고 스캔 최종 폴백 완전히 비활성화 | 씬 감지의 정확성과 반응 속도를 엣지/재킷 이미지 매칭으로 100% 보장하게 됨에 따라 불필요한 Windows OCR 최종 폴백 로직을 비활성화하고 제거하여 완전한 OCR-Free 씬 판별 달성 | [detection_pipeline.rs](rust/overmax_engine/src/detector/detection_pipeline.rs) |
-| 2026-07-16 | 재킷 인식 임계치 설정값 연동 및 씬별 오프셋 적용 | 기존에 하드코딩되어 제각각 적용되던 씬 판별용 자켓 유사도 임계치를 설정의 similarity_threshold를 가져오도록 개선하고, 씬 요구 특성에 따라 상대 오프셋으로 연동하여 일관 제어 확보 | [jacket_matcher.rs](rust/overmax_data/src/service/jacket_matcher.rs) / [detection_pipeline.rs](rust/overmax_engine/src/detector/detection_pipeline.rs) |
+| 2026-07-16 | 재킷 인식 임계치 설정값 연동 및 일관화 적용 | 기존에 하드코딩되어 제각각 적용되던 씬 판별용 자켓 유사도 임계치를 설정의 similarity_threshold와 일치시켜 모든 씬에서 오프셋 없이 기본값 그대로 일관되게 동작하도록 통일 | [jacket_matcher.rs](rust/overmax_data/src/service/jacket_matcher.rs) / [detection_pipeline.rs](rust/overmax_engine/src/detector/detection_pipeline.rs) |
 
 
 

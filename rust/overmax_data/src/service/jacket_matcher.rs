@@ -30,6 +30,10 @@ impl JacketMatcher {
         }
     }
 
+    pub fn similarity_threshold(&self) -> f32 {
+        self.config.similarity_threshold
+    }
+
     pub fn match_jacket(
         &self,
         data: &[u8],

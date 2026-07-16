@@ -312,6 +312,7 @@ pub struct NativeApp {
     #[cfg(target_os = "windows")]
     pub(crate) win_cache: WindowsWindowCache,
     pub(crate) last_painted_rect: Option<egui::Rect>,
+    pub(crate) toast: Option<crate::ui::components::ToastMessage>,
 }
 
 impl NativeApp {
@@ -521,6 +522,7 @@ impl NativeApp {
             #[cfg(target_os = "windows")]
             win_cache: WindowsWindowCache::default(),
             last_painted_rect: None,
+            toast: None,
         };
 
         app.handle_auto_refresh();
@@ -633,7 +635,18 @@ impl NativeApp {
         let mut refreshed = false;
         while let Ok((idx, status, msg)) = self.sync_channels.upload_res_rx.try_recv() {
             let success = status == "success";
-            if let Ok(mut list) = self.sync_state.candidates.lock() {
+            if idx == 999999 {
+                let toast_text = if success {
+                    format!("V-Archive: {}", msg)
+                } else {
+                    format!("V-Archive 실패: {}", msg)
+                };
+                self.toast = Some(crate::ui::components::ToastMessage {
+                    text: toast_text,
+                    is_success: success,
+                    expires_at: std::time::Instant::now() + std::time::Duration::from_secs(3),
+                });
+            } else if let Ok(mut list) = self.sync_state.candidates.lock() {
                 if let Some(c) = list.get_mut(idx) {
                     c.upload_status = status;
                     c.upload_message = msg;

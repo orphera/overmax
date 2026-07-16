@@ -158,7 +158,8 @@ impl LitePanel {
                     OverlayHeaderDetail::new(props.state, props.pattern_tabs)
                         .is_result(props.state.scene.is_result())
                         .session_initial_record(props.session_initial_record)
-                        .scale(props.scale),
+                        .scale(props.scale)
+                        .toast(props.toast),
                 );
             });
 

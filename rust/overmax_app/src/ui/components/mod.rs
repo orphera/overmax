@@ -9,5 +9,5 @@ pub use fade_clipped_label::FadeClippedLabel;
 pub use lite_panel::LitePanel;
 pub use mode_badge::ModeBadge;
 pub use overlay_header::OverlayHeader;
-pub use overlay_header_detail::OverlayHeaderDetail;
+pub use overlay_header_detail::{OverlayHeaderDetail, ToastMessage};
 pub use status_lamp::StatusLamp;

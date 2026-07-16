@@ -175,6 +175,7 @@ pub struct OverlayProps<'a> {
     pub is_snap_manual: bool,
     pub record_manager: &'a overmax_data::RecordManager,
     pub session_initial_record: Option<overmax_data::RecordValue>,
+    pub toast: Option<&'a crate::ui::components::ToastMessage>,
 }
 
 pub fn draw_overlay_panel(ui: &mut egui::Ui, props: &OverlayProps) -> OverlayActions {
@@ -212,6 +213,7 @@ pub fn draw_overlay_panel(ui: &mut egui::Ui, props: &OverlayProps) -> OverlayAct
             .varchive_account_configured(props.varchive_account_configured)
             .is_snap_manual(props.is_snap_manual)
             .session_initial_record(props.session_initial_record)
+            .toast(props.toast)
             .show(ui, &mut actions);
             ui.add_space(px.panel_gap());
             draw_body(

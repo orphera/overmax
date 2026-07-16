@@ -109,6 +109,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
   - V-Archive API를 통한 플레이 데이터 패치/자동 갱신.
   - 로컬 DB에만 존재하는 갱신 후보 데이터를 스캔하여 V-Archive 웹서버에 일괄 등록/삭제 지원 (`SyncWindow`).
 - **실시간 신기록 및 간편 업로드 알림**: 플레이 중 감지된 Rate가 V-Archive 기존 기록보다 높을 경우, 오버레이 헤더 내 단독 업로드 버튼(⬆) 활성화 및 상태 표시 램프 기능 지원.
+- **업로드 피드백 토스트 알림 (Toast Notification)**: ⬆ 버튼 클릭을 통한 V-Archive 단독 패턴 기록 업로드 시, 완료 및 에러 피드백을 오버레이 내부의 Detail 영역(메타 정보 줄)에 3초 동안 일시적으로 보여주는 경량 토스트 시스템 지원.
 
 ---
 
@@ -178,3 +179,4 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-14 | 결과창 4B 모드 매칭 임계치 완화 (0.80 -> 0.75) | 경계 부근에서 4B 템플릿의 매칭 점수가 0.7879 등으로 미달되어 인식 실패하는 버그 해결 | [ocr_engine.rs](rust/overmax_engine/src/detector/ocr_engine.rs) |
 | 2026-07-14 | 스코어 파싱 실패 시 이진화 OCR 폴백 적용 | 템플릿 매칭이 '98.560' 처럼 비숫자 문자를 오인하여 글자수 불일치 발생 시 즉시 실패하는 대신, 이진화 OCR(1-pass)로 폴백하여 '981560'을 온전히 파싱할 수 있게 개선 | [ocr_engine.rs](rust/overmax_engine/src/detector/ocr_engine.rs) |
 | 2026-07-14 | 결과창 모드/난이도 글로벌 명암 이진화 전환 | BGA 간섭 노이즈가 심한 로컬 적응형(Bradley-Roth) 대신, 대비 분리가 강한 글로벌 이진화로 전환하여 18개 테스트셋 인식률 100% 달성 및 CPU 연산 효율 개선 | [ocr_engine.rs](rust/overmax_engine/src/detector/ocr_engine.rs) |
+| 2026-07-15 | 오버레이 내부 Detail 영역 활용한 Toast 구현 | 오버레이 창 크기 변동 없이 Normal/Lite 모드에 일관된 결과 피드백을 주기 위해 공통 컴포넌트인 OverlayHeaderDetail을 일시적으로 대체 렌더링 | [overlay_header_detail.rs](rust/overmax_app/src/ui/components/overlay_header_detail.rs) / [native_app.rs](rust/overmax_app/src/ui/native_app.rs) |

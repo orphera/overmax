@@ -1,4 +1,6 @@
-use crate::ui::components::{FadeClippedLabel, ModeBadge, OverlayHeaderDetail, StatusLamp};
+use crate::ui::components::{
+    FadeClippedLabel, ModeBadge, OverlayHeaderDetail, StatusLamp, ToastMessage,
+};
 use crate::ui::overlay_recommend_ui::PatternTabInfo;
 use crate::ui::overlay_theme::Theme;
 use crate::ui::overlay_ui::{OverlayActions, Px};
@@ -20,6 +22,7 @@ pub struct OverlayHeader<'a> {
     varchive_account_configured: bool,
     is_snap_manual: bool,
     session_initial_record: Option<RecordValue>,
+    toast: Option<&'a ToastMessage>,
 }
 
 impl<'a> OverlayHeader<'a> {
@@ -40,6 +43,7 @@ impl<'a> OverlayHeader<'a> {
             varchive_account_configured: false,
             is_snap_manual: false,
             session_initial_record: None,
+            toast: None,
         }
     }
 
@@ -61,6 +65,11 @@ impl<'a> OverlayHeader<'a> {
 
     pub(crate) fn session_initial_record(mut self, record: Option<RecordValue>) -> Self {
         self.session_initial_record = record;
+        self
+    }
+
+    pub(crate) fn toast(mut self, toast: Option<&'a ToastMessage>) -> Self {
+        self.toast = toast;
         self
     }
 
@@ -166,7 +175,8 @@ impl<'a> OverlayHeader<'a> {
                         .is_result(self.state.scene.is_result())
                         .session_initial_record(self.session_initial_record)
                         .scale(scale)
-                        .height(second_row_height),
+                        .height(second_row_height)
+                        .toast(self.toast),
                 );
             });
 

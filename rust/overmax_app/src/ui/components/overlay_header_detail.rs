@@ -3,6 +3,13 @@ use crate::ui::overlay_theme::Theme;
 use eframe::egui::{self, Color32, FontId, Rect, Vec2};
 use overmax_core::{GameSessionState, RecordValue};
 
+#[derive(Clone, Debug)]
+pub struct ToastMessage {
+    pub text: String,
+    pub is_success: bool,
+    pub expires_at: std::time::Instant,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextSegment {
     pub text: String,
@@ -16,6 +23,7 @@ pub struct OverlayHeaderDetail<'a> {
     session_initial_record: Option<RecordValue>,
     scale: f32,
     height: Option<f32>,
+    toast: Option<&'a ToastMessage>,
 }
 
 impl<'a> OverlayHeaderDetail<'a> {
@@ -27,6 +35,7 @@ impl<'a> OverlayHeaderDetail<'a> {
             session_initial_record: None,
             scale: 1.0,
             height: None,
+            toast: None,
         }
     }
 
@@ -47,6 +56,11 @@ impl<'a> OverlayHeaderDetail<'a> {
 
     pub fn height(mut self, height: f32) -> Self {
         self.height = Some(height);
+        self
+    }
+
+    pub fn toast(mut self, toast: Option<&'a ToastMessage>) -> Self {
+        self.toast = toast;
         self
     }
 
@@ -258,17 +272,6 @@ impl<'a> OverlayHeaderDetail<'a> {
 
 impl<'a> egui::Widget for OverlayHeaderDetail<'a> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        let mut record_segments = self.collect_record_segments();
-        let meta_list = self.collect_pattern_meta();
-
-        // [가드레일] 결과가 존재하지 않으면 "기록 없음" 이라고 Theme::OK로 표시
-        if record_segments.is_empty() {
-            record_segments.push(TextSegment {
-                text: "기록 없음".to_string(),
-                color: Theme::OK,
-            });
-        }
-
         let height = self.height.unwrap_or(14.0 * self.scale);
         let (rect, response) = ui.allocate_exact_size(
             Vec2::new(ui.available_width(), height),
@@ -276,7 +279,34 @@ impl<'a> egui::Widget for OverlayHeaderDetail<'a> {
         );
 
         if ui.is_rect_visible(rect) {
-            self.draw_layout(ui, rect, &record_segments, &meta_list);
+            if let Some(toast) = self.toast {
+                let font_toast = FontId::proportional(10.0 * self.scale);
+                let text_color = if toast.is_success {
+                    Theme::OK
+                } else {
+                    Theme::RED
+                };
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    &toast.text,
+                    font_toast,
+                    text_color,
+                );
+            } else {
+                let mut record_segments = self.collect_record_segments();
+                let meta_list = self.collect_pattern_meta();
+
+                // [가드레일] 결과가 존재하지 않으면 "기록 없음" 이라고 Theme::OK로 표시
+                if record_segments.is_empty() {
+                    record_segments.push(TextSegment {
+                        text: "기록 없음".to_string(),
+                        color: Theme::OK,
+                    });
+                }
+
+                self.draw_layout(ui, rect, &record_segments, &meta_list);
+            }
         }
 
         response

@@ -660,6 +660,12 @@ impl NativeApp {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::None);
                 }
 
+                if let Some(toast) = &self.toast {
+                    if std::time::Instant::now() >= toast.expires_at {
+                        self.toast = None;
+                    }
+                }
+
                 let actions = overlay_ui::draw_overlay_panel(
                     ui,
                     &overlay_ui::OverlayProps {
@@ -676,6 +682,7 @@ impl NativeApp {
                         is_snap_manual: snap_position == "manual",
                         record_manager: &self.record_manager,
                         session_initial_record: self.session_initial_record,
+                        toast: self.toast.as_ref(),
                     },
                 );
 

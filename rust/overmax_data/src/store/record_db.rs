@@ -506,4 +506,39 @@ impl RecordDB {
         }
         Ok(())
     }
+
+    pub fn get_varchive_top50_rank(
+        &self,
+        steam_id: &str,
+        button_mode: &str,
+        song_id: &str,
+        difficulty: &str,
+    ) -> Result<Option<usize>, String> {
+        if !self.is_ready {
+            return Err("DB is not ready".to_string());
+        }
+        let conn = Connection::open(&self.db_path).map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT song_id, difficulty 
+                 FROM varchive_records 
+                 WHERE steam_id = ?1 AND button_mode = ?2 AND rating > 0
+                 ORDER BY rating DESC LIMIT 50",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let mut rows = stmt
+            .query(params![steam_id, button_mode])
+            .map_err(|e| e.to_string())?;
+        let mut rank = 1;
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let s_id: String = row.get(0).map_err(|e| e.to_string())?;
+            let diff: String = row.get(1).map_err(|e| e.to_string())?;
+            if s_id == song_id && diff == difficulty {
+                return Ok(Some(rank));
+            }
+            rank += 1;
+        }
+        Ok(None)
+    }
 }

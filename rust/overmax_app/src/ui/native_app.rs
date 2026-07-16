@@ -839,9 +839,28 @@ impl NativeApp {
                         .map_err(|e| format!("폴백 캐시 갱신 실패: {e}"))
                 };
 
-                match cache_updated {
+                let success_message = match cache_updated {
                     Ok(_) => {
-                        let _ = tx.send((index, "success".into(), success_message.into()));
+                        let mut msg = success_message.to_string();
+                        if let Ok(Some(rank)) = record_db.get_varchive_top50_rank(
+                            &steam,
+                            &candidate.button_mode,
+                            &candidate.song_id.to_string(),
+                            &candidate.difficulty,
+                        ) {
+                            msg = format!(
+                                "{} ({} TOP {}위 달성!)",
+                                msg, candidate.button_mode, rank
+                            );
+                        }
+                        Ok(msg)
+                    }
+                    Err(err_msg) => Err(err_msg),
+                };
+
+                match success_message {
+                    Ok(msg) => {
+                        let _ = tx.send((index, "success".into(), msg));
                     }
                     Err(err_msg) => {
                         let _ = tx.send((

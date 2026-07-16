@@ -184,6 +184,8 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-16 | since 파라미터 활용한 캐시 증분 조회 최적화 | 시작 시 및 설정창 갱신 시 로컬 캐시의 최종 updatedAt을 파악하여 API에 since 파라미터로 넘겨주고 변경분만 받아와 머지(Merge) 처리하는 고효율 증분 동기화 적용 | [native_app.rs](rust/overmax_app/src/ui/native_app.rs) / [sync.rs](rust/overmax_data/src/community/sync.rs) / [varchive_upload.rs](rust/overmax_app/src/system/varchive_upload.rs) |
 | 2026-07-16 | 시작 시 자동 갱신 옵션 제거 및 상시 활성화 | since 기반 초경량 증분 조회 기능이 안전하게 작동하므로, UI의 auto_refresh 옵션을 제거하고 앱 시작 시 무조건 자동 동기화(Sync)가 진행되도록 개선 | [settings.rs](rust/overmax_data/src/config/settings.rs) / [native_app.rs](rust/overmax_app/src/ui/native_app.rs) / [settings_ui.rs](rust/overmax_app/src/ui/settings_ui.rs) |
 | 2026-07-16 | V-Archive 캐시 SQLite DB 내장화 및 생성 컬럼 최적화 | 기존 JSON 파일 캐시를 SQLite DB(varchive_records)로 통합 및 자동 마이그레이션 적용. score, max_combo, updated_at, rating을 생성형(STORED) 물리 컬럼으로 빼고 복합 인덱스를 적용해 렉 없는 O(1) 조회 성능 확보 | [record_db.rs](rust/overmax_data/src/store/record_db.rs) / [native_app.rs](rust/overmax_app/src/ui/native_app.rs) / [record_manager.rs](rust/overmax_data/src/service/record_manager.rs) |
+| 2026-07-16 | 업로드 후 TOP 50 랭킹 및 순위 알림 | 업로드 완료 시 SQLite DB의 rating 컬럼을 기반으로 실시간 TOP 50 내 순위를 O(1)로 조회하여 오버레이 토스트 메시지(예: 8B TOP 29위 달성!)로 출력 | [native_app.rs](rust/overmax_app/src/ui/native_app.rs) / [record_db.rs](rust/overmax_data/src/store/record_db.rs) |
+
 
 
 

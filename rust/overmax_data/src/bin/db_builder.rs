@@ -159,8 +159,8 @@ fn process_image(path: &Path) -> Result<ProcessResult, String> {
     let feats = overmax_cv::compute_image_features_v2(&bgra, width, height, 4)
         .map_err(|e| format!("{:?}", e))?;
 
-    let hog = overmax_cv::compute_image_hog(&bgra, width, height, 4)
-        .map_err(|e| format!("{:?}", e))?;
+    let hog =
+        overmax_cv::compute_image_hog(&bgra, width, height, 4).map_err(|e| format!("{:?}", e))?;
 
     Ok(ProcessResult {
         orig_phash: feats.orig_phash,

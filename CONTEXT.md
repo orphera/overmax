@@ -200,5 +200,6 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-17 | 즐겨찾기(Favorite) 마크 영역 마스킹 도입 | 즐겨찾기 마크 오버레이로 인한 자켓 유사도 저하를 막기 위해 좌상단 23% 영역을 마스킹하고 DB를 재구축함 | [image.rs](rust/overmax_cv/src/image.rs) / [lib.rs](rust/overmax_cv/src/lib.rs) |
 | 2026-07-17 | 런타임 해시 및 HOG 마스킹 도입 | 기존 DB 데이터의 무결성을 깨뜨리지 않고 좌상단 즐겨찾기 뱃지 노이즈를 런타임에 소거하기 위해, Hamming Distance 및 HOG 코사인 유사도 연산 시 좌상단/테두리 영역에 해당하는 비트와 원소를 동적으로 AND 마스킹 처리 | [jacket_matcher.rs](rust/overmax_data/src/service/jacket_matcher.rs) |
 | 2026-07-17 | `image_index.db` 스키마 확장 및 자동 마이그레이션 적용 | 확장성 확보를 위한 `metadata` 컬럼을 추가하고 구버전 DB 및 외부 파이프라인(`overmax-image-db`) 증분 빌드 시 스키마 미스매치를 방지하고자 최초 로드 시 `ALTER TABLE` 자동 보정 가드 구현 | [db_builder.rs](rust/overmax_data/src/bin/db_builder.rs) / [image_index.rs](rust/overmax_data/src/store/image_index.rs) |
+| 2026-07-17 | ROI 체이닝 추상화 및 CV 연산 캡슐화 | `.flatten()` 중복 호출 해소를 위해 `and_then` 계열 모나딕 체이닝 메서드(`and_then_roi`)를 추가하고, `ImageRegion` 자체에 CV 연산(`compute_hashes`, `detect_edges`)을 직접 바인딩하여 타입 안전하고 가독성 높은 관용적(Idiomatic) Rust 스타일 실현 | [roi.rs](rust/overmax_engine/src/detector/roi.rs) / [play_state.rs](rust/overmax_engine/src/detector/play_state.rs) / [detection_pipeline.rs](rust/overmax_engine/src/detector/detection_pipeline.rs) / [frame_utils.rs](rust/overmax_engine/src/capture/frame_utils.rs) |
 
 

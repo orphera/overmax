@@ -729,18 +729,8 @@ fn check_category_band_solid(
         y2: jacket_roi.y2,
     };
 
-    if let Some(edge_strength) = detect_jacket_edges_with_margin(frame, band_roi, 4) {
-        debug_println!(
-            "    [check_category_band_solid] Category band edge detected! strength={:.2}",
-            edge_strength
-        );
-        if edge_strength < STRICT_EDGE_THRESHOLD {
-            return false;
-        }
-    } else {
-        debug_println!("    [check_category_band_solid] Category band edge detection failed!");
-        return false;
-    }
+    // 띠 경계선 엣지 검사 우회 (자켓과 띠의 색상이 유사해 엣지가 뭉개지는 케이스 방지)
+    // 내부 단색(Solid) 여부와 최소 밝기만으로 띠를 판별하고, 오인식은 최종 자켓 해시 매칭에서 필터링하도록 설계
 
     let Some(band_img) = crop_roi(frame, band_roi) else {
         return false;

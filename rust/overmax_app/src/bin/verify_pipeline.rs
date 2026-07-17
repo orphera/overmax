@@ -8,8 +8,36 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
+#[cfg(windows)]
+fn redirect_stdout(path: &str) -> std::io::Result<()> {
+    use std::fs::OpenOptions;
+    use std::os::windows::io::IntoRawHandle;
+    use windows_sys::Win32::System::Console::{SetStdHandle, STD_OUTPUT_HANDLE};
+
+    let file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)?;
+    let raw_handle = file.into_raw_handle() as windows_sys::Win32::Foundation::HANDLE;
+    unsafe {
+        SetStdHandle(STD_OUTPUT_HANDLE, raw_handle);
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn redirect_stdout(_path: &str) -> std::io::Result<()> {
+    Ok(())
+}
+
 fn main() {
-    println!("=== OVERMAX PIPELINE VERIFICATION SUITE ===");
+    fs::create_dir_all("scratch").ok();
+    if let Err(e) = redirect_stdout("scratch/verify_console.log") {
+        eprintln!("Warning: Failed to redirect stdout to file: {:?}", e);
+    }
+
+    eprintln!("=== OVERMAX PIPELINE VERIFICATION SUITE ===");
 
     // 1. songs.json 로드하여 곡명 매핑 사전 생성
     let mut song_titles = HashMap::new();
@@ -27,7 +55,7 @@ fn main() {
             }
         }
     }
-    println!("Loaded {} song titles from songs.json", song_titles.len());
+    eprintln!("Loaded {} song titles from songs.json", song_titles.len());
 
     // 2. 이미지 DB 로드
     let db_path = "cache/image_index.db";
@@ -36,10 +64,10 @@ fn main() {
         .with_margin_threshold(3.0);
 
     if image_db.load().is_err() {
-        println!("Error: Failed to load image index DB.");
+        eprintln!("Error: Failed to load image index DB.");
         return;
     }
-    println!("Image DB loaded successfully.");
+    eprintln!("Image DB loaded successfully.");
 
     // 3. DetectionPipeline 초기화
     let mut pipeline = DetectionPipeline::new(image_db);
@@ -68,7 +96,7 @@ fn main() {
     for &(label, dir_path) in &target_dirs {
         let path = Path::new(dir_path);
         if !path.exists() {
-            println!("\nDirectory {} does not exist. Skipping.", dir_path);
+            eprintln!("\nDirectory {} does not exist. Skipping.", dir_path);
             txt_log.push_str(&format!(
                 "\nDirectory {} does not exist. Skipping.\n",
                 dir_path
@@ -76,9 +104,9 @@ fn main() {
             continue;
         }
 
-        println!("\n==================================================");
-        println!("Scanning Category: {} ({})", label, dir_path);
-        println!("==================================================");
+        eprintln!("\n==================================================");
+        eprintln!("Scanning Category: {} ({})", label, dir_path);
+        eprintln!("==================================================");
 
         txt_log.push_str("\n==================================================\n");
         txt_log.push_str(&format!("Category: {} ({})\n", label, dir_path));
@@ -113,7 +141,7 @@ fn main() {
         for f in files {
             let fname = f.file_name().unwrap().to_string_lossy().to_string();
             let Some(frame) = load_frame(&f) else {
-                println!("  File: {:<35} -> Error: Failed to load image", fname);
+                eprintln!("  File: {:<35} -> Error: Failed to load image", fname);
                 txt_log.push_str(&format!(
                     "  File: {:<35} -> Error: Failed to load image\n",
                     fname
@@ -155,10 +183,9 @@ fn main() {
                 };
             }
 
-            // 만어의 씬 정보가 Unknown인데 곡 매치가 잡혀 있는 특이 케이스 여부 판독
             let scene_type = out.state.scene;
 
-            println!(
+            eprintln!(
                 "  File: {:<35} -> Scene={:?}, SongID={:<5} ({})",
                 fname, scene_type, song_id_str, title
             );
@@ -183,12 +210,13 @@ fn main() {
     txt_file
         .write_all(txt_log.as_bytes())
         .expect("Failed to write to verify_result.txt");
-    println!("\n[Success] Detailed log saved to scratch/verify_result.txt");
+    eprintln!("\n[Success] Detailed log saved to scratch/verify_result.txt");
 
     let mut md_file =
         File::create("scratch/verify_summary.md").expect("Failed to create verify_summary.md");
     md_file
         .write_all(md_summary.as_bytes())
         .expect("Failed to write to verify_summary.md");
-    println!("[Success] Summary Markdown saved to scratch/verify_summary.md");
+    eprintln!("[Success] Summary Markdown saved to scratch/verify_summary.md");
+    eprintln!("[Success] Full console output redirected to scratch/verify_console.log");
 }

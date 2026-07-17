@@ -8,9 +8,9 @@
 
 Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선택된 곡의 난이도별 정보를 오버레이로 보여주는 도구이다.
 
-- **인식 방식**: 화면 캡처 + Rust 네이티브 CV 이미지 매칭 (`overmax_cv`) + OCR (Windows OCR)
-  - *캡처 엔진*: GDI 캡처 엔진 및 DXGI Desktop Duplication 캡처 엔진을 감싸는 `AdaptiveCaptureEngine` Facade 구성. 게임이 전체화면(Borderless 포함)일 때만 DXGI 백엔드를 런타임에 동적으로 기동하여 CPU 부하를 해소하고, 창 모드에서는 GDI 캡처로 스위칭하며 불필요한 DXGI 리소스는 즉시 해제함.
-- **UI**: egui / winit (하드웨어 가속 활용 멀티 뷰포트 네이티브 UI)
+- **현재 Windows 인식 방식**: 화면 캡처 + Rust 네이티브 CV 이미지 매칭 (`overmax_cv`) + OCR (Windows OCR)
+  - *Windows 캡처 엔진*: GDI 캡처 엔진 및 DXGI Desktop Duplication 캡처 엔진을 감싸는 `AdaptiveCaptureEngine` Facade 구성. 게임이 전체화면(Borderless 포함)일 때만 DXGI 백엔드를 런타임에 동적으로 기동하여 CPU 부하를 해소하고, 창 모드에서는 GDI 캡처로 스위칭하며 불필요한 DXGI 리소스는 즉시 해제함.
+- **현재 Windows UI**: egui / winit (하드웨어 가속 활용 멀티 뷰포트 네이티브 UI)
   - 전체화면 포커스 차단 및 Z-Order 유지: 게임 윈도우 최소화 방지를 위해 `WS_EX_NOACTIVATE` 및 `WS_EX_TOOLWINDOW` 스타일을 주입하고, 게임 창을 오버레이 창의 Owner(`GWL_HWNDPARENT`)로 연결하여 전체 창 모드(Borderless Fullscreen) 플레이 시 드래그 앤 드롭 후 포커스가 게임으로 복귀해도 오버레이가 항상 최상단에 물리도록 보장함. 비활성 시 topmost 해제로 인한 DWM 소유 관계 깜빡임을 막기 위해 `is_active` 상태 검증 캐싱을 정밀화하고, `cached_game_hwnd`를 이용해 매 프레임 `FindWindowW` 오버헤드를 차단함.
   - 오버레이 스냅과 드래그 제어: egui의 내장 네이티브 드래그 기능인 `ViewportCommand::StartDrag`를 도입하여 OS가 오버레이 창의 드래그를 네이티브로 처리하도록 위임함. 이로써 불필요한 마우스 절대 좌표 연산 및 임시 구조체 필드를 소멸시킴. 구석 고정(Snap) 시에는 `try_lock()`으로 백그라운드 스레드와의 락 경합을 방지하고, 기하 구조 캐시(`PREV_SNAP_GEOMETRY`)를 적용하여 좌표 변화가 없을 때는 `SetWindowPos` 호출을 생략(0회)함.
 - **데이터**: V-Archive DB (JSON) 및 로컬 기록 DB (SQLite)
@@ -19,17 +19,45 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 
 # Core Constraints
 
-- 메모리 접근 / 프로세스 인젝션 금지 (화면 캡처 및 Win32 API 추적 방식 유지)
+- 메모리 접근 / 프로세스 인젝션 금지 (화면 캡처와 OS 창 API 추적만 허용: Windows는 Win32, Linux는 X11/XWayland)
 - 인게임 성능 영향 최소화 (최우선 과제)
 - 자가 업데이트 및 락 제어: 업데이트 후 재시작 시 중복 실행 락(Named Mutex) 해제 지연으로 새 인스턴스가 조기 종료되는 것을 방지하기 위해, 부모 프로세스의 락 가드(`SingleInstanceGuard`)를 명시적으로 `drop()`한 후 새 프로세스를 spawn하고 기존 프로세스를 즉시 종료하는 안전한 재시작 워크플로우를 유지함.
 - Python 레거시 코드 완전 제거 및 순수 Rust 코드베이스로 전환 완료 (`rust/` workspace)
 - 스팀(Steam) 경로 탐색 및 계정 연동: V-Archive 연동 등을 위한 스팀 계정 정보(`loginusers.vdf`)를 탐색할 때, 하드코딩된 기본 경로 및 HKCU/HKLM 레지스트리를 먼저 조회합니다. 만약 검색에 실패할 경우 최종 폴백으로 실행 중인 `steam.exe` 프로세스를 Win32 Toolhelp 스냅샷 API로 스캔하여 실행 경로를 동적으로 검출합니다.
-- Windows 10 (버전 1809) / 11 64-bit 환경 전용 (Windows OCR API 및 Win32 API 의존성). 단, Non-Windows 환경에서 빌드가 깨지지 않도록 `target_os` 조건부 컴파일 가드와 egui 폴백 코드를 적용하여 크로스 플랫폼 빌드 이식성을 확보함.
+- 현재 릴리스 및 실동작 지원 기준은 Windows 10 (버전 1809) / 11 64-bit이다. Linux는 아래 최초 지원 범위로 포팅 중이며, 최소 수직 슬라이스 완료 전의 Non-Windows 빌드 통과는 실동작 지원을 의미하지 않는다.
 - 기존 사용자 파일과의 호환성 유지:
   - `settings.user.json` (사용자 설정 델타 저장)
   - `cache/record.db` (로컬 플레이 기록 SQLite DB)
   - `cache/songs.json` (V-Archive 곡 DB)
   - `cache/image_index.db` (곡 재킷 매칭용 DB)
+
+---
+
+# Linux Port
+
+- **현재 상태**: XWayland 캡처와 native Wayland overlay 조합의 타당성 검증은 사전 정의한 성능·동작 기준을 통과했다(2026-07-17). Linux workspace build/test는 통과하지만 창 추적·캡처는 스텁이고 native layer overlay는 아직 없다.
+- **최초 지원 범위**: 같은 `DISPLAY`에서 XID가 관측되는 Proton/XWayland 게임을 exact title로 추적하고, XComposite named pixmap + MIT-SHM으로 캡처해 wlr-layer-shell `Layer::Overlay` surface에 표시한다. borderless fullscreen 단일 출력만 지원하며 capability가 부족하거나 대상이 모호하면 fail closed한다.
+- **제외 범위**: Gamescope/Steam Deck Gaming Mode, native Wayland 게임 surface, wlr-layer-shell 또는 XWayland가 없는 세션, windowed/multi-output, non-SHM 캡처 fallback은 최초 포팅에 포함하지 않는다.
+- **Linux 직접 의존성** (`cfg(target_os = "linux")` 한정): 추적·캡처는 `x11rb 0.13`(`composite`, `shm`)와 `memmap2`, overlay는 `smithay-client-toolkit 0.20`과 `egui-wgpu 0.33.3`을 사용한다. 기존 eframe/Glow와 공용 verified pipeline은 유지한다.
+- **호환 원칙**: Linux 구현은 플랫폼별 신규 코드와 공용 계약의 additive 최소 확장만 허용한다. Windows 기본 동작, OCR 1-Pass, history 기반 안정화, 사용자 파일 호환성은 바꾸지 않는다.
+- **CI**: fork 전용 [ci.yml](.github/workflows/ci.yml)에서 Rust `1.97.0`을 명시하고 Linux build/test/clippy와 hosted Windows build/test를 모두 `--locked`로 실행한다. Hosted Windows 검증은 실제 DJMAX+GPU의 GDI/DXGI 수동 회귀를 대신하지 않는다.
+
+## 포팅 실행 순서
+
+1. **기술 타당성 검증 — 완료**: XWayland 창 캡처와 native layer overlay가 성능, 캡처 지연, 리소스 사용, Z-order, 입력 및 픽셀 정합 기준을 만족하는지 검증했다.
+2. **최소 수직 슬라이스 — 진행 중**: `창 추적 → 캡처 → 기존 verified pipeline → native overlay`를 Linux에서 end-to-end로 연결한다.
+   - [x] Linux 지원 범위, 직접 의존성 및 Windows 호환 원칙 확정
+   - [x] Linux build/test/clippy와 hosted Windows build/test workflow 추가 (최초 hosted 실행 대기)
+   - [ ] `WindowSnapshot`, 캡처 대상 전달 및 필요한 detection output 필드의 additive 계약 추가
+   - [ ] exact-title 창 추적과 단일 snapshot 기반 rect/foreground/fullscreen 판정
+   - [ ] persistent XComposite + MIT-SHM 캡처와 Xvfb lifecycle 검증
+   - [ ] 캡처 실패 시 pipeline full reset 및 `detecting()` 전송으로 stale verified 상태 차단
+   - [ ] fontconfig CJK 폰트 로딩과 startup capability probe
+   - [ ] capability 기반 compact native layer overlay와 기존 UI 연결
+   - [ ] 기존 재킷/엣지 인식 flow 연결 (새 matcher 및 OCR loop 추가 금지)
+   - 완료 조건: Linux unit/lifecycle, hosted Windows 회귀, mpv(X11)+native overlay 수동 검증, 실게임 E2E, 출력 off→on 후 surface 재생성과 오버레이 재표시를 모두 통과한다.
+3. **인식 정확도 검증**: 최소 수직 슬라이스 완료 후 독립 holdout으로 기존 공용 인식 flow의 지연·정확도를 평가한다. 실제 실패가 확인되기 전에는 새 matcher를 설계하지 않는다.
+4. **릴리스 보강**: 인식 검증 완료 후 RC 성능 재측정, 사용자 파일 호환, 패키징 및 README를 정리한다.
 
 ---
 
@@ -199,5 +227,5 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-17 | 파이프라인 실시간 검증 도구 도입 | 캡처 이미지 세트를 대상으로 파이프라인의 씬/곡 감지 결과 및 상세 데이터를 검증하는 verify_pipeline 바이너리 추가 | [verify_pipeline.rs](rust/overmax_app/src/bin/verify_pipeline.rs) |
 | 2026-07-17 | 즐겨찾기(Favorite) 마크 영역 마스킹 도입 | 즐겨찾기 마크 오버레이로 인한 자켓 유사도 저하를 막기 위해 좌상단 23% 영역을 마스킹하고 DB를 재구축함 | [image.rs](rust/overmax_cv/src/image.rs) / [lib.rs](rust/overmax_cv/src/lib.rs) |
 | 2026-07-17 | 런타임 해시 및 HOG 마스킹 도입 | 기존 DB 데이터의 무결성을 깨뜨리지 않고 좌상단 즐겨찾기 뱃지 노이즈를 런타임에 소거하기 위해, Hamming Distance 및 HOG 코사인 유사도 연산 시 좌상단/테두리 영역에 해당하는 비트와 원소를 동적으로 AND 마스킹 처리 | [jacket_matcher.rs](rust/overmax_data/src/service/jacket_matcher.rs) |
-
-
+| 2026-07-17 | Linux 최초 포팅 범위·의존성·fork CI 전제 확정 | Linux 포팅이 Windows 전용 제약과 충돌하지 않도록 최초 지원 범위와 additive 변경 원칙을 SSOT에 명시 | [Linux Port](#linux-port) |
+| 2026-07-17 | Linux/Windows fork CI workflow 추가 | 첫 공용 계약 변경 전에 양 OS의 컴파일·테스트 회귀를 검증하도록 구성 | [ci.yml](.github/workflows/ci.yml) |

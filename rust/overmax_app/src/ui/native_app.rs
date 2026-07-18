@@ -32,6 +32,7 @@ use overmax_engine::detector::detection_pipeline::DetectionOutput;
 use overmax_engine::detector::detection_worker;
 use overmax_engine::detector::ocr_engine::OcrTelemetry;
 
+#[cfg(target_os = "windows")]
 fn load_icon() -> Option<eframe::egui::IconData> {
     let icon_bytes = include_bytes!("../../../../assets/overmax.ico");
     if let Ok(img) = image::load_from_memory(icon_bytes) {
@@ -181,11 +182,6 @@ fn is_position_on_screen(x: f32, y: f32) -> bool {
             x >= 0.0 && y >= 0.0
         }
     }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn is_position_on_screen(_x: f32, _y: f32) -> bool {
-    true
 }
 
 fn native_options(settings: &overmax_data::Settings) -> eframe::NativeOptions {
@@ -369,6 +365,7 @@ pub struct NativeApp {
     pub(crate) recommendations: RecommendResult,
     pub(crate) pattern_tabs: Vec<crate::ui::overlay_recommend_ui::PatternTabInfo>,
     pub(crate) state_tracker: AppStateTracker,
+    #[cfg(target_os = "windows")]
     pub(crate) is_dragging: bool,
     pub(crate) record_db: Arc<RecordDB>,
     pub(crate) record_manager: Arc<RecordManager>,
@@ -383,6 +380,7 @@ pub struct NativeApp {
     pub(crate) _tray: Option<TrayIcon>,
     #[cfg(target_os = "windows")]
     pub(crate) win_cache: WindowsWindowCache,
+    #[cfg(target_os = "windows")]
     pub(crate) last_painted_rect: Option<egui::Rect>,
     pub(crate) toast: Option<crate::ui::components::ToastMessage>,
 }
@@ -607,6 +605,7 @@ impl NativeApp {
             recommendations: RecommendResult::empty(),
             pattern_tabs: Vec::new(),
             state_tracker: AppStateTracker::new(),
+            #[cfg(target_os = "windows")]
             is_dragging: false,
             record_db,
             record_manager,
@@ -625,6 +624,7 @@ impl NativeApp {
             )),
             #[cfg(target_os = "windows")]
             win_cache: WindowsWindowCache::default(),
+            #[cfg(target_os = "windows")]
             last_painted_rect: None,
             toast: None,
         };

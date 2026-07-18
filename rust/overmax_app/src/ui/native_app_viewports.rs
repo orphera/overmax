@@ -1,12 +1,15 @@
 //! Deferred viewports + `eframe::App` (split from `native_app.rs` for file-size limits).
 
-use eframe::egui::{self, Color32, RichText, Vec2, ViewportBuilder, ViewportCommand};
+use eframe::egui::{self, RichText, ViewportBuilder, ViewportCommand};
+#[cfg(target_os = "windows")]
+use eframe::egui::{Color32, Vec2};
 use std::sync::atomic::Ordering;
 
 use crate::system::native_helpers;
 use crate::ui::debug_ui;
 use crate::ui::native_app::NativeApp;
 use crate::ui::overlay_theme::Theme;
+#[cfg(target_os = "windows")]
 use crate::ui::overlay_ui;
 use crate::ui::settings_ui;
 use crate::ui::sync_ui;
@@ -20,8 +23,8 @@ fn game_window_title(settings: &overmax_data::Settings) -> &str {
         .unwrap_or("DJMAX RESPECT V")
 }
 
+#[cfg(target_os = "windows")]
 fn get_local_mouse_pos(ctx: &egui::Context, hwnd_opt: Option<isize>) -> Option<egui::Pos2> {
-    #[cfg(target_os = "windows")]
     {
         let hwnd_val = hwnd_opt?;
         use windows_sys::Win32::Foundation::HWND;
@@ -51,14 +54,9 @@ fn get_local_mouse_pos(ctx: &egui::Context, hwnd_opt: Option<isize>) -> Option<e
         }
         None
     }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = hwnd_opt;
-        ctx.input(|i| i.pointer.latest_pos())
-    }
 }
 
+#[cfg(target_os = "windows")]
 fn draw_custom_cursor(painter: &egui::Painter, p: egui::Pos2) {
     use egui::{Color32, Stroke};
     let len = 6.0;
@@ -287,6 +285,7 @@ impl NativeApp {
     }
 }
 
+#[cfg(target_os = "windows")]
 struct OverlaySettingsSnapshot {
     scale: f32,
     opacity: f32,
@@ -294,6 +293,7 @@ struct OverlaySettingsSnapshot {
     snap_position: String,
 }
 
+#[cfg(target_os = "windows")]
 fn read_overlay_settings(
     settings: &std::sync::Arc<std::sync::Mutex<serde_json::Value>>,
 ) -> OverlaySettingsSnapshot {
@@ -501,7 +501,6 @@ impl NativeApp {
                 toast: self.toast.clone(),
                 window_snapshot: self.window_snapshot,
                 capture_fatal: self.capture_fatal.clone(),
-                confidence: self.confidence,
             });
     }
 
@@ -554,6 +553,7 @@ impl NativeApp {
         }
     }
 
+    #[cfg(target_os = "windows")]
     fn update_overlay_geometry(
         &mut self,
         ctx: &egui::Context,
@@ -564,8 +564,6 @@ impl NativeApp {
         overlay_on: bool,
         overlay_on_changed: bool,
     ) -> bool {
-        #[cfg(not(target_os = "windows"))]
-        let _ = snap_position;
         let prev_overlay = *self.state_tracker.prev_overlay_on;
         let prev_scale_val = *self.state_tracker.prev_scale;
         let prev_lite = *self.state_tracker.prev_is_lite;
@@ -603,10 +601,7 @@ impl NativeApp {
         }
 
         // 마우스가 오버레이 영역 위에 있을 때만 상호작용 가능하게 함 (보조창 조작을 위해)
-        #[cfg(target_os = "windows")]
         let local_mouse = get_local_mouse_pos(ctx, self.win_cache.cached_hwnd);
-        #[cfg(not(target_os = "windows"))]
-        let local_mouse = get_local_mouse_pos(ctx, None);
 
         let is_over = local_mouse.is_some() || self.is_dragging;
         let passthrough = !overlay_on || !is_over;
@@ -708,6 +703,7 @@ impl NativeApp {
         force_topmost
     }
 
+    #[cfg(target_os = "windows")]
     fn render_overlay_panel(
         &mut self,
         ctx: &egui::Context,
@@ -717,10 +713,7 @@ impl NativeApp {
         overlay_on: bool,
         force_topmost: &mut bool,
     ) {
-        #[cfg(target_os = "windows")]
         let local_mouse = get_local_mouse_pos(ctx, self.win_cache.cached_hwnd);
-        #[cfg(not(target_os = "windows"))]
-        let local_mouse = get_local_mouse_pos(ctx, None);
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(Color32::from_rgba_unmultiplied(0, 0, 0, 0)))
             .show(ctx, |ui| {
@@ -771,12 +764,7 @@ impl NativeApp {
                     self.is_dragging = false;
                 }
 
-                #[cfg(target_os = "windows")]
                 self.handle_window_drag(ctx, actions.start_drag);
-                #[cfg(not(target_os = "windows"))]
-                if actions.start_drag {
-                    ctx.send_viewport_cmd(ViewportCommand::StartDrag);
-                }
 
                 if actions.restore_game_focus {
                     let max_log_lines = self.max_log_lines();

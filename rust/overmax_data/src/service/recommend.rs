@@ -11,7 +11,7 @@ const MODES: &[&str] = &["4B", "5B", "6B", "8B"];
 
 type RecordKey = (i32, String, String);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RecommendEntry {
     pub song_id: i32,
     pub song_name: String,
@@ -31,7 +31,7 @@ impl RecommendEntry {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RecommendResult {
     pub entries: Vec<RecommendEntry>,
     pub avg_rate: f64,

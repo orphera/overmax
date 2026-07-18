@@ -5,7 +5,7 @@ use crate::ui::overlay_recommend_ui::PatternTabInfo;
 use crate::ui::overlay_ui::{self, OverlayActions, OverlayProps};
 use crate::ui::ui_command::UiCommand;
 use overmax_core::{GameSessionState, RecordValue};
-use overmax_data::{RecommendEntry, RecommendResult, RecordManager};
+use overmax_data::{RecommendResult, RecordManager};
 use overmax_engine::capture::window_tracker::{WindowRect, WindowSnapshot};
 use raw_window_handle::{
     RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
@@ -70,13 +70,12 @@ pub struct LinuxOverlaySnapshot {
     pub toast: Option<ToastMessage>,
     pub window_snapshot: Option<WindowSnapshot>,
     pub capture_fatal: Option<String>,
-    pub confidence: f32,
 }
 
 #[derive(Clone)]
 pub struct LinuxLayerOverlayHandle {
     published: Arc<Mutex<PublishedSnapshots>>,
-    wake_writer: Arc<Mutex<UnixStream>>,
+    wake_writer: Arc<UnixStream>,
     runtime_failure: Arc<Mutex<Option<String>>>,
 }
 
@@ -122,9 +121,7 @@ impl LinuxLayerOverlayHandle {
 
         // A full socket buffer means a wake-up is already pending, so a failed
         // non-blocking write needs no handling.
-        if let Ok(mut writer) = self.wake_writer.lock() {
-            let _ = writer.write(&[1]);
-        }
+        let _ = (&*self.wake_writer).write(&[1]);
     }
 
     pub fn take_runtime_failure(&self) -> Option<String> {
@@ -146,77 +143,21 @@ fn same_display_snapshot(
     previous.state == next.state
         && previous.song_label == next.song_label
         && previous.pattern_tabs == next.pattern_tabs
-        && same_recommendations(&previous.recommendations, &next.recommendations)
+        && previous.recommendations == next.recommendations
         && previous_settings_open == next_settings_open
         && previous_sync_open == next_sync_open
-        && previous.scale.to_bits() == next.scale.to_bits()
-        && previous.opacity.to_bits() == next.opacity.to_bits()
+        && previous.scale == next.scale
+        && previous.opacity == next.opacity
         && previous.varchive_upload_needed == next.varchive_upload_needed
         && previous.varchive_account_configured == next.varchive_account_configured
         && previous.lite_mode == next.lite_mode
         && previous.snap == next.snap
         && previous.position == next.position
         && Arc::ptr_eq(&previous.record_manager, &next.record_manager)
-        && same_record(previous.session_initial_record, next.session_initial_record)
-        && same_toast(previous.toast.as_ref(), next.toast.as_ref())
+        && previous.session_initial_record == next.session_initial_record
+        && previous.toast == next.toast
         && previous.window_snapshot == next.window_snapshot
         && previous.capture_fatal == next.capture_fatal
-    // confidence is carried for diagnostics, but does not affect presentation (§5.6).
-}
-
-fn same_recommendations(previous: &RecommendResult, next: &RecommendResult) -> bool {
-    previous.avg_rate.to_bits() == next.avg_rate.to_bits()
-        && previous.has_record_count == next.has_record_count
-        && previous.total_count == next.total_count
-        && previous.entries.len() == next.entries.len()
-        && previous
-            .entries
-            .iter()
-            .zip(&next.entries)
-            .all(|(previous, next)| same_recommendation(previous, next))
-}
-
-fn same_recommendation(previous: &RecommendEntry, next: &RecommendEntry) -> bool {
-    previous.song_id == next.song_id
-        && previous.song_name == next.song_name
-        && previous.composer == next.composer
-        && previous.button_mode == next.button_mode
-        && previous.difficulty == next.difficulty
-        && previous.level == next.level
-        && same_optional_f64(previous.floor, next.floor)
-        && previous.floor_name == next.floor_name
-        && same_optional_f64(previous.rate, next.rate)
-        && previous.is_max_combo == next.is_max_combo
-}
-
-fn same_optional_f64(previous: Option<f64>, next: Option<f64>) -> bool {
-    match (previous, next) {
-        (Some(previous), Some(next)) => previous.to_bits() == next.to_bits(),
-        (None, None) => true,
-        _ => false,
-    }
-}
-
-fn same_record(previous: Option<RecordValue>, next: Option<RecordValue>) -> bool {
-    match (previous, next) {
-        (Some((previous_rate, previous_combo)), Some((next_rate, next_combo))) => {
-            previous_rate.to_bits() == next_rate.to_bits() && previous_combo == next_combo
-        }
-        (None, None) => true,
-        _ => false,
-    }
-}
-
-fn same_toast(previous: Option<&ToastMessage>, next: Option<&ToastMessage>) -> bool {
-    match (previous, next) {
-        (Some(previous), Some(next)) => {
-            previous.text == next.text
-                && previous.is_success == next.is_success
-                && previous.expires_at == next.expires_at
-        }
-        (None, None) => true,
-        _ => false,
-    }
 }
 
 pub type AppRepaintCallback = Arc<dyn Fn() + Send + Sync>;
@@ -263,7 +204,7 @@ pub fn spawn(
         .map_err(|_| "Linux overlay thread exited during startup".to_string())??;
     Ok(LinuxLayerOverlayHandle {
         published,
-        wake_writer: Arc::new(Mutex::new(wake_writer)),
+        wake_writer: Arc::new(wake_writer),
         runtime_failure,
     })
 }
@@ -1339,7 +1280,6 @@ mod tests {
             toast: None,
             window_snapshot: None,
             capture_fatal: None,
-            confidence: 0.0,
         };
         assert_eq!(panel_size(Some(&snapshot)), (320, 116));
         let mut background = snapshot.clone();
@@ -1366,7 +1306,7 @@ mod tests {
             .expect("nonblocking wake reader");
         let handle = LinuxLayerOverlayHandle {
             published: Arc::new(Mutex::new(PublishedSnapshots::default())),
-            wake_writer: Arc::new(Mutex::new(writer)),
+            wake_writer: Arc::new(writer),
             runtime_failure: Arc::new(Mutex::new(None)),
         };
         let mut wake = [0u8; 8];

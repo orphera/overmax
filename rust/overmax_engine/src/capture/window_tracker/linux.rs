@@ -10,13 +10,16 @@ use x11rb::rust_connection::RustConnection;
 
 const POINTER_ROOT: Window = 1;
 
-struct Atoms {
-    net_wm_name: u32,
-    utf8_string: u32,
-    net_active_window: u32,
-    net_wm_state: u32,
-    net_wm_state_fullscreen: u32,
-    net_client_list: u32,
+x11rb::atom_manager! {
+    Atoms:
+    AtomsCookie {
+        _NET_WM_NAME,
+        UTF8_STRING,
+        _NET_ACTIVE_WINDOW,
+        _NET_WM_STATE,
+        _NET_WM_STATE_FULLSCREEN,
+        _NET_CLIENT_LIST,
+    }
 }
 
 struct TrackerConnection {
@@ -77,14 +80,10 @@ impl TrackerConnection {
             .get(screen_num)
             .ok_or_else(|| format!("X11 screen {screen_num} is missing"))?
             .root;
-        let atoms = Atoms {
-            net_wm_name: intern(&conn, "_NET_WM_NAME")?,
-            utf8_string: intern(&conn, "UTF8_STRING")?,
-            net_active_window: intern(&conn, "_NET_ACTIVE_WINDOW")?,
-            net_wm_state: intern(&conn, "_NET_WM_STATE")?,
-            net_wm_state_fullscreen: intern(&conn, "_NET_WM_STATE_FULLSCREEN")?,
-            net_client_list: intern(&conn, "_NET_CLIENT_LIST")?,
-        };
+        let atoms = Atoms::new(&conn)
+            .map_err(|error| error.to_string())?
+            .reply()
+            .map_err(|error| error.to_string())?;
         Ok(Self { conn, root, atoms })
     }
 
@@ -137,7 +136,7 @@ impl TrackerConnection {
             .get_property(
                 false,
                 self.root,
-                self.atoms.net_client_list,
+                self.atoms._NET_CLIENT_LIST,
                 AtomEnum::WINDOW,
                 0,
                 u32::MAX,
@@ -171,8 +170,8 @@ impl TrackerConnection {
                 .get_property(
                     false,
                     window,
-                    self.atoms.net_wm_name,
-                    self.atoms.utf8_string,
+                    self.atoms._NET_WM_NAME,
+                    self.atoms.UTF8_STRING,
                     0,
                     256,
                 )
@@ -182,7 +181,7 @@ impl TrackerConnection {
         else {
             return Ok(false);
         };
-        if net_name.type_ == self.atoms.utf8_string && net_name.format == 8 {
+        if net_name.type_ == self.atoms.UTF8_STRING && net_name.format == 8 {
             return Ok(net_name.bytes_after == 0 && net_name.value == title);
         }
 
@@ -207,7 +206,7 @@ impl TrackerConnection {
             .get_property(
                 false,
                 self.root,
-                self.atoms.net_active_window,
+                self.atoms._NET_ACTIVE_WINDOW,
                 AtomEnum::WINDOW,
                 0,
                 1,
@@ -257,7 +256,7 @@ impl TrackerConnection {
                 .get_property(
                     false,
                     window,
-                    self.atoms.net_wm_state,
+                    self.atoms._NET_WM_STATE,
                     AtomEnum::ATOM,
                     0,
                     32,
@@ -271,7 +270,7 @@ impl TrackerConnection {
                 && reply.value32().is_some_and(|atoms| {
                     atoms
                         .into_iter()
-                        .any(|atom| atom == self.atoms.net_wm_state_fullscreen)
+                        .any(|atom| atom == self.atoms._NET_WM_STATE_FULLSCREEN)
                 })
         }))
     }
@@ -280,7 +279,7 @@ impl TrackerConnection {
         let event = ClientMessageEvent::new(
             32,
             window,
-            self.atoms.net_active_window,
+            self.atoms._NET_ACTIVE_WINDOW,
             [1, x11rb::CURRENT_TIME, 0, 0, 0],
         );
         self.conn
@@ -309,14 +308,6 @@ pub fn restore_foreground_by_title(title: &str) -> bool {
         .connection
         .as_ref()
         .is_ok_and(|connection| connection.activate(window).is_ok())
-}
-
-fn intern(conn: &RustConnection, name: &str) -> Result<u32, String> {
-    conn.intern_atom(false, name.as_bytes())
-        .map_err(|error| error.to_string())?
-        .reply()
-        .map(|reply| reply.atom)
-        .map_err(|error| error.to_string())
 }
 
 fn parse_window_list(reply: &GetPropertyReply) -> Result<Option<Vec<Window>>, String> {
@@ -362,8 +353,8 @@ fn reply_or_window_gone<T>(reply: Result<T, ReplyError>) -> Result<Option<T>, St
 #[cfg(test)]
 mod tests {
     use super::{
-        intern, parse_window_list, reply_or_window_gone, restore_foreground_by_title,
-        unique_window, WindowTracker,
+        parse_window_list, reply_or_window_gone, restore_foreground_by_title, unique_window, Atoms,
+        WindowTracker,
     };
     use std::time::{Duration, Instant};
     use x11rb::connection::Connection;
@@ -427,10 +418,10 @@ mod tests {
         let screen = &conn.setup().roots[screen_num];
         let window = conn.generate_id().expect("allocate test window ID");
         let title = format!("overmax-m1-lifecycle-{}", std::process::id());
-        let utf8_string = intern(&conn, "UTF8_STRING").expect("intern UTF8_STRING");
-        let net_wm_name = intern(&conn, "_NET_WM_NAME").expect("intern _NET_WM_NAME");
-        let net_wm_state = intern(&conn, "_NET_WM_STATE").expect("intern _NET_WM_STATE");
-        let fullscreen = intern(&conn, "_NET_WM_STATE_FULLSCREEN").expect("intern fullscreen atom");
+        let atoms = Atoms::new(&conn)
+            .expect("request atoms")
+            .reply()
+            .expect("intern atoms");
 
         conn.create_window(
             screen.root_depth,
@@ -451,8 +442,8 @@ mod tests {
         conn.change_property8(
             PropMode::REPLACE,
             window,
-            net_wm_name,
-            utf8_string,
+            atoms._NET_WM_NAME,
+            atoms.UTF8_STRING,
             title.as_bytes(),
         )
         .expect("set _NET_WM_NAME");
@@ -467,9 +458,9 @@ mod tests {
         conn.change_property32(
             PropMode::REPLACE,
             window,
-            net_wm_state,
+            atoms._NET_WM_STATE,
             AtomEnum::ATOM,
-            &[fullscreen],
+            &[atoms._NET_WM_STATE_FULLSCREEN],
         )
         .expect("set fullscreen state");
         conn.map_window(window)

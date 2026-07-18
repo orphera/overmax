@@ -3,7 +3,7 @@ use crate::ui::overlay_theme::Theme;
 use eframe::egui::{self, Color32, FontId, Rect, Vec2};
 use overmax_core::{GameSessionState, RecordValue};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ToastMessage {
     pub text: String,
     pub is_success: bool,

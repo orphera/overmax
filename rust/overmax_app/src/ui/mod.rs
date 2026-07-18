@@ -1,5 +1,7 @@
 pub mod components;
 pub mod debug_ui;
+#[cfg(target_os = "linux")]
+pub mod linux_layer_overlay;
 pub mod native_app;
 pub mod native_app_commands;
 pub mod native_app_log;

@@ -5,4 +5,5 @@ pub enum UiCommand {
     OpenSync,
     Exit,
     UploadCurrentPattern,
+    SetOverlayPosition { x: i32, y: i32 },
 }

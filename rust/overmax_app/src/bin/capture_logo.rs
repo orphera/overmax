@@ -25,6 +25,31 @@ fn main() {
     println!("[Bootstrap] DJMAX RESPECT V 창을 찾는 중...");
     // settings.json 에 등록된 타이틀을 찾지 않고 디폴트 타이틀 "DJMAX RESPECT V"로 감시
     let tracker = WindowTracker::new("DJMAX RESPECT V");
+    #[cfg(target_os = "linux")]
+    let snapshot = match tracker.game_snapshot() {
+        Ok(Some(snapshot)) => snapshot,
+        Ok(None) => {
+            eprintln!("에러: 게임이 실행 중이지 않거나 DJMAX RESPECT V 창을 찾을 수 없습니다.");
+            std::process::exit(1);
+        }
+        Err(error) => {
+            eprintln!("에러: 게임 창 추적 실패: {error}");
+            std::process::exit(1);
+        }
+    };
+    #[cfg(target_os = "linux")]
+    let rect = snapshot.rect;
+    #[cfg(target_os = "linux")]
+    if !snapshot.fullscreen {
+        eprintln!("에러: Linux 캡처는 borderless fullscreen 게임 창만 지원합니다.");
+        std::process::exit(1);
+    }
+    #[cfg(target_os = "linux")]
+    if !snapshot.foreground {
+        eprintln!("에러: 템플릿 캡처 전에 게임 창을 foreground로 전환하세요.");
+        std::process::exit(1);
+    }
+    #[cfg(target_os = "windows")]
     let Some(rect) = tracker.game_rect() else {
         eprintln!("에러: 게임이 실행 중이지 않거나 DJMAX RESPECT V 창을 찾을 수 없습니다.");
         std::process::exit(1);
@@ -43,6 +68,11 @@ fn main() {
             std::process::exit(1);
         }
     };
+    #[cfg(target_os = "linux")]
+    if let Err(error) = capturer.set_target(Some(snapshot)) {
+        eprintln!("에러: 캡처 대상 설정 실패: {error}");
+        std::process::exit(1);
+    }
 
     let frame = match capturer.capture_bgra(rect) {
         Ok(f) => f,

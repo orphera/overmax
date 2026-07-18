@@ -75,7 +75,48 @@ impl Px {
     }
 }
 
-pub fn install_cjk_fonts(ctx: &egui::Context) {
+#[cfg(target_os = "linux")]
+pub fn install_cjk_fonts(ctx: &egui::Context) -> bool {
+    let Ok(output) = std::process::Command::new("fc-match")
+        .args(["-f", "%{file}\n%{index}", ":lang=ko"])
+        .output()
+    else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let Ok(output) = String::from_utf8(output.stdout) else {
+        return false;
+    };
+    let Some((file, index)) = parse_fontconfig_match(&output) else {
+        return false;
+    };
+    let Ok(bytes) = std::fs::read(file) else {
+        return false;
+    };
+
+    let mut fonts = FontDefinitions::default();
+    let mut font = FontData::from_owned(bytes);
+    font.index = index;
+    fonts.font_data.insert("cjk".into(), Arc::new(font));
+    for family in [FontFamily::Proportional, FontFamily::Monospace] {
+        fonts.families.entry(family).or_default().push("cjk".into());
+    }
+    ctx.set_fonts(fonts);
+    true
+}
+
+#[cfg(target_os = "linux")]
+fn parse_fontconfig_match(output: &str) -> Option<(&str, u32)> {
+    let mut lines = output.lines();
+    let file = lines.next()?.trim();
+    let index = lines.next()?.trim().parse().ok()?;
+    (!file.is_empty()).then_some((file, index))
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn install_cjk_fonts(ctx: &egui::Context) -> bool {
     let mut fonts = FontDefinitions::default();
 
     let font_names = [
@@ -107,7 +148,7 @@ pub fn install_cjk_fonts(ctx: &egui::Context) {
     }
 
     if loaded_fonts.is_empty() {
-        return;
+        return false;
     }
 
     for family in [FontFamily::Proportional, FontFamily::Monospace] {
@@ -118,8 +159,10 @@ pub fn install_cjk_fonts(ctx: &egui::Context) {
     }
 
     ctx.set_fonts(fonts);
+    true
 }
 
+#[cfg(not(target_os = "linux"))]
 fn get_platform_font_dirs() -> Vec<std::path::PathBuf> {
     let mut dirs = Vec::new();
 
@@ -137,15 +180,6 @@ fn get_platform_font_dirs() -> Vec<std::path::PathBuf> {
         // 2. User Font Folder (introduced in Windows 10)
         if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
             dirs.push(std::path::PathBuf::from(localappdata).join(r"Microsoft\Windows\Fonts"));
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        dirs.push(std::path::PathBuf::from("/usr/share/fonts"));
-        dirs.push(std::path::PathBuf::from("/usr/local/share/fonts"));
-        if let Ok(home) = std::env::var("HOME") {
-            dirs.push(std::path::PathBuf::from(home).join(".local/share/fonts"));
         }
     }
 
@@ -333,6 +367,15 @@ mod tests {
         let ctx = Context::default();
         install_cjk_fonts(&ctx);
         // If it reaches here without panicking, the logic is sound.
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn parses_fontconfig_match_with_face_index() {
+        assert_eq!(
+            super::parse_fontconfig_match("fonts/NotoSansCJK.ttc\n7\n"),
+            Some(("fonts/NotoSansCJK.ttc", 7))
+        );
     }
 
     #[test]

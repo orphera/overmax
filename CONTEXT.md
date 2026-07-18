@@ -35,12 +35,12 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 
 # Linux Port
 
-- **현재 상태**: XWayland 캡처와 native Wayland overlay 조합의 타당성 검증은 사전 정의한 성능·동작 기준을 통과했다(2026-07-17). Linux workspace build/test는 통과하지만 창 추적·캡처는 스텁이고 native layer overlay는 아직 없다.
+- **현재 상태**: XWayland 캡처와 native Wayland overlay 조합의 타당성 검증은 사전 정의한 성능·동작 기준을 통과했다(2026-07-17). M1 수직 슬라이스 코드는 조립되어 Linux unit/workspace 회귀와 Xvfb 21.1.24 + Openbox 3.6.1 lifecycle을 통과했다. hosted Windows 결과와 수동 E2E 게이트가 남아 있으며, 이 게이트 전에는 Linux 실동작 지원 또는 M1 완료로 간주하지 않는다.
 - **최초 지원 범위**: 같은 `DISPLAY`에서 XID가 관측되는 Proton/XWayland 게임을 exact title로 추적하고, XComposite named pixmap + MIT-SHM으로 캡처해 wlr-layer-shell `Layer::Overlay` surface에 표시한다. borderless fullscreen 단일 출력만 지원하며 capability가 부족하거나 대상이 모호하면 fail closed한다.
 - **제외 범위**: Gamescope/Steam Deck Gaming Mode, native Wayland 게임 surface, wlr-layer-shell 또는 XWayland가 없는 세션, windowed/multi-output, non-SHM 캡처 fallback은 최초 포팅에 포함하지 않는다.
-- **Linux 직접 의존성** (`cfg(target_os = "linux")` 한정): 추적·캡처는 `x11rb 0.13`(`composite`, `shm`)와 `memmap2`, overlay는 `smithay-client-toolkit 0.20`과 `egui-wgpu 0.33.3`을 사용한다. 기존 eframe/Glow와 공용 verified pipeline은 유지한다.
+- **Linux 직접 의존성** (`cfg(target_os = "linux")` 한정): 추적·캡처는 `x11rb 0.13`(`composite`, `shm`)와 `memmap2`, overlay는 `smithay-client-toolkit 0.20`, `wayland-client 0.31`, `wayland-backend 0.3`, `egui-wgpu 0.33.3`, Vulkan 한정 `wgpu 27.0.1`, `raw-window-handle 0.6`, `pollster 0.4`, `rustix 1`을 사용한다. 기존 eframe/Glow와 공용 verified pipeline은 유지한다.
 - **호환 원칙**: Linux 구현은 플랫폼별 신규 코드와 공용 계약의 additive 최소 확장만 허용한다. Windows 기본 동작, OCR 1-Pass, history 기반 안정화, 사용자 파일 호환성은 바꾸지 않는다.
-- **CI**: fork 전용 [ci.yml](.github/workflows/ci.yml)에서 Rust `1.97.0`을 명시하고 Linux build/test/clippy와 hosted Windows build/test를 모두 `--locked`로 실행한다. Hosted Windows 검증은 실제 DJMAX+GPU의 GDI/DXGI 수동 회귀를 대신하지 않는다.
+- **CI**: fork 전용 [ci.yml](.github/workflows/ci.yml)에서 Rust `1.97.0`을 명시하고 Linux build/test/clippy, hosted Windows build/test와 Ubuntu 24.04의 Xvfb+Openbox lifecycle을 모두 `--locked`로 실행한다. Hosted Windows 검증은 실제 DJMAX+GPU의 GDI/DXGI 수동 회귀를 대신하지 않는다.
 
 ## 포팅 실행 순서
 
@@ -48,13 +48,13 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 2. **최소 수직 슬라이스 — 진행 중**: `창 추적 → 캡처 → 기존 verified pipeline → native overlay`를 Linux에서 end-to-end로 연결한다.
    - [x] Linux 지원 범위, 직접 의존성 및 Windows 호환 원칙 확정
    - [x] Linux build/test/clippy와 hosted Windows build/test workflow 추가 (최초 hosted 실행 대기)
-   - [ ] `WindowSnapshot`, 캡처 대상 전달 및 필요한 detection output 필드의 additive 계약 추가
-   - [ ] exact-title 창 추적과 단일 snapshot 기반 rect/foreground/fullscreen 판정
-   - [ ] persistent XComposite + MIT-SHM 캡처와 Xvfb lifecycle 검증
-   - [ ] 캡처 실패 시 pipeline full reset 및 `detecting()` 전송으로 stale verified 상태 차단
-   - [ ] fontconfig CJK 폰트 로딩과 startup capability probe
-   - [ ] capability 기반 compact native layer overlay와 기존 UI 연결
-   - [ ] 기존 재킷/엣지 인식 flow 연결 (새 matcher 및 OCR loop 추가 금지)
+   - [x] `WindowSnapshot`, 캡처 대상 전달 및 필요한 detection output 필드의 additive 계약 추가
+   - [x] exact-title 창 추적과 단일 snapshot 기반 rect/foreground/fullscreen 판정
+   - [x] persistent XComposite + MIT-SHM 캡처 및 Xvfb+Openbox lifecycle/fail-closed 검증
+   - [x] 캡처 실패 시 pipeline full reset 및 `detecting()` 전송으로 stale verified 상태 차단
+   - [x] fontconfig CJK 폰트 로딩과 startup capability probe
+   - [x] capability 기반 compact native layer overlay와 기존 UI 연결
+   - [x] 기존 재킷/엣지 인식 flow 연결 (새 matcher 및 OCR loop 추가 없음)
    - 완료 조건: Linux unit/lifecycle, hosted Windows 회귀, mpv(X11)+native overlay 수동 검증, 실게임 E2E, 출력 off→on 후 surface 재생성과 오버레이 재표시를 모두 통과한다.
 3. **인식 정확도 검증**: 최소 수직 슬라이스 완료 후 독립 holdout으로 기존 공용 인식 flow의 지연·정확도를 평가한다. 실제 실패가 확인되기 전에는 새 matcher를 설계하지 않는다.
 4. **릴리스 보강**: 인식 검증 완료 후 RC 성능 재측정, 사용자 파일 호환, 패키징 및 README를 정리한다.
@@ -73,17 +73,17 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 ## 데이터 흐름 및 스레드 구조
 ```
 [Main GUI Thread (egui/winit)]
-   ├── Overlay Window (오버레이 정보 표시, 드래그 이동/스케일링)
+   ├── Overlay (Windows eframe viewport / Linux native layer-shell surface)
    ├── Settings / Sync / Debug Windows (설정 변경, V-Archive 기록 동기화, 실시간 로그)
    └── Channel Receiver (디텍션 결과 수신 및 UI 상태 반영)
            ▲
            │ (mpsc channel)
            ▼
 [Detection Worker Thread]
-   ├── WindowTracker: DJMAX RESPECT V 창 추적 (Win32 API)
-   ├── ScreenCapture: GDI 기반의 실시간 프레임 캡처
+   ├── WindowTracker: Win32 또는 X11/XWayland exact-title 추적
+   ├── ScreenCapture: Windows GDI/DXGI 또는 Linux XComposite + MIT-SHM
    └── DetectionPipeline
-        ├── OcrDetector: Windows OCR 멀티패스 (Color / Grayscale / Binarized / Inverted) → logo SceneType 판별, rate f32 추출
+        ├── OcrDetector: 1-pass OCR fallback/검증 → rate 등 제한된 텍스트 값 추출
         ├── ImageIndexDb: overmax_cv (HOG + Hash 매칭 -> song_id 탐색)
         └── PlayStateDetector: (버튼 모드, 난이도, 맥스콤보 감지)
 ```
@@ -229,3 +229,5 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-17 | 런타임 해시 및 HOG 마스킹 도입 | 기존 DB 데이터의 무결성을 깨뜨리지 않고 좌상단 즐겨찾기 뱃지 노이즈를 런타임에 소거하기 위해, Hamming Distance 및 HOG 코사인 유사도 연산 시 좌상단/테두리 영역에 해당하는 비트와 원소를 동적으로 AND 마스킹 처리 | [jacket_matcher.rs](rust/overmax_data/src/service/jacket_matcher.rs) |
 | 2026-07-17 | Linux 최초 포팅 범위·의존성·fork CI 전제 확정 | Linux 포팅이 Windows 전용 제약과 충돌하지 않도록 최초 지원 범위와 additive 변경 원칙을 SSOT에 명시 | [Linux Port](#linux-port) |
 | 2026-07-17 | Linux/Windows fork CI workflow 추가 | 첫 공용 계약 변경 전에 양 OS의 컴파일·테스트 회귀를 검증하도록 구성 | [ci.yml](.github/workflows/ci.yml) |
+| 2026-07-17 | Linux M1 수직 슬라이스를 fail-closed 경계로 조립 | exact-title snapshot을 persistent XComposite/MIT-SHM 캡처와 기존 verified pipeline, native layer overlay에 연결하고 오류 시 stale 상태를 즉시 초기화하기 위함. 수동·hosted 검증 전에는 M1 완료로 승격하지 않음 | [LINUX_PORT_ROADMAP.md](LINUX/LINUX_PORT_ROADMAP.md) |
+| 2026-07-17 | Xvfb+Openbox M1 lifecycle 게이트 추가 | exact-title/EWMH, BGRA 캡처, resize·remap·recreate와 extension 부재 fail-closed를 재현 가능한 단일 스크립트로 고정 | [linux-m1-lifecycle.sh](.github/scripts/linux-m1-lifecycle.sh) |

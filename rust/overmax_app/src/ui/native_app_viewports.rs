@@ -356,6 +356,13 @@ impl eframe::App for NativeApp {
             });
         }
 
+        #[cfg(target_os = "linux")]
+        if let Some(error) = self.linux_overlay.take_runtime_failure() {
+            let error = format!("Linux overlay stopped: {error}");
+            crate::ui::native_app::show_linux_startup_error(&error);
+            self.exit_requested.store(true, Ordering::Relaxed);
+        }
+
         if self.exit_requested.load(Ordering::Relaxed) {
             self.ui_state.settings_open.store(false, Ordering::Relaxed);
             self.ui_state.sync_open.store(false, Ordering::Relaxed);
@@ -366,50 +373,58 @@ impl eframe::App for NativeApp {
 
         self.poll_and_drain_events(ctx);
 
-        let ovs = read_overlay_settings(&self.settings.merged);
-        let scale = ovs.scale;
-        let opacity = ovs.opacity;
-        let snap_position = ovs.snap_position;
+        #[cfg(target_os = "linux")]
+        {
+            self.show_debug_viewport(ctx);
+            self.show_settings_viewport(ctx);
+            self.show_sync_viewport(ctx);
+            self.publish_linux_overlay(ctx);
+        }
 
-        let height = if ovs.is_lite {
-            overlay_ui::LITE_BASE_HEIGHT
-        } else {
-            overlay_ui::BASE_HEIGHT
-        };
-
-        // game_rect 락 단 1회 획득으로 통합하여 경합 방지
-        let game_rect_val = *overmax_core::lock_or_recover(&self.game_rect);
-        let game_found = game_rect_val.is_some();
-        let overlay_on = game_found && self.confidence > 0.1;
-
-        let overlay_on_changed = self.state_tracker.prev_overlay_on.update(overlay_on);
-
-        let mut force_topmost = self.update_overlay_geometry(
-            ctx,
-            scale,
-            height,
-            &snap_position,
-            game_rect_val,
-            overlay_on,
-            overlay_on_changed,
-        );
-
-        self.show_debug_viewport(ctx);
-        self.show_settings_viewport(ctx);
-        self.show_sync_viewport(ctx);
-
-        self.render_overlay_panel(
-            ctx,
-            scale,
-            height,
-            &snap_position,
-            overlay_on,
-            &mut force_topmost,
-        );
-
-        // Windows 전용: 전체 창 투명도 및 최상위 권한 적용
         #[cfg(target_os = "windows")]
         {
+            let ovs = read_overlay_settings(&self.settings.merged);
+            let scale = ovs.scale;
+            let opacity = ovs.opacity;
+            let snap_position = ovs.snap_position;
+
+            let height = if ovs.is_lite {
+                overlay_ui::LITE_BASE_HEIGHT
+            } else {
+                overlay_ui::BASE_HEIGHT
+            };
+
+            // game_rect 락 단 1회 획득으로 통합하여 경합 방지
+            let game_rect_val = *overmax_core::lock_or_recover(&self.game_rect);
+            let game_found = game_rect_val.is_some();
+            let overlay_on = game_found && self.confidence > 0.1;
+
+            let overlay_on_changed = self.state_tracker.prev_overlay_on.update(overlay_on);
+
+            let mut force_topmost = self.update_overlay_geometry(
+                ctx,
+                scale,
+                height,
+                &snap_position,
+                game_rect_val,
+                overlay_on,
+                overlay_on_changed,
+            );
+
+            self.show_debug_viewport(ctx);
+            self.show_settings_viewport(ctx);
+            self.show_sync_viewport(ctx);
+
+            self.render_overlay_panel(
+                ctx,
+                scale,
+                height,
+                &snap_position,
+                overlay_on,
+                &mut force_topmost,
+            );
+
+            // Windows 전용: 전체 창 투명도 및 최상위 권한 적용
             if overlay_on {
                 let found = self.apply_window_opacity(opacity, force_topmost);
                 if !found && !self.win_cache.logged_opacity_fail {
@@ -446,10 +461,58 @@ impl eframe::App for NativeApp {
 }
 
 impl NativeApp {
+    #[cfg(target_os = "linux")]
+    fn publish_linux_overlay(&mut self, ctx: &egui::Context) {
+        let now = std::time::Instant::now();
+        if self
+            .toast
+            .as_ref()
+            .is_some_and(|toast| now >= toast.expires_at)
+        {
+            self.toast = None;
+        }
+        if let Some(toast) = &self.toast {
+            ctx.request_repaint_after(toast.expires_at.saturating_duration_since(now));
+        }
+
+        let overlay = self.settings.get_merged().overlay();
+        let position = overlay
+            .position
+            .x
+            .zip(overlay.position.y)
+            .map(|(x, y)| (x as i32, y as i32));
+        self.linux_overlay
+            .publish(crate::ui::linux_layer_overlay::LinuxOverlaySnapshot {
+                state: self.session.clone(),
+                song_label: self.current_song_label(),
+                pattern_tabs: self.pattern_tabs.clone(),
+                recommendations: self.recommendations.clone(),
+                settings_open: self.ui_state.settings_open.clone(),
+                sync_open: self.ui_state.sync_open.clone(),
+                scale: overlay.scale as f32,
+                opacity: overlay.base_opacity as f32,
+                varchive_upload_needed: self.current_pattern_needs_upload(),
+                varchive_account_configured: self.is_varchive_account_configured(),
+                lite_mode: overlay.lite_mode,
+                snap: overlay.position.snap,
+                position,
+                record_manager: self.record_manager.clone(),
+                session_initial_record: self.session_initial_record,
+                toast: self.toast.clone(),
+                window_snapshot: self.window_snapshot,
+                capture_fatal: self.capture_fatal.clone(),
+                confidence: self.confidence,
+            });
+    }
+
     fn poll_and_drain_events(&mut self, ctx: &egui::Context) {
+        #[cfg(target_os = "linux")]
+        let debug_on = self.ui_state.debug_open.load(Ordering::Relaxed);
         let settings_on = self.ui_state.settings_open.load(Ordering::Relaxed);
         let sync_on = self.ui_state.sync_open.load(Ordering::Relaxed);
 
+        #[cfg(target_os = "linux")]
+        let debug_open_changed = self.state_tracker.prev_debug_open.update(debug_on);
         let settings_open_changed = self.state_tracker.prev_settings_open.update(settings_on);
         if settings_on && settings_open_changed {
             if let (Ok(m), Ok(mut d)) = (self.settings.merged.lock(), self.settings.draft.lock()) {
@@ -461,6 +524,15 @@ impl NativeApp {
         let sync_open_changed = self.state_tracker.prev_sync_open.update(sync_on);
         if sync_on && sync_open_changed {
             self.refresh_steam_session("동기화 창 열림");
+        }
+
+        #[cfg(target_os = "linux")]
+        if (debug_open_changed && !debug_on)
+            || (settings_open_changed && !settings_on)
+            || (sync_open_changed && !sync_on)
+        {
+            let settings = self.settings.get_merged();
+            window_tracker::restore_foreground_by_title(game_window_title(&settings));
         }
 
         self.start_log_pump(ctx);
@@ -492,6 +564,8 @@ impl NativeApp {
         overlay_on: bool,
         overlay_on_changed: bool,
     ) -> bool {
+        #[cfg(not(target_os = "windows"))]
+        let _ = snap_position;
         let prev_overlay = *self.state_tracker.prev_overlay_on;
         let prev_scale_val = *self.state_tracker.prev_scale;
         let prev_lite = *self.state_tracker.prev_is_lite;

@@ -62,6 +62,14 @@ pub fn run_native_app() -> eframe::Result<()> {
         std::process::exit(0);
     };
 
+    #[cfg(target_os = "linux")]
+    if let Err(error) = linux_environment_probe() {
+        show_linux_startup_error(&error);
+        return Err(eframe::Error::AppCreation(Box::new(std::io::Error::other(
+            error,
+        ))));
+    }
+
     let root = std::env::current_dir().unwrap_or_else(|e| {
         eprintln!("cwd: {e}");
         std::process::exit(1);
@@ -109,15 +117,48 @@ pub fn run_native_app() -> eframe::Result<()> {
         options,
         Box::new(|cc| {
             cc.egui_ctx.set_visuals(eframe::egui::Visuals::dark());
-            overlay_ui::install_cjk_fonts(&cc.egui_ctx);
-            NativeApp::new()
+            #[cfg(target_os = "linux")]
+            if !overlay_ui::install_cjk_fonts(&cc.egui_ctx) {
+                let error = "No Korean font was found. Install a CJK font and fontconfig, then restart Overmax.";
+                show_linux_startup_error(error);
+                return Err(Box::new(std::io::Error::other(error))
+                    as Box<dyn std::error::Error + Send + Sync>);
+            }
+            #[cfg(target_os = "windows")]
+            let _ = overlay_ui::install_cjk_fonts(&cc.egui_ctx);
+            NativeApp::new(cc.egui_ctx.clone())
                 .map(|app| Box::new(app) as Box<dyn eframe::App>)
                 .map_err(|e| {
                     eprintln!("native app init: {e}");
+                    #[cfg(target_os = "linux")]
+                    show_linux_startup_error(&e);
                     Box::new(std::io::Error::other(e)) as Box<dyn std::error::Error + Send + Sync>
                 })
         }),
     )
+}
+
+#[cfg(target_os = "linux")]
+fn linux_environment_probe() -> Result<(), String> {
+    for name in ["DISPLAY", "WAYLAND_DISPLAY"] {
+        if std::env::var_os(name).is_none_or(|value| value.is_empty()) {
+            return Err(format!(
+                "{name} is not set. Overmax requires XWayland and Wayland."
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn show_linux_startup_error(message: &str) {
+    eprintln!("[Startup] {message}");
+    let _ = rfd::MessageDialog::new()
+        .set_title("Overmax cannot continue")
+        .set_description(message)
+        .set_level(rfd::MessageLevel::Error)
+        .set_buttons(rfd::MessageButtons::Ok)
+        .show();
 }
 
 #[cfg(target_os = "windows")]
@@ -148,37 +189,58 @@ fn is_position_on_screen(_x: f32, _y: f32) -> bool {
 }
 
 fn native_options(settings: &overmax_data::Settings) -> eframe::NativeOptions {
-    let overlay = settings.overlay();
-    let is_lite = overlay.lite_mode;
-
-    let mut builder = ViewportBuilder::default()
-        .with_title("Overmax")
-        .with_inner_size([overlay_ui::BASE_WIDTH, overlay_ui::BASE_HEIGHT])
-        .with_resizable(true)
-        .with_decorations(false)
-        .with_transparent(true)
-        .with_taskbar(false)
-        .with_always_on_top()
-        .with_visible(!is_lite);
-
-    if let Some(icon) = load_icon() {
-        builder = builder.with_icon(icon);
-    }
-
-    if !is_lite {
-        let pos = &overlay.position;
-        if let (Some(x), Some(y)) = (pos.x, pos.y) {
-            let px = x as f32;
-            let py = y as f32;
-            if is_position_on_screen(px, py) {
-                builder = builder.with_position(eframe::egui::pos2(px, py));
-            }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = settings;
+        eframe::NativeOptions {
+            viewport: ViewportBuilder::default()
+                .with_title("Overmax")
+                .with_inner_size([1.0, 1.0])
+                .with_min_inner_size([1.0, 1.0])
+                .with_max_inner_size([1.0, 1.0])
+                .with_resizable(false)
+                .with_decorations(false)
+                .with_transparent(true)
+                .with_taskbar(false)
+                .with_mouse_passthrough(true),
+            ..Default::default()
         }
     }
 
-    eframe::NativeOptions {
-        viewport: builder,
-        ..Default::default()
+    #[cfg(target_os = "windows")]
+    {
+        let overlay = settings.overlay();
+        let is_lite = overlay.lite_mode;
+
+        let mut builder = ViewportBuilder::default()
+            .with_title("Overmax")
+            .with_inner_size([overlay_ui::BASE_WIDTH, overlay_ui::BASE_HEIGHT])
+            .with_resizable(true)
+            .with_decorations(false)
+            .with_transparent(true)
+            .with_taskbar(false)
+            .with_always_on_top()
+            .with_visible(!is_lite);
+
+        if let Some(icon) = load_icon() {
+            builder = builder.with_icon(icon);
+        }
+
+        if !is_lite {
+            let pos = &overlay.position;
+            if let (Some(x), Some(y)) = (pos.x, pos.y) {
+                let px = x as f32;
+                let py = y as f32;
+                if is_position_on_screen(px, py) {
+                    builder = builder.with_position(eframe::egui::pos2(px, py));
+                }
+            }
+        }
+
+        eframe::NativeOptions {
+            viewport: builder,
+            ..Default::default()
+        }
     }
 }
 
@@ -238,6 +300,8 @@ pub(crate) struct SyncWorkerChannels {
 }
 
 pub struct AppStateTracker {
+    #[cfg(target_os = "linux")]
+    pub prev_debug_open: Changed<bool>,
     pub prev_settings_open: Changed<bool>,
     pub prev_sync_open: Changed<bool>,
     pub prev_scale: Changed<f32>,
@@ -257,6 +321,8 @@ impl Default for AppStateTracker {
 impl AppStateTracker {
     pub fn new() -> Self {
         Self {
+            #[cfg(target_os = "linux")]
+            prev_debug_open: Changed::new(false),
             prev_settings_open: Changed::new(false),
             prev_sync_open: Changed::new(false),
             prev_scale: Changed::new(1.0),
@@ -287,6 +353,10 @@ pub struct NativeApp {
     pub(crate) sync_state: SharedSyncState,
     pub(crate) log_rx: Option<Receiver<String>>,
     pub(crate) game_rect: Arc<Mutex<Option<overmax_engine::capture::window_tracker::WindowRect>>>,
+    #[cfg(target_os = "linux")]
+    pub(crate) window_snapshot: Option<overmax_engine::capture::window_tracker::WindowSnapshot>,
+    #[cfg(target_os = "linux")]
+    pub(crate) capture_fatal: Option<String>,
     pub(crate) session: GameSessionState,
     pub(crate) confidence: f32,
     pub(crate) recorded_states:
@@ -307,6 +377,8 @@ pub struct NativeApp {
     pub(crate) exit_requested: Arc<AtomicBool>,
     pub(crate) ctx_holder: Arc<Mutex<Option<egui::Context>>>,
     pub(crate) session_initial_record: Option<overmax_data::RecordValue>,
+    #[cfg(target_os = "linux")]
+    pub(crate) linux_overlay: crate::ui::linux_layer_overlay::LinuxLayerOverlayHandle,
     #[cfg(target_os = "windows")]
     pub(crate) _tray: Option<TrayIcon>,
     #[cfg(target_os = "windows")]
@@ -316,7 +388,7 @@ pub struct NativeApp {
 }
 
 impl NativeApp {
-    fn new() -> Result<Self, String> {
+    fn new(initial_ctx: egui::Context) -> Result<Self, String> {
         let root = std::env::current_dir().map_err(|e| e.to_string())?;
         let root = Arc::new(root);
         let defaults: Value = serde_json::from_str(include_str!(concat!(
@@ -402,7 +474,7 @@ impl NativeApp {
         let (upload_res_tx, upload_res_rx) = mpsc::channel();
         let (delete_req_tx, delete_req_rx) = mpsc::channel::<usize>();
         let (ui_cmd_tx, ui_cmd_rx) = mpsc::channel();
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
         let _ = &ui_cmd_tx;
         let (fetch_req_tx, fetch_req_rx) = mpsc::channel();
         let (fetch_res_tx, fetch_res_rx) = mpsc::channel();
@@ -417,7 +489,28 @@ impl NativeApp {
             }
         }
 
-        let ctx_holder: Arc<Mutex<Option<egui::Context>>> = Arc::new(Mutex::new(None));
+        #[cfg(target_os = "linux")]
+        let initial_ctx = Some(initial_ctx);
+        #[cfg(target_os = "windows")]
+        let initial_ctx = {
+            let _ = initial_ctx;
+            None
+        };
+        let ctx_holder: Arc<Mutex<Option<egui::Context>>> = Arc::new(Mutex::new(initial_ctx));
+
+        #[cfg(target_os = "linux")]
+        let linux_overlay = {
+            let ctx_holder = ctx_holder.clone();
+            let repaint = Arc::new(move || {
+                if let Ok(holder) = ctx_holder.lock() {
+                    if let Some(ctx) = &*holder {
+                        ctx.request_repaint();
+                    }
+                }
+            });
+            crate::ui::linux_layer_overlay::spawn(ui_cmd_tx.clone(), repaint)?
+        };
+
         let ctx_holder_clone = ctx_holder.clone();
 
         let repaint_callback = Box::new(move || {
@@ -486,6 +579,10 @@ impl NativeApp {
             sync_state,
             log_rx: Some(log_rx),
             game_rect: Arc::new(Mutex::new(None)),
+            #[cfg(target_os = "linux")]
+            window_snapshot: None,
+            #[cfg(target_os = "linux")]
+            capture_fatal: None,
             session: GameSessionState::detecting(),
             confidence: 0.0,
             recorded_states: std::collections::HashMap::new(),
@@ -518,6 +615,8 @@ impl NativeApp {
             exit_requested: exit_requested.clone(),
             ctx_holder: ctx_holder.clone(),
             session_initial_record: None,
+            #[cfg(target_os = "linux")]
+            linux_overlay,
             #[cfg(target_os = "windows")]
             _tray: Some(TrayIcon::spawn(
                 ui_cmd_tx,

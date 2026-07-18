@@ -1,5 +1,6 @@
 use crate::capture::frame::CapturedFrame;
 use crate::capture::frame_utils::{crop_roi, make_thumbnail, thumbnail_changed};
+use crate::capture::window_tracker::WindowSnapshot;
 use crate::detector::hysteresis::HysteresisBuffer;
 use crate::detector::ocr_engine::{OcrDetector, OcrTelemetry};
 use crate::detector::play_state::PlayStateDetector;
@@ -26,6 +27,8 @@ pub struct DetectionOutput {
     pub image_db_ready: bool,
     pub jacket_status: JacketMatchStatus,
     pub game_rect: Option<crate::capture::window_tracker::WindowRect>,
+    pub window_snapshot: Option<WindowSnapshot>,
+    pub capture_fatal: Option<String>,
     pub ocr_telemetry: Option<OcrTelemetry>,
 }
 
@@ -95,6 +98,8 @@ impl DetectionPipeline {
         self.unknown_since = None;
         self.hysteresis.reset();
         self.play_state.reset();
+        self.play_state.clear_detected_cache();
+        self.rois.set_scene(SceneType::Unknown);
     }
 
     pub fn ocr_available(&self) -> bool {
@@ -423,6 +428,8 @@ impl DetectionPipeline {
             image_db_ready: self.image_db.is_ready(),
             jacket_status,
             game_rect: None,
+            window_snapshot: None,
+            capture_fatal: None,
             ocr_telemetry,
         }
     }
@@ -827,6 +834,20 @@ mod tests {
 
         assert!(output.is_song_select);
         assert!(output.state.context.is_none());
+    }
+
+    #[test]
+    fn reset_clears_result_cache_and_roi_scene() {
+        use overmax_core::SceneType;
+
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        pipeline.rois.set_scene(SceneType::ResultFreestyle);
+        pipeline.play_state.seed_detected_cache_for_test();
+
+        pipeline.reset();
+
+        assert_eq!(pipeline.rois.current_scene(), SceneType::Unknown);
+        assert!(pipeline.play_state.detected_cache_is_empty_for_test());
     }
 
     fn blank_frame() -> CapturedFrame {

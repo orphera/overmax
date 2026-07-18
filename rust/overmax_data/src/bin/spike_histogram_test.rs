@@ -241,82 +241,34 @@ fn cosine_similarity(v1: &[f32], v2: &[f32]) -> f32 {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== OVERMAX SPIKE: FAST HISTOGRAM MATCHING BENCHMARK ===");
 
-    // 1. DB에서 해시 및 HOG 정보 로드
+    // 1. DB에서 해시, HOG 및 히스토그램 정보 로드 (프로덕션 image_index 모듈 사용)
     let db_path = "cache/image_index.db";
     if !Path::new(db_path).exists() {
         eprintln!("Error: cache/image_index.db not found. Run db_builder or copy it first.");
         return Ok(());
     }
 
-    let conn = Connection::open(db_path)?;
-    let mut stmt = conn.prepare("SELECT image_id, phash, dhash, ahash, hog FROM images")?;
-    let mut hash_map = HashMap::new();
-    let mut rows = stmt.query([])?;
-    while let Some(row) = rows.next()? {
-        let image_id: String = row.get(0)?;
-        let phash_str: String = row.get(1)?;
-        let dhash_str: String = row.get(2)?;
-        let ahash_str: String = row.get(3)?;
-        let hog_blob: Vec<u8> = row.get(4)?;
-
-        let phash = u64::from_str_radix(&phash_str, 16).unwrap_or(0);
-        let dhash = u64::from_str_radix(&dhash_str, 16).unwrap_or(0);
-        let ahash = u64::from_str_radix(&ahash_str, 16).unwrap_or(0);
-        let hog = parse_hog_blob(&hog_blob).unwrap_or_default();
-
-        hash_map.insert(image_id, (phash, dhash, ahash, hog));
-    }
+    let mut index_db = overmax_data::store::image_index::ImageIndexDb::new(db_path, 0.65);
+    let loaded_count = index_db.load()?;
     println!(
-        "Loaded hashes and HOGs for {} songs from DB.",
-        hash_map.len()
+        "Loaded {} songs (with hashes, HOGs, and metadata histograms) from DB.",
+        loaded_count
     );
 
-    // 2. scratch/jackets에서 히스토그램 학습 (프리베이크 모사)
-    let jackets_dir = "scratch/jackets";
-    let mut db_entries = Vec::new();
-    let mut missing_hashes = 0;
-
-    if Path::new(jackets_dir).exists() {
-        for entry in fs::read_dir(jackets_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_file() {
-                if let Some(image_id) = path.file_stem().and_then(|s| s.to_str()) {
-                    if let Some((phash, dhash, ahash, hog)) = hash_map.get(image_id) {
-                        // 자켓 이미지 디코딩 및 히스토그램 연산
-                        let img = image::open(&path)?;
-                        let mut gray = to_gray(&img);
-                        stretch_contrast(&mut gray);
-                        let grid_hist = compute_grid_histogram(
-                            &gray,
-                            img.width() as usize,
-                            img.height() as usize,
-                        );
-
-                        db_entries.push(DbEntry {
-                            image_id: image_id.to_string(),
-                            phash: *phash,
-                            dhash: *dhash,
-                            ahash: *ahash,
-                            grid_hist,
-                            hog: hog.clone(),
-                        });
-                    } else {
-                        missing_hashes += 1;
-                    }
-                }
-            }
-        }
-    }
-    println!(
-        "Learned grid histograms for {} entries (missing hashes in DB: {}).",
-        db_entries.len(),
-        missing_hashes
-    );
+    let db_entries = index_db.entries();
 
     if db_entries.is_empty() {
-        println!("Error: No jackets found or matching entries. Cannot continue spike.");
+        println!("Error: No entries found in cache/image_index.db. Cannot continue spike.");
         return Ok(());
+    }
+
+    // 모든 DB 항목에 히스토그램이 들어있는지 무결성 체크
+    let missing_histograms = db_entries.iter().filter(|e| e.grid_hist.is_none()).count();
+    if missing_histograms > 0 {
+        eprintln!(
+            "Warning: {} entries in cache/image_index.db are missing metadata histograms!",
+            missing_histograms
+        );
     }
 
     // 3. verify_summary_old.md를 파싱하여 전수 테스트 데이터셋 로드
@@ -488,6 +440,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let matched = db_entries
             .iter()
             .filter_map(|entry| {
+                let e_grid_hist = entry.grid_hist.as_ref()?;
+
                 let p_dist = (entry.phash ^ q_phash).count_ones();
                 let d_dist = ((entry.dhash ^ q_dhash) & hash_mask).count_ones();
                 let a_dist = ((entry.ahash ^ q_ahash) & hash_mask).count_ones();
@@ -500,7 +454,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 let mut hist_diff = 0u32;
-                for (&e_h, &q_h) in entry.grid_hist.iter().zip(q_grid_hist.iter()) {
+                for (&e_h, &q_h) in e_grid_hist.iter().zip(q_grid_hist.iter()) {
                     hist_diff += (e_h as i32 - q_h as i32).unsigned_abs();
                 }
 
@@ -547,8 +501,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 debug_expected_hamming = p_dist + d_dist + a_dist;
 
                 let mut hist_diff = 0u32;
-                for (&e_h, &q_h) in target_entry.grid_hist.iter().zip(q_grid_hist.iter()) {
-                    hist_diff += (e_h as i32 - q_h as i32).unsigned_abs();
+                if let Some(target_hist) = target_entry.grid_hist.as_ref() {
+                    for (&e_h, &q_h) in target_hist.iter().zip(q_grid_hist.iter()) {
+                        hist_diff += (e_h as i32 - q_h as i32).unsigned_abs();
+                    }
                 }
                 debug_expected_hist_diff = hist_diff;
 
@@ -585,6 +541,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let false_matched = db_entries
                 .iter()
                 .filter_map(|entry| {
+                    let e_grid_hist = entry.grid_hist.as_ref()?;
+
                     let p_dist = (entry.phash ^ fq_phash).count_ones();
                     let d_dist = ((entry.dhash ^ fq_dhash) & hash_mask).count_ones();
                     let a_dist = ((entry.ahash ^ fq_ahash) & hash_mask).count_ones();
@@ -595,7 +553,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     let mut hist_diff = 0u32;
-                    for (&e_h, &q_h) in entry.grid_hist.iter().zip(false_q_grid_hist.iter()) {
+                    for (&e_h, &q_h) in e_grid_hist.iter().zip(false_q_grid_hist.iter()) {
                         hist_diff += (e_h as i32 - q_h as i32).unsigned_abs();
                     }
 
@@ -682,6 +640,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let matched = db_entries
             .iter()
             .filter_map(|entry| {
+                let e_grid_hist = entry.grid_hist.as_ref()?;
+
                 let p_dist = (entry.phash ^ rq_phash).count_ones();
                 let d_dist = ((entry.dhash ^ rq_dhash) & hash_mask).count_ones();
                 let a_dist = ((entry.ahash ^ rq_ahash) & hash_mask).count_ones();
@@ -690,7 +650,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return None;
                 }
                 let mut hist_diff = 0u32;
-                for (&e_h, &q_h) in entry.grid_hist.iter().zip(q_grid_hist.iter()) {
+                for (&e_h, &q_h) in e_grid_hist.iter().zip(q_grid_hist.iter()) {
                     hist_diff += (e_h as i32 - q_h as i32).unsigned_abs();
                 }
                 let compare_bits = hash_mask.count_ones() as f32;

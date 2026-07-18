@@ -146,46 +146,6 @@ impl JacketMatcher {
     }
 }
 
-fn dot(left: &[f32], right: &[f32]) -> f32 {
-    let len = left.len();
-    assert_eq!(len, right.len());
-    let mut sum = 0.0;
-    for i in 0..len {
-        sum += left[i] * right[i];
-    }
-    sum
-}
-
-fn vector_norm(values: &[f32]) -> f32 {
-    values.iter().map(|&v| v * v).sum::<f32>().sqrt()
-}
-
-fn apply_hog_mask(hog: &mut [f32]) {
-    // 7x7 블록 중 block_y = 0 (상단) 및 block_x = 6 (우측), 그리고 좌상단 (0,1), (1,1) 무력화
-    for block_x in 0..7 {
-        let start = block_x * 252; // block_y = 0
-        for i in 0..36 {
-            hog[start + i] = 0.0;
-        }
-    }
-    for block_y in 0..7 {
-        let start = 6 * 252 + block_y * 36; // block_x = 6
-        for i in 0..36 {
-            hog[start + i] = 0.0;
-        }
-    }
-    // 좌상단 추가 블록: (0,1)
-    let start_0_1 = 36;
-    for i in 0..36 {
-        hog[start_0_1 + i] = 0.0;
-    }
-    // 좌상단 추가 블록: (1,1)
-    let start_1_1 = 252 + 36;
-    for i in 0..36 {
-        hog[start_1_1 + i] = 0.0;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

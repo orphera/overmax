@@ -31,7 +31,6 @@ struct TargetBinding {
 }
 
 struct CaptureGeneration {
-    pixmap: u32,
     shmseg: u32,
     map: MmapMut,
     width: u16,
@@ -371,57 +370,6 @@ fn create_generation(
     conn: &RustConnection,
     info: WindowInfo,
 ) -> Result<CaptureGeneration, CaptureFailure> {
-    let pixmap = create_named_pixmap(conn, info.window)?;
-    let result = create_generation_for_pixmap(conn, info, pixmap);
-    match result {
-        Ok(mut generation) => {
-            if let Err(error) = warmup(conn, &mut generation) {
-                let cleanup = release_generation_checked(conn, generation);
-                return Err(prefer_cleanup_error(error, cleanup));
-            }
-            Ok(generation)
-        }
-        Err(error) => {
-            let cleanup = release_xids_checked(conn, pixmap, None);
-            Err(prefer_cleanup_error(error, cleanup))
-        }
-    }
-}
-
-fn create_named_pixmap(conn: &RustConnection, window: Window) -> Result<u32, CaptureFailure> {
-    let pixmap = conn
-        .generate_id()
-        .map_err(|error| id_failure("allocate named pixmap ID", error))?;
-    let result = conn
-        .composite_name_window_pixmap(window, pixmap)
-        .map_err(|error| connection_failure("name window pixmap", error))?
-        .check()
-        .map_err(|error| reply_failure("name window pixmap", error));
-    match result {
-        Ok(()) => Ok(pixmap),
-        Err(error) => {
-            let cleanup = release_xids_checked(conn, pixmap, None);
-            Err(prefer_cleanup_error(error, cleanup))
-        }
-    }
-}
-
-fn create_generation_for_pixmap(
-    conn: &RustConnection,
-    info: WindowInfo,
-    pixmap: u32,
-) -> Result<CaptureGeneration, CaptureFailure> {
-    let geometry = conn
-        .get_geometry(pixmap)
-        .map_err(|error| connection_failure("get named pixmap geometry", error))?
-        .reply()
-        .map_err(|error| reply_failure("get named pixmap geometry", error))?;
-    if (geometry.width, geometry.height, geometry.depth) != (info.width, info.height, info.depth) {
-        return Err(CaptureFailure::Transient(format!(
-            "named pixmap {}x{} depth {} != window {}x{} depth {}",
-            geometry.width, geometry.height, geometry.depth, info.width, info.height, info.depth
-        )));
-    }
     let layout = pixel_layout(conn, info)?;
     let shmseg = conn
         .generate_id()
@@ -443,8 +391,7 @@ fn create_generation_for_pixmap(
             return Err(prefer_cleanup_error(failure, cleanup));
         }
     };
-    Ok(CaptureGeneration {
-        pixmap,
+    let mut generation = CaptureGeneration {
         shmseg,
         map,
         width: info.width,
@@ -452,7 +399,30 @@ fn create_generation_for_pixmap(
         depth: info.depth,
         stride: layout.stride,
         frame_len: layout.frame_len,
-    })
+    };
+    if let Err(error) = warmup(conn, info.window, &mut generation) {
+        let cleanup = release_generation_checked(conn, generation);
+        return Err(prefer_cleanup_error(error, cleanup));
+    }
+    Ok(generation)
+}
+
+fn create_named_pixmap(conn: &RustConnection, window: Window) -> Result<u32, CaptureFailure> {
+    let pixmap = conn
+        .generate_id()
+        .map_err(|error| id_failure("allocate named pixmap ID", error))?;
+    let result = conn
+        .composite_name_window_pixmap(window, pixmap)
+        .map_err(|error| connection_failure("name window pixmap", error))?
+        .check()
+        .map_err(|error| reply_failure("name window pixmap", error));
+    match result {
+        Ok(()) => Ok(pixmap),
+        Err(error) => {
+            let cleanup = free_pixmap_checked(conn, pixmap);
+            Err(prefer_cleanup_error(error, cleanup))
+        }
+    }
 }
 
 fn pixel_layout(conn: &RustConnection, info: WindowInfo) -> Result<PixelLayout, CaptureFailure> {
@@ -554,8 +524,12 @@ fn calculate_layout(
     })
 }
 
-fn warmup(conn: &RustConnection, generation: &mut CaptureGeneration) -> Result<(), CaptureFailure> {
-    capture_raw(conn, generation)?;
+fn warmup(
+    conn: &RustConnection,
+    window: Window,
+    generation: &mut CaptureGeneration,
+) -> Result<(), CaptureFailure> {
+    capture_raw(conn, window, generation)?;
     let mut touched = 0u8;
     for index in (0..generation.map.len()).step_by(PAGE_SIZE) {
         touched ^= generation.map[index];
@@ -579,8 +553,10 @@ fn capture_frame(
         ));
     };
     ensure_generation(conn, bound)?;
+    let window = bound.window;
     let result = capture_into(
         conn,
+        window,
         bound.generation.as_mut().expect("capture generation"),
         out_frame,
     );
@@ -596,10 +572,11 @@ fn capture_frame(
 
 fn capture_into(
     conn: &RustConnection,
+    window: Window,
     generation: &mut CaptureGeneration,
     out_frame: &mut CapturedFrame,
 ) -> Result<(), CaptureFailure> {
-    capture_raw(conn, generation)?;
+    capture_raw(conn, window, generation)?;
     if out_frame.bgra.capacity() < generation.frame_len {
         out_frame
             .bgra
@@ -625,13 +602,31 @@ fn capture_into(
     Ok(())
 }
 
+/// 매 캡처마다 named pixmap을 새로 잡는다. XWayland는 fullscreen 게임의 buffer
+/// flip이나 swapchain 재생성 시 map/resize 이벤트 없이 창의 backing pixmap을
+/// 교체할 수 있어, bind 시점 handle을 유지하면 frozen frame을 읽게 된다.
 fn capture_raw(
     conn: &RustConnection,
+    window: Window,
+    generation: &CaptureGeneration,
+) -> Result<(), CaptureFailure> {
+    let pixmap = create_named_pixmap(conn, window)?;
+    let result = shm_capture(conn, pixmap, generation);
+    let cleanup = free_pixmap_checked(conn, pixmap);
+    match result {
+        Ok(()) => cleanup,
+        Err(error) => Err(prefer_cleanup_error(error, cleanup)),
+    }
+}
+
+fn shm_capture(
+    conn: &RustConnection,
+    pixmap: u32,
     generation: &CaptureGeneration,
 ) -> Result<(), CaptureFailure> {
     let reply = conn
         .shm_get_image(
-            generation.pixmap,
+            pixmap,
             0,
             0,
             generation.width,
@@ -647,7 +642,9 @@ fn capture_raw(
     if reply.depth != generation.depth
         || usize::try_from(reply.size).ok() != Some(generation.map.len())
     {
-        return Err(CaptureFailure::Permanent(format!(
+        // 크기 변경 직후 ConfigureNotify를 아직 처리하지 못한 race — 세대를 버리고
+        // 다음 tick에서 새 geometry로 재구성한다.
+        return Err(CaptureFailure::Transient(format!(
             "MIT-SHM reply layout mismatch: depth {} size {}, expected depth {} size {}",
             reply.depth,
             reply.size,
@@ -656,6 +653,12 @@ fn capture_raw(
         )));
     }
     Ok(())
+}
+
+fn free_pixmap_checked(conn: &RustConnection, pixmap: u32) -> Result<(), CaptureFailure> {
+    conn.free_pixmap(pixmap)
+        .map_err(|error| connection_failure("free named pixmap", error))
+        .and_then(|cookie| cleanup_reply("free named pixmap", cookie.check()))
 }
 
 fn poll_lifecycle_events(
@@ -669,6 +672,9 @@ fn poll_lifecycle_events(
         let Some(window) = binding.as_ref().map(|bound| bound.window) else {
             continue;
         };
+        // unmap/remap은 세대 무효화가 필요 없다: pixmap은 매 캡처마다 새로 잡고,
+        // unmapped 동안의 naming 실패는 transient로 흡수된다. SHM 세대는 크기가
+        // 바뀔 때(ConfigureNotify)만 재구성한다.
         let action = match event {
             Event::ConfigureNotify(event)
                 if event.window == window
@@ -681,8 +687,6 @@ fn poll_lifecycle_events(
             {
                 LifecycleAction::Invalidate
             }
-            Event::UnmapNotify(event) if event.window == window => LifecycleAction::Invalidate,
-            Event::MapNotify(event) if event.window == window => LifecycleAction::Invalidate,
             Event::DestroyNotify(event) if event.window == window => LifecycleAction::Destroy,
             _ => LifecycleAction::None,
         };
@@ -741,28 +745,7 @@ fn release_generation_checked(
     conn: &RustConnection,
     generation: CaptureGeneration,
 ) -> Result<(), CaptureFailure> {
-    release_xids_checked(conn, generation.pixmap, Some(generation.shmseg))
-}
-
-fn release_xids_checked(
-    conn: &RustConnection,
-    pixmap: u32,
-    shmseg: Option<u32>,
-) -> Result<(), CaptureFailure> {
-    let mut failure = None;
-    if let Some(shmseg) = shmseg {
-        let result = conn
-            .shm_detach(shmseg)
-            .map_err(|error| connection_failure("detach MIT-SHM segment", error))
-            .and_then(|cookie| cleanup_reply("detach MIT-SHM segment", cookie.check()));
-        remember_failure(&mut failure, result);
-    }
-    let result = conn
-        .free_pixmap(pixmap)
-        .map_err(|error| connection_failure("free named pixmap", error))
-        .and_then(|cookie| cleanup_reply("free named pixmap", cookie.check()));
-    remember_failure(&mut failure, result);
-    failure.map_or(Ok(()), Err)
+    release_shm_checked(conn, generation.shmseg)
 }
 
 fn release_shm_checked(conn: &RustConnection, shmseg: u32) -> Result<(), CaptureFailure> {
@@ -774,7 +757,6 @@ fn release_shm_checked(conn: &RustConnection, shmseg: u32) -> Result<(), Capture
 fn release_binding_best_effort(conn: &RustConnection, mut binding: TargetBinding) {
     if let Some(generation) = binding.generation.take() {
         let _ = conn.shm_detach(generation.shmseg);
-        let _ = conn.free_pixmap(generation.pixmap);
     }
     if binding.redirected {
         let _ = conn.composite_unredirect_window(binding.window, Redirect::AUTOMATIC);

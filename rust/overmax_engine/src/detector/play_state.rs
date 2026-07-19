@@ -1,5 +1,4 @@
 use crate::capture::frame::CapturedFrame;
-use crate::capture::frame_utils::crop_roi;
 use crate::capture::frame_utils::region_mean_bgr;
 use crate::detector::ocr_engine::{OcrDetector, OcrTelemetry};
 use crate::detector::roi::RoiManager;
@@ -72,18 +71,15 @@ impl PlayStateDetector {
         is_result: bool,
         now: f64,
     ) -> (f32, Option<OcrTelemetry>) {
-        let Some(rate_roi) = rois.get_roi("rate") else {
-            return (0.0, None);
-        };
-
         if self.should_run_rate_ocr(now) {
-            if let Some(rate_img) = crop_roi(frame, rate_roi) {
-                let mut rate_res = ocr.detect_rate(&rate_img);
-                self.last_rate_ocr_ts = now;
-
+            if let Some(rate_res) = rois.and_then_roi(frame, "rate", |rate_img| {
+                let mut rate_res = ocr.detect_rate(rate_img);
                 rate_res.0 = Self::cross_validate_rate_with_score(
                     ocr, frame, rois, scene, is_result, rate_res.0,
                 );
+                Some(rate_res)
+            }) {
+                self.last_rate_ocr_ts = now;
 
                 debug_println!(
                     "    [detect] rate OCR run. rate={:?}, text='{}'",
@@ -182,24 +178,16 @@ impl PlayStateDetector {
         // 1. 결과창 실시간 템플릿 매칭 우선 시도
         match scene {
             overmax_core::SceneType::ResultFreestyle => {
-                if let Some(mode_roi) = rois.get_roi("mode_digit") {
-                    if let Some(mode_img) = crop_roi(frame, mode_roi) {
-                        detected_mode = ocr.detect_freestyle_mode(&mode_img);
-                    }
-                }
-                if let Some(diff_roi) = rois.get_roi("diff_panel") {
-                    if let Some(diff_img) = crop_roi(frame, diff_roi) {
-                        detected_diff = ocr.detect_result_difficulty(&diff_img);
-                    }
-                }
+                detected_mode =
+                    rois.and_then_roi(frame, "mode_digit", |img| ocr.detect_freestyle_mode(img));
+                detected_diff =
+                    rois.and_then_roi(frame, "diff_panel", |img| ocr.detect_result_difficulty(img));
             }
             overmax_core::SceneType::ResultOpen3 | overmax_core::SceneType::ResultOpen2 => {
                 detected_mode = detect_button_mode_from_roi(frame, rois, "openmatch_mode");
-                if let Some(diff_roi) = rois.get_roi("openmatch_diff") {
-                    if let Some(diff_img) = crop_roi(frame, diff_roi) {
-                        detected_diff = ocr.detect_openmatch_result_difficulty(&diff_img);
-                    }
-                }
+                detected_diff = rois.and_then_roi(frame, "openmatch_diff", |img| {
+                    ocr.detect_openmatch_result_difficulty(img)
+                });
             }
             _ => {}
         }
@@ -235,17 +223,9 @@ impl PlayStateDetector {
             return detected_rate;
         }
 
-        let score_roi = match rois.get_roi("score") {
-            Some(r) => r,
-            None => return detected_rate,
-        };
-        let score_img = match crop_roi(frame, score_roi) {
-            Some(img) => img,
-            None => return detected_rate,
-        };
-        let score_val = match ocr.detect_score(&score_img) {
-            Some(val) => val,
-            None => return detected_rate,
+        let score_val = rois.and_then_roi(frame, "score", |img| ocr.detect_score(img));
+        let Some(score_val) = score_val else {
+            return detected_rate;
         };
 
         debug_println!("    [detect] score OCR run. score={}", score_val);
@@ -315,16 +295,12 @@ impl PlayStateDetector {
                 let (rate, tel) = self.process_rate_ocr(frame, rois, ocr, scene, is_result, now);
                 telemetry = tel;
 
-                let mut rate_valid = true;
-                if is_result {
-                    if let Some(r) = self.last_rate_result.0 {
-                        if r < MIN_VALID_RATE {
-                            rate_valid = false;
-                        }
-                    } else {
-                        rate_valid = false;
-                    }
-                }
+                let rate_valid = !is_result
+                    || self
+                        .last_rate_result
+                        .0
+                        .map(|r| r >= MIN_VALID_RATE)
+                        .unwrap_or(false);
 
                 Some(PlayContext {
                     song_id: sid,
@@ -478,18 +454,9 @@ fn calculate_hash_score(
 }
 
 pub fn detect_max_combo(frame: &CapturedFrame, rois: &RoiManager) -> bool {
-    let Some(roi) = rois.get_roi("max_combo_badge") else {
-        return false;
-    };
-    let Some(badge_img) = crop_roi(frame, roi) else {
-        return false;
-    };
-    let Ok((phash, dhash, ahash)) = overmax_cv::compute_image_hashes(
-        &badge_img.bgra,
-        badge_img.width as usize,
-        badge_img.height as usize,
-        4,
-    ) else {
+    let hashes = rois.and_then_roi(frame, "max_combo_badge", |img| img.compute_hashes(4).ok());
+
+    let Some((phash, dhash, ahash)) = hashes else {
         return false;
     };
     let score_perfect = calculate_hash_score(
@@ -512,18 +479,9 @@ pub fn detect_max_combo(frame: &CapturedFrame, rois: &RoiManager) -> bool {
 }
 
 pub fn detect_max_combo_result(frame: &CapturedFrame, rois: &RoiManager) -> bool {
-    let Some(roi) = rois.get_roi("max_combo_badge") else {
-        return false;
-    };
-    let Some(badge_img) = crop_roi(frame, roi) else {
-        return false;
-    };
-    let Ok((phash, dhash, ahash)) = overmax_cv::compute_image_hashes(
-        &badge_img.bgra,
-        badge_img.width as usize,
-        badge_img.height as usize,
-        4,
-    ) else {
+    let hashes = rois.and_then_roi(frame, "max_combo_badge", |img| img.compute_hashes(4).ok());
+
+    let Some((phash, dhash, ahash)) = hashes else {
         return false;
     };
     let score_perfect = calculate_hash_score(

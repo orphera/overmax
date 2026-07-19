@@ -222,11 +222,9 @@ impl VArchiveDB {
 
     pub fn find_exact(&self, title: &str, composer: &str) -> Option<Song> {
         let key = title.to_lowercase().trim().to_string();
-        if let Some(songs) = self.title_map.get(&key) {
-            self.pick_by_composer(songs, composer)
-        } else {
-            None
-        }
+        self.title_map
+            .get(&key)
+            .and_then(|songs| self.pick_by_composer(songs, composer))
     }
 
     pub fn find_fuzzy(&self, title: &str, composer: &str, threshold: u32) -> Option<Song> {
@@ -248,13 +246,9 @@ impl VArchiveDB {
             }
         }
 
-        if let Some(matched_key) = best_match {
-            if let Some(songs) = self.title_map.get(&matched_key) {
-                return self.pick_by_composer(songs, composer);
-            }
-        }
-
-        None
+        best_match
+            .and_then(|matched_key| self.title_map.get(&matched_key))
+            .and_then(|songs| self.pick_by_composer(songs, composer))
     }
 
     pub fn search_by_id(&self, song_id: i32) -> Option<Song> {
@@ -281,23 +275,13 @@ impl VArchiveDB {
         }
 
         // Try matching full title first
-        if let Some(song) = self.find_best_match_internal(title, mode, diff, level, category, note)
-        {
-            return Some(song);
-        }
-
-        // For DPC patterns or composite titles, try matching the part before '/'
-        if title.contains('/') {
-            if let Some(first_part) = title.split('/').next() {
-                if let Some(song) =
+        self.find_best_match_internal(title, mode, diff, level, category, note)
+            .or_else(|| {
+                // For DPC patterns or composite titles, try matching the part before '/'
+                title.split_once('/').and_then(|(first_part, _)| {
                     self.find_best_match_internal(first_part, mode, diff, level, category, note)
-                {
-                    return Some(song);
-                }
-            }
-        }
-
-        None
+                })
+            })
     }
 
     fn find_best_match_internal(

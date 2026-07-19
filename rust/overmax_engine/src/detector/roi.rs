@@ -1,3 +1,5 @@
+use crate::capture::frame::CapturedFrame;
+use crate::capture::frame_utils::{crop_roi, ImageRegion};
 use overmax_core::SceneType;
 use overmax_data::{GlobalRoiConfig, RoiRect as DataRoiRect};
 
@@ -11,6 +13,29 @@ pub struct RoiRect {
     pub y1: i32,
     pub x2: i32,
     pub y2: i32,
+}
+
+impl RoiRect {
+    pub fn crop(&self, frame: &CapturedFrame) -> Option<ImageRegion> {
+        crop_roi(frame, *self)
+    }
+
+    pub fn and_then<T>(
+        &self,
+        frame: &CapturedFrame,
+        f: impl FnOnce(&ImageRegion) -> Option<T>,
+    ) -> Option<T> {
+        self.crop(frame).as_ref().and_then(f)
+    }
+
+    pub fn with_margin(&self, margin: i32) -> Self {
+        Self {
+            x1: self.x1 - margin,
+            y1: self.y1 - margin,
+            x2: self.x2 + margin,
+            y2: self.y2 + margin,
+        }
+    }
 }
 
 impl From<DataRoiRect> for RoiRect {
@@ -86,6 +111,15 @@ impl RoiManager {
 
     pub fn get_roi(&self, name: &str) -> Option<RoiRect> {
         self.get_roi_for_scene(name, self.current_scene)
+    }
+
+    pub fn and_then_roi<T>(
+        &self,
+        frame: &CapturedFrame,
+        name: &str,
+        f: impl FnOnce(&ImageRegion) -> Option<T>,
+    ) -> Option<T> {
+        self.get_roi(name).and_then(|roi| roi.and_then(frame, f))
     }
 
     pub fn get_diff_panel_roi_for_scene(&self, diff: &str, scene: SceneType) -> Option<RoiRect> {

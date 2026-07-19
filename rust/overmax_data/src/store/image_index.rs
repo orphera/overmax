@@ -65,6 +65,7 @@ impl ImageIndexDb {
 
     pub fn load(&mut self) -> Result<usize> {
         let conn = Connection::open(&self.db_path)?;
+        let _ = conn.execute("ALTER TABLE images ADD COLUMN metadata TEXT", []);
         self.entries = load_entries(&conn)?;
         Ok(self.entries.len())
     }
@@ -80,7 +81,7 @@ impl ImageIndexDb {
 
 fn load_entries(conn: &Connection) -> Result<Vec<ImageEntry>> {
     let mut stmt = conn.prepare(
-        "SELECT image_id, phash, dhash, ahash, hog
+        "SELECT image_id, phash, dhash, ahash, hog, metadata
          FROM images
          WHERE id IN (SELECT MAX(id) FROM images GROUP BY image_id)
          ORDER BY id ASC",
@@ -95,8 +96,16 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> Result<ImageEntry> {
     let dhash: String = row.get(2)?;
     let ahash: String = row.get(3)?;
     let hog_blob: Vec<u8> = row.get(4)?;
-    parse_entry(image_id, &phash, &dhash, &ahash, &hog_blob)
-        .ok_or_else(|| rusqlite::Error::InvalidQuery)
+    let metadata: Option<String> = row.get(5)?;
+    parse_entry(
+        image_id,
+        &phash,
+        &dhash,
+        &ahash,
+        &hog_blob,
+        metadata.as_deref(),
+    )
+    .ok_or_else(|| rusqlite::Error::InvalidQuery)
 }
 
 fn value_to_string(value: ValueRef<'_>) -> Result<String> {
@@ -113,16 +122,29 @@ fn parse_entry(
     dhash: &str,
     ahash: &str,
     hog_blob: &[u8],
+    _metadata_str: Option<&str>,
 ) -> Option<ImageEntry> {
-    let hog = parse_hog_blob(hog_blob)?;
-    let hog_norm = vector_norm(&hog).max(1.0);
+    // 오리지널 해시는 항상 정상 파싱
+    let orig_phash = parse_hash(phash)?;
+    let orig_dhash = parse_hash(dhash)?;
+    let orig_ahash = parse_hash(ahash)?;
+
+    // HOG 데이터가 존재할 경우 최소한의 크기 검증 수행 (비정상 데이터가 DB에 포함되어 로드가 깨지는 것 방지)
+    if !hog_blob.is_empty() && hog_blob.len() != HOG_LEN * std::mem::size_of::<f32>() {
+        return None;
+    }
+
+    let hog_data = parse_hog_blob(hog_blob)?;
+    let raw_norm = vector_norm(&hog_data);
+    let norm_val = raw_norm.max(1.0);
+
     Some(ImageEntry {
         image_id,
-        phash: parse_hash(phash)?,
-        dhash: parse_hash(dhash)?,
-        ahash: parse_hash(ahash)?,
-        hog,
-        hog_norm,
+        phash: orig_phash,
+        dhash: orig_dhash,
+        ahash: orig_ahash,
+        hog: hog_data,
+        hog_norm: norm_val,
     })
 }
 
@@ -239,7 +261,8 @@ mod tests {
                 dhash TEXT NOT NULL,
                 ahash TEXT NOT NULL,
                 hog BLOB NOT NULL,
-                orb BLOB
+                orb BLOB,
+                metadata TEXT
             )",
             [],
         )

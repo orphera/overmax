@@ -74,12 +74,11 @@ impl OcrDetector {
     /// 상단 로고 영역을 단일 패스(Color)로 감지하여 씬을 판별합니다.
     pub fn detect_logo(&self, logo: &ImageRegion) -> (SceneType, String, String) {
         // 단일 패스: Color OCR (성능 향상을 위한 1-pass 단일화)
-        if let Ok(t) = self.engine.recognize_logo_color(logo) {
-            if let Some((scene, _)) = match_logo_scene(&t) {
-                return (scene, t, scene_label(scene));
-            }
-        }
-        (SceneType::Unknown, String::new(), "UNKNOWN".to_string())
+        self.engine
+            .recognize_logo_color(logo)
+            .ok()
+            .and_then(|t| match_logo_scene(&t).map(|(scene, _)| (scene, t, scene_label(scene))))
+            .unwrap_or((SceneType::Unknown, String::new(), "UNKNOWN".to_string()))
     }
 
     fn attempt_rate_ocr(
@@ -115,17 +114,11 @@ impl OcrDetector {
         let (matched_str, binary, threshold, max_y) = matched;
 
         // 우선 템플릿 매칭 결과에서 ?를 제거하고 파싱을 시도
-        let mut rate_val = None;
-        let mut template_success = false;
-        if !matched_str.is_empty() {
-            let clean_str = matched_str.replace('?', "");
-            if let Some(val) = parse_rate_text(&clean_str) {
-                rate_val = Some(val);
-                template_success = true;
-            }
-        }
+        let rate_val = (!matched_str.is_empty())
+            .then(|| matched_str.replace('?', ""))
+            .and_then(|clean_str| parse_rate_text(&clean_str));
 
-        if template_success {
+        if let Some(val) = rate_val {
             let telemetry = OcrTelemetry {
                 rate_text: matched_str.clone(),
                 threshold,
@@ -135,7 +128,7 @@ impl OcrDetector {
                 image_width: rate.width as usize,
                 image_height: rate.height as usize,
             };
-            return (rate_val, matched_str, Some(telemetry));
+            return (Some(val), matched_str, Some(telemetry));
         }
 
         // 템플릿 매칭 실패 시 Windows OCR fallback으로 전환
@@ -149,37 +142,34 @@ impl OcrDetector {
     /// Score 영역을 템플릿 매칭 또는 OCR을 통해 정수로 파싱합니다.
     pub fn detect_score(&self, score: &ImageRegion) -> Option<u32> {
         let cv_templates = get_digit_templates();
-        let matched = match match_digits_template(score, &cv_templates) {
-            Ok(m) => m,
+        let fallback = || {
+            self.engine
+                .recognize_logo(score, false, true)
+                .ok()
+                .and_then(|text| parse_score_text(&text))
+        };
+
+        match match_digits_template(score, &cv_templates) {
+            Ok((matched_str, _, _, _)) => {
+                let parsed = parse_score_text(&matched_str);
+                if parsed.is_none() || matched_str.contains('?') {
+                    println!(
+                        "      [Debug Score] Template matching failed/invalid. Matched String: '{}', Parsed: {:?}",
+                        matched_str, parsed
+                    );
+                    fallback()
+                } else {
+                    parsed
+                }
+            }
             Err(e) => {
                 println!(
                     "      [Debug Score] match_digits_template failed with error: {}",
                     e
                 );
-                // 이진화 OCR (1-pass) 폴백
-                return if let Ok(text) = self.engine.recognize_logo(score, false, true) {
-                    parse_score_text(&text)
-                } else {
-                    None
-                };
+                fallback()
             }
-        };
-        let (matched_str, _binary, _threshold, _max_y) = matched;
-
-        let parsed = parse_score_text(&matched_str);
-
-        // 파싱 결과가 올바르지 않거나(글자수 미달/초과 등) '?'가 섞여있으면 폴백 실행
-        if parsed.is_none() || matched_str.contains('?') {
-            println!("      [Debug Score] Template matching failed/invalid. Matched String: '{}', Parsed: {:?}", matched_str, parsed);
-            // 이진화 OCR (1-pass) 폴백
-            return if let Ok(text) = self.engine.recognize_logo(score, false, true) {
-                parse_score_text(&text)
-            } else {
-                None
-            };
         }
-
-        parsed
     }
 
     /// 결과창 뱃지 이미지로부터 모드(4B~8B)와 난이도(NM~SC)를 감지합니다.

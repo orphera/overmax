@@ -60,8 +60,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tasks.len()
     );
 
-    // 3. Process Features in Parallel (phash, dhash, ahash, HOG)
-    let results: Vec<(String, Result<(u64, u64, u64, Vec<f32>), String>)> = tasks
+    // 3. Process Features in Parallel (phash, dhash, ahash)
+    let results: Vec<(String, Result<ProcessResult, String>)> = tasks
         .into_par_iter()
         .map(|task| {
             let res = process_image(&task.path);
@@ -76,20 +76,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for (song_id, feat_res) in results {
         match feat_res {
-            Ok((phash, dhash, ahash, hog)) => {
-                let phash_str = format!("{:016x}", phash);
-                let dhash_str = format!("{:016x}", dhash);
-                let ahash_str = format!("{:016x}", ahash);
-                let hog_bytes = f32_vec_to_bytes(&hog);
+            Ok(res) => {
+                let phash_str = format!("{:016x}", res.orig_phash);
+                let dhash_str = format!("{:016x}", res.orig_dhash);
+                let ahash_str = format!("{:016x}", res.orig_ahash);
+
+                // 구버전 클라이언트의 코사인 유사도 연산을 만족하기 위한 물리적 HOG 데이터 직렬화
+                let hog_bytes = f32_vec_to_bytes(&res.hog);
+
                 tx.execute(
-                    "INSERT INTO images (image_id, phash, dhash, ahash, hog, orb)
-                     VALUES (?1, ?2, ?3, ?4, ?5, NULL)
+                    "INSERT INTO images (image_id, phash, dhash, ahash, hog, orb, metadata)
+                     VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL)
                      ON CONFLICT(image_id) DO UPDATE SET
                          phash = excluded.phash,
                          dhash = excluded.dhash,
                          ahash = excluded.ahash,
                          hog   = excluded.hog,
-                         orb   = NULL",
+                         orb   = NULL,
+                         metadata = NULL",
                     params![song_id, phash_str, dhash_str, ahash_str, hog_bytes],
                 )?;
                 success_count += 1;
@@ -108,7 +112,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn process_image(path: &Path) -> Result<(u64, u64, u64, Vec<f32>), String> {
+struct ProcessResult {
+    orig_phash: u64,
+    orig_dhash: u64,
+    orig_ahash: u64,
+    hog: Vec<f32>,
+}
+
+fn process_image(path: &Path) -> Result<ProcessResult, String> {
     // 1. Read Raw File Bytes
     let bytes = fs::read(path).map_err(|e| e.to_string())?;
 
@@ -124,10 +135,16 @@ fn process_image(path: &Path) -> Result<(u64, u64, u64, Vec<f32>), String> {
     }
 
     // 3. Compute Features via overmax_cv (guarantees identical logic to overlay runtime)
-    let (phash, dhash, ahash, hog) = overmax_cv::compute_image_features(&bgra, width, height, 4)
-        .map_err(|e| format!("{:?}", e))?;
+    let (orig_phash, orig_dhash, orig_ahash, hog) =
+        overmax_cv::compute_image_features(&bgra, width, height, 4)
+            .map_err(|e| format!("{:?}", e))?;
 
-    Ok((phash, dhash, ahash, hog))
+    Ok(ProcessResult {
+        orig_phash,
+        orig_dhash,
+        orig_ahash,
+        hog,
+    })
 }
 
 fn ensure_schema(conn: &mut Connection) -> Result<(), rusqlite::Error> {
@@ -139,7 +156,8 @@ fn ensure_schema(conn: &mut Connection) -> Result<(), rusqlite::Error> {
             dhash    TEXT NOT NULL,
             ahash    TEXT NOT NULL,
             hog      BLOB NOT NULL,
-            orb      BLOB
+            orb      BLOB,
+            metadata TEXT
         )",
         [],
     )?;
@@ -147,6 +165,7 @@ fn ensure_schema(conn: &mut Connection) -> Result<(), rusqlite::Error> {
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_images_image_id ON images (image_id)",
         [],
     )?;
+    let _ = conn.execute("ALTER TABLE images ADD COLUMN metadata TEXT", []);
     Ok(())
 }
 

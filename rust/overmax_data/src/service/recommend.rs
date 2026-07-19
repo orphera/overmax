@@ -233,54 +233,52 @@ impl Recommender {
             };
 
             for mode in &modes_to_check {
-                if let (Some(m), Some(d_list)) = (
-                    crate::community::client::Mode::from_str(mode),
-                    Some(DIFFICULTIES),
-                ) {
-                    for diff in d_list {
-                        if let Some(d) = crate::community::client::Difficulty::from_str(diff) {
-                            if let Some(p) = &song.patterns[m as usize][d as usize] {
-                                let cand_floor_val = Self::parse_floor_value(p.floor_name.as_ref());
+                if let Some(m) = crate::community::client::Mode::from_str(mode) {
+                    for diff in DIFFICULTIES {
+                        if let Some(p) = crate::community::client::Difficulty::from_str(diff)
+                            .and_then(|d| song.patterns[m as usize][d as usize].as_ref())
+                        {
+                            let cand_floor_val = Self::parse_floor_value(p.floor_name.as_ref());
 
-                                let final_cand_floor = if params.use_official {
-                                    if cand_floor_val.is_some()
-                                        || Self::diff_group(diff) != params.ref_diff_grp
-                                    {
-                                        continue;
-                                    }
-                                    p.level.unwrap_or(0) as f64
+                            let final_cand_floor = if params.use_official {
+                                if cand_floor_val.is_some()
+                                    || Self::diff_group(diff) != params.ref_diff_grp
+                                {
+                                    None
                                 } else {
-                                    match cand_floor_val {
-                                        Some(f) => f,
-                                        None => continue,
-                                    }
-                                };
-
-                                if (final_cand_floor - params.ref_floor).abs() > params.floor_range
-                                {
-                                    continue;
+                                    Some(p.level.unwrap_or(0) as f64)
                                 }
+                            } else {
+                                cand_floor_val
+                            };
 
-                                if sid == params.target_song_id
-                                    && mode == &params.target_mode
-                                    && diff == &params.target_diff
-                                {
-                                    continue;
-                                }
+                            let Some(final_cand_floor) = final_cand_floor else {
+                                continue;
+                            };
 
-                                candidates.push(RecommendEntry {
-                                    song_id: sid,
-                                    song_name: song.name.clone(),
-                                    composer: song.composer.to_string(),
-                                    button_mode: mode.to_string(),
-                                    difficulty: diff.to_string(),
-                                    level: p.level,
-                                    floor: Some(final_cand_floor),
-                                    floor_name: p.floor_name.clone(),
-                                    rate: None,
-                                    is_max_combo: false,
-                                });
+                            if (final_cand_floor - params.ref_floor).abs() > params.floor_range {
+                                continue;
                             }
+
+                            if sid == params.target_song_id
+                                && mode == &params.target_mode
+                                && diff == &params.target_diff
+                            {
+                                continue;
+                            }
+
+                            candidates.push(RecommendEntry {
+                                song_id: sid,
+                                song_name: song.name.clone(),
+                                composer: song.composer.to_string(),
+                                button_mode: mode.to_string(),
+                                difficulty: diff.to_string(),
+                                level: p.level,
+                                floor: Some(final_cand_floor),
+                                floor_name: p.floor_name.clone(),
+                                rate: None,
+                                is_max_combo: false,
+                            });
                         }
                     }
                 }

@@ -114,8 +114,8 @@ impl JacketMatcher {
         let first_idx = candidates[0].0;
         let first_hash_sim = candidates[0].1;
 
-        // 3단계: HOG 연산 스킵 여부 판정 (유사도 차이가 크면 스킵)
-        let skip_hog = if self.config.disable_hog {
+        // 3단계: HOG 연산 스킵 여부 판정 (유사도 차이가 크거나 HOG 데이터가 없으면 스킵)
+        let skip_hog = if self.config.disable_hog || self.entries[first_idx].hog.is_empty() {
             true
         } else if candidates.len() > 1 {
             let second_hash_sim = candidates[1].1;

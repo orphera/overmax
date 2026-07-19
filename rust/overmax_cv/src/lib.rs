@@ -28,6 +28,50 @@ pub fn compute_image_features(
     Ok((phash, dhash, ahash, hog))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct V2Features {
+    pub orig_phash: u64,
+    pub orig_dhash: u64,
+    pub orig_ahash: u64,
+    pub masked_phash: u64,
+    pub masked_dhash: u64,
+    pub masked_ahash: u64,
+}
+
+pub fn compute_image_features_v2(
+    data: &[u8],
+    width: usize,
+    height: usize,
+    channels: usize,
+) -> Result<V2Features, error::CvError> {
+    image::validate_image(data, width, height, channels, "compute_image_features_v2")?;
+    let mut gray = image::to_gray(data, channels);
+    image::stretch_contrast(&mut gray, width, height);
+
+    // 1. 오리지널 해시 계산 (입력받은 원본 해상도 기준)
+    let (orig_phash, orig_dhash, orig_ahash) = image::compute_hashes(&gray, width, height);
+
+    // 2. 마스킹 적용을 위한 표준 60x60 그레이스케일 버퍼 생성
+    let mut masked_gray = if width == 60 && height == 60 {
+        gray.clone()
+    } else {
+        image::resize_area_u8(&gray, width, height, 60, 60)
+    };
+
+    // 3. 마스킹 적용 및 해시 계산
+    image::apply_non_uniform_mask(&mut masked_gray, 60, 60);
+    let (masked_phash, masked_dhash, masked_ahash) = image::compute_hashes(&masked_gray, 60, 60);
+
+    Ok(V2Features {
+        orig_phash,
+        orig_dhash,
+        orig_ahash,
+        masked_phash,
+        masked_dhash,
+        masked_ahash,
+    })
+}
+
 pub fn compute_image_hashes(
     data: &[u8],
     width: usize,

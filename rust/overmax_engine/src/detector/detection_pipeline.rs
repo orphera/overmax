@@ -1,5 +1,5 @@
 use crate::capture::frame::CapturedFrame;
-use crate::capture::frame_utils::{crop_roi, make_thumbnail, thumbnail_changed};
+use crate::capture::frame_utils::{make_thumbnail, thumbnail_changed};
 use crate::capture::window_tracker::WindowSnapshot;
 use crate::detector::hysteresis::HysteresisBuffer;
 use crate::detector::ocr_engine::{OcrDetector, OcrTelemetry};
@@ -244,12 +244,8 @@ impl DetectionPipeline {
             self.last_jacket_match_ts = now;
 
             // process_frame_shared 에서 중복 매칭이 돌지 않도록 썸네일 캐시 갱신
-            if let Some(jacket_roi) = self.rois.get_roi("jacket") {
-                if let Some(jacket_img) = crop_roi(frame, jacket_roi) {
-                    if let Some(thumb) = make_thumbnail(&jacket_img) {
-                        self.last_jacket_thumb = Some(thumb);
-                    }
-                }
+            if let Some(thumb) = self.rois.and_then_roi(frame, "jacket", make_thumbnail) {
+                self.last_jacket_thumb = Some(thumb);
             }
         }
 
@@ -334,11 +330,7 @@ impl DetectionPipeline {
             return JacketMatchStatus::Cooldown;
         }
         self.last_jacket_ts = now;
-        let Some(jacket) = self
-            .rois
-            .get_roi("jacket")
-            .and_then(|roi| crop_roi(frame, roi))
-        else {
+        let Some(jacket) = self.rois.get_roi("jacket").and_then(|roi| roi.crop(frame)) else {
             return JacketMatchStatus::CropMissing;
         };
         let Some(thumb) = make_thumbnail(&jacket) else {
@@ -435,44 +427,40 @@ impl DetectionPipeline {
     }
 }
 
-pub fn detect_freestyle_color_match(mean: (u8, u8, u8)) -> bool {
-    let freestyle_colors = [
-        (118u8, 212u8, 52u8),  // 4B
-        (225u8, 188u8, 72u8),  // 5B
-        (59u8, 146u8, 223u8),  // 6B
-        (244u8, 146u8, 133u8), // 8B
-    ];
-    let max_dist = 60.0f32;
-    for color in &freestyle_colors {
+const FREESTYLE_COLORS: [(u8, u8, u8); 4] = [
+    (118, 212, 52),  // 4B
+    (225, 188, 72),  // 5B
+    (59, 146, 223),  // 6B
+    (244, 146, 133), // 8B
+];
+
+const OPENMATCH_COLORS: [(u8, u8, u8); 4] = [
+    (102, 118, 46), // 4B
+    (147, 136, 95), // 5B
+    (61, 137, 192), // 6B
+    (153, 90, 88),  // 8B
+];
+
+fn get_min_color_distance(mean: (u8, u8, u8), colors: &[(u8, u8, u8)]) -> f32 {
+    let mut min_dist = f32::MAX;
+    for color in colors {
         let db = f32::from(mean.0) - f32::from(color.0);
         let dg = f32::from(mean.1) - f32::from(color.1);
         let dr = f32::from(mean.2) - f32::from(color.2);
         let dist = (db * db + dg * dg + dr * dr).sqrt();
-        if dist <= max_dist {
-            return true;
+        if dist < min_dist {
+            min_dist = dist;
         }
     }
-    false
+    min_dist
+}
+
+pub fn detect_freestyle_color_match(mean: (u8, u8, u8)) -> bool {
+    get_min_color_distance(mean, &FREESTYLE_COLORS) <= 30.0f32
 }
 
 pub fn detect_openmatch_color_match(mean: (u8, u8, u8)) -> bool {
-    let openmatch_colors = [
-        (102u8, 118u8, 46u8), // 4B
-        (147u8, 136u8, 95u8), // 5B
-        (61u8, 137u8, 192u8), // 6B
-        (153u8, 90u8, 88u8),  // 8B
-    ];
-    let max_dist = 60.0f32;
-    for color in &openmatch_colors {
-        let db = f32::from(mean.0) - f32::from(color.0);
-        let dg = f32::from(mean.1) - f32::from(color.1);
-        let dr = f32::from(mean.2) - f32::from(color.2);
-        let dist = (db * db + dg * dg + dr * dr).sqrt();
-        if dist <= max_dist {
-            return true;
-        }
-    }
-    false
+    get_min_color_distance(mean, &OPENMATCH_COLORS) <= 30.0f32
 }
 
 pub fn check_open_match_badge(frame: &CapturedFrame, rois: &RoiManager) -> Option<SceneType> {
@@ -531,22 +519,22 @@ fn detect_result_scene_via_edge(
     if edge_ok || band_ok {
         // 결과창 재킷 매칭 시도
         let mut song_id = None;
-        if let Some(jacket_img) = crop_roi(frame, jacket_roi) {
-            if let Some(match_res) = matcher.match_jacket(
+        if let Some(match_res) = jacket_roi.and_then(frame, |jacket_img| {
+            matcher.match_jacket(
                 &jacket_img.bgra,
                 jacket_img.width as usize,
                 jacket_img.height as usize,
                 4,
-            ) {
-                let threshold = matcher.similarity_threshold();
-                if match_res.similarity >= threshold {
-                    if let Ok(id) = match_res.image_id.parse::<i32>() {
-                        song_id = Some(id);
-                        debug_println!(
-                            "    [detect_result_scene_via_edge] Result screen jacket verified. SongID={}, Similarity={}",
-                            id, match_res.similarity
-                        );
-                    }
+            )
+        }) {
+            let threshold = matcher.similarity_threshold();
+            if match_res.similarity >= threshold {
+                if let Ok(id) = match_res.image_id.parse::<i32>() {
+                    song_id = Some(id);
+                    debug_println!(
+                        "    [detect_result_scene_via_edge] Result screen jacket verified. SongID={}, Similarity={}",
+                        id, match_res.similarity
+                    );
                 }
             }
         }
@@ -582,7 +570,7 @@ fn detect_freestyle_scene_via_edge(
     frame: &CapturedFrame,
     rois: &RoiManager,
     matcher: &overmax_data::JacketMatcher,
-) -> Option<(SceneType, i32)> {
+) -> Option<(SceneType, i32, f32)> {
     let jacket_roi = rois.get_roi_for_scene("jacket", SceneType::Freestyle)?;
     let edge_ok = detect_jacket_edges(frame, jacket_roi)
         .map(|edge_strength| edge_strength >= JACKET_EDGE_THRESHOLD)
@@ -590,19 +578,19 @@ fn detect_freestyle_scene_via_edge(
     let band_ok = check_category_band_solid(frame, jacket_roi);
 
     if edge_ok || band_ok {
-        if let Some(jacket_img) = crop_roi(frame, jacket_roi) {
-            if let Some(match_res) = matcher.match_jacket(
+        if let Some(match_res) = jacket_roi.and_then(frame, |jacket_img| {
+            matcher.match_jacket(
                 &jacket_img.bgra,
                 jacket_img.width as usize,
                 jacket_img.height as usize,
                 4,
-            ) {
-                let threshold = matcher.similarity_threshold();
-                if match_res.similarity >= threshold {
-                    if let Ok(song_id) = match_res.image_id.parse::<i32>() {
-                        debug_println!("    [detect_freestyle_scene_via_edge] Freestyle screen detected via jacket edge/band and similarity ({:.4})!", match_res.similarity);
-                        return Some((SceneType::Freestyle, song_id));
-                    }
+            )
+        }) {
+            let threshold = matcher.similarity_threshold();
+            if match_res.similarity >= threshold {
+                if let Ok(song_id) = match_res.image_id.parse::<i32>() {
+                    debug_println!("    [detect_freestyle_scene_via_edge] Freestyle screen detected via jacket edge/band and similarity ({:.4})!", match_res.similarity);
+                    return Some((SceneType::Freestyle, song_id, match_res.similarity));
                 }
             }
         }
@@ -614,7 +602,7 @@ fn detect_openmatch_scene_via_edge(
     frame: &CapturedFrame,
     rois: &RoiManager,
     matcher: &overmax_data::JacketMatcher,
-) -> Option<(SceneType, i32)> {
+) -> Option<(SceneType, i32, f32)> {
     let jacket_roi = rois.get_roi_for_scene("jacket", SceneType::OpenMatch)?;
     let edge_ok = detect_jacket_edges(frame, jacket_roi)
         .map(|edge_strength| edge_strength >= JACKET_EDGE_THRESHOLD)
@@ -622,19 +610,19 @@ fn detect_openmatch_scene_via_edge(
     let band_ok = check_category_band_solid(frame, jacket_roi);
 
     if edge_ok || band_ok {
-        if let Some(jacket_img) = crop_roi(frame, jacket_roi) {
-            if let Some(match_res) = matcher.match_jacket(
+        if let Some(match_res) = jacket_roi.and_then(frame, |jacket_img| {
+            matcher.match_jacket(
                 &jacket_img.bgra,
                 jacket_img.width as usize,
                 jacket_img.height as usize,
                 4,
-            ) {
-                let threshold = matcher.similarity_threshold();
-                if match_res.similarity >= threshold {
-                    if let Ok(song_id) = match_res.image_id.parse::<i32>() {
-                        debug_println!("    [detect_openmatch_scene_via_edge] OpenMatch screen detected via jacket edge/band and similarity ({:.4})!", match_res.similarity);
-                        return Some((SceneType::OpenMatch, song_id));
-                    }
+            )
+        }) {
+            let threshold = matcher.similarity_threshold();
+            if match_res.similarity >= threshold {
+                if let Ok(song_id) = match_res.image_id.parse::<i32>() {
+                    debug_println!("    [detect_openmatch_scene_via_edge] OpenMatch screen detected via jacket edge/band and similarity ({:.4})!", match_res.similarity);
+                    return Some((SceneType::OpenMatch, song_id, match_res.similarity));
                 }
             }
         }
@@ -653,18 +641,25 @@ fn parse_static_scene(
         return Some((scene, String::new(), Some(song_id)));
     }
 
-    // 2. 프리스타일 선곡창 감지 우선 (Bypass OCR)
-    if let Some((scene, song_id)) = detect_freestyle_scene_via_edge(frame, rois, matcher) {
-        return Some((scene, String::new(), Some(song_id)));
-    }
+    // 2. 프리스타일 및 오픈매치 선곡창 자켓 매칭 동시 비교하여 경합 (Bypass OCR)
+    let freestyle_res = detect_freestyle_scene_via_edge(frame, rois, matcher);
+    let openmatch_res = detect_openmatch_scene_via_edge(frame, rois, matcher);
 
-    // 3. 오픈매치 대기실 감지 우선 (Bypass OCR)
-    if let Some((scene, song_id)) = detect_openmatch_scene_via_edge(frame, rois, matcher) {
-        return Some((scene, String::new(), Some(song_id)));
+    match (freestyle_res, openmatch_res) {
+        (Some((f_scene, f_id, f_sim)), Some((o_scene, o_id, o_sim))) => {
+            // 둘 다 임계치를 넘었을 경우, 유사도(Similarity)가 더 높은 씬을 승자로 채택
+            if f_sim >= o_sim {
+                debug_println!("    [parse_static_scene] Both matched. Freestyle selected by similarity ({:.4} vs {:.4})", f_sim, o_sim);
+                Some((f_scene, String::new(), Some(f_id)))
+            } else {
+                debug_println!("    [parse_static_scene] Both matched. OpenMatch selected by similarity ({:.4} vs {:.4})", o_sim, f_sim);
+                Some((o_scene, String::new(), Some(o_id)))
+            }
+        }
+        (Some((f_scene, f_id, _)), None) => Some((f_scene, String::new(), Some(f_id))),
+        (None, Some((o_scene, o_id, _))) => Some((o_scene, String::new(), Some(o_id))),
+        (None, None) => None,
     }
-
-    // 4. 최종 폴백: Windows OCR을 통한 로고 감지 비활성화
-    Some((SceneType::Unknown, String::new(), None))
 }
 
 pub fn detect_scene_from_logo(
@@ -680,20 +675,8 @@ pub fn detect_scene_from_logo(
 
 fn detect_rect_edges(frame: &CapturedFrame, roi: crate::detector::roi::RoiRect) -> Option<f32> {
     let margin = 8;
-    let ext_roi = crate::detector::roi::RoiRect {
-        x1: roi.x1 - margin,
-        y1: roi.y1 - margin,
-        x2: roi.x2 + margin,
-        y2: roi.y2 + margin,
-    };
-    let ext_img = crop_roi(frame, ext_roi)?;
-    overmax_cv::detect_rect_edges(
-        &ext_img.bgra,
-        ext_img.width as usize,
-        ext_img.height as usize,
-        margin as usize,
-    )
-    .ok()
+    roi.with_margin(margin)
+        .and_then(frame, |ext_img| ext_img.detect_edges(margin as usize).ok())
 }
 
 fn detect_jacket_edges(
@@ -708,20 +691,9 @@ fn detect_jacket_edges_with_margin(
     jacket_roi: crate::detector::roi::RoiRect,
     margin: i32,
 ) -> Option<f32> {
-    let ext_roi = crate::detector::roi::RoiRect {
-        x1: jacket_roi.x1 - margin,
-        y1: jacket_roi.y1 - margin,
-        x2: jacket_roi.x2 + margin,
-        y2: jacket_roi.y2 + margin,
-    };
-    let ext_img = crop_roi(frame, ext_roi)?;
-    overmax_cv::detect_rect_edges(
-        &ext_img.bgra,
-        ext_img.width as usize,
-        ext_img.height as usize,
-        margin as usize,
-    )
-    .ok()
+    jacket_roi
+        .with_margin(margin)
+        .and_then(frame, |ext_img| ext_img.detect_edges(margin as usize).ok())
 }
 
 fn check_category_band_solid(
@@ -739,65 +711,63 @@ fn check_category_band_solid(
     // 띠 경계선 엣지 검사 우회 (자켓과 띠의 색상이 유사해 엣지가 뭉개지는 케이스 방지)
     // 내부 단색(Solid) 여부와 최소 밝기만으로 띠를 판별하고, 오인식은 최종 자켓 해시 매칭에서 필터링하도록 설계
 
-    let Some(band_img) = crop_roi(frame, band_roi) else {
-        return false;
-    };
+    band_roi.and_then(frame, |band_img| {
+        let total_pixels = (band_img.width * band_img.height) as usize;
+        if total_pixels == 0 {
+            return Some(false);
+        }
 
-    let total_pixels = (band_img.width * band_img.height) as usize;
-    if total_pixels == 0 {
-        return false;
-    }
+        let mut sum_b = 0.0;
+        let mut sum_g = 0.0;
+        let mut sum_r = 0.0;
 
-    let mut sum_b = 0.0;
-    let mut sum_g = 0.0;
-    let mut sum_r = 0.0;
-
-    for y in 0..band_img.height as usize {
-        for x in 0..band_img.width as usize {
-            let idx = (y * band_img.width as usize + x) * 4;
-            if idx + 2 < band_img.bgra.len() {
-                sum_b += band_img.bgra[idx] as f64;
-                sum_g += band_img.bgra[idx + 1] as f64;
-                sum_r += band_img.bgra[idx + 2] as f64;
+        for y in 0..band_img.height as usize {
+            for x in 0..band_img.width as usize {
+                let idx = (y * band_img.width as usize + x) * 4;
+                if idx + 2 < band_img.bgra.len() {
+                    sum_b += band_img.bgra[idx] as f64;
+                    sum_g += band_img.bgra[idx + 1] as f64;
+                    sum_r += band_img.bgra[idx + 2] as f64;
+                }
             }
         }
-    }
 
-    let mean_b = sum_b / total_pixels as f64;
-    let mean_g = sum_g / total_pixels as f64;
-    let mean_r = sum_r / total_pixels as f64;
+        let mean_b = sum_b / total_pixels as f64;
+        let mean_g = sum_g / total_pixels as f64;
+        let mean_r = sum_r / total_pixels as f64;
 
-    // "딱 검은색이 아닌" 조건: 평균 밝기가 20.0 이상이어야 함
-    let brightness = 0.114 * mean_b + 0.587 * mean_g + 0.299 * mean_r;
-    if brightness < 20.0 {
-        return false;
-    }
+        // "딱 검은색이 아닌" 조건: 평균 밝기가 20.0 이상이어야 함
+        let brightness = 0.114 * mean_b + 0.587 * mean_g + 0.299 * mean_r;
+        if brightness < 20.0 {
+            return Some(false);
+        }
 
-    // 단색 여부 판정: 각 픽셀의 채널별 평균 대비 절대 편차의 평균이 작아야 함
-    let mut diff_sum = 0.0;
-    for y in 0..band_img.height as usize {
-        for x in 0..band_img.width as usize {
-            let idx = (y * band_img.width as usize + x) * 4;
-            if idx + 2 < band_img.bgra.len() {
-                let b = band_img.bgra[idx] as f64;
-                let g = band_img.bgra[idx + 1] as f64;
-                let r = band_img.bgra[idx + 2] as f64;
-                diff_sum += (b - mean_b).abs() + (g - mean_g).abs() + (r - mean_r).abs();
+        // 단색 여부 판정: 각 픽셀의 채널별 평균 대비 절대 편차의 평균이 작아야 함
+        let mut diff_sum = 0.0;
+        for y in 0..band_img.height as usize {
+            for x in 0..band_img.width as usize {
+                let idx = (y * band_img.width as usize + x) * 4;
+                if idx + 2 < band_img.bgra.len() {
+                    let b = band_img.bgra[idx] as f64;
+                    let g = band_img.bgra[idx + 1] as f64;
+                    let r = band_img.bgra[idx + 2] as f64;
+                    diff_sum += (b - mean_b).abs() + (g - mean_g).abs() + (r - mean_r).abs();
+                }
             }
         }
-    }
 
-    let avg_diff = diff_sum / (total_pixels * 3) as f64;
+        let avg_diff = diff_sum / (total_pixels * 3) as f64;
 
-    // 5x60 띠 내부 글자로 인한 픽셀 편차를 고려하여 임계치를 25.0 이하로 설정
-    let is_solid = avg_diff <= 25.0;
-    if is_solid {
-        debug_println!(
-            "    [check_category_band_solid] Category band solid detected! brightness={:.1}, avg_diff={:.2}",
-            brightness, avg_diff
-        );
-    }
-    is_solid
+        // 5x60 띠 내부 글자로 인한 픽셀 편차를 고려하여 임계치를 25.0 이하로 설정
+        let is_solid = avg_diff <= 25.0;
+        if is_solid {
+            debug_println!(
+                "    [check_category_band_solid] Category band solid detected! brightness={:.1}, avg_diff={:.2}",
+                brightness, avg_diff
+            );
+        }
+        Some(is_solid)
+    }).unwrap_or(false)
 }
 
 #[cfg(test)]

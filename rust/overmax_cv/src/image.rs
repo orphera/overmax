@@ -612,3 +612,35 @@ pub fn stretch_contrast(gray: &mut [u8], _width: usize, _height: usize) {
         }
     }
 }
+
+/// 60x60 자켓 영역에 대해 외곽 노이즈를 제어하기 위한 비균일 3구역 마스킹 적용
+pub fn apply_non_uniform_mask(gray: &mut [u8], width: usize, height: usize) {
+    if width != 60 || height != 60 || gray.len() != 3600 {
+        return; // DJMAX 자켓 규격이 아닐 경우 스킵
+    }
+
+    let cx = 30isize;
+    let cy = 30isize;
+
+    for y in 0..60 {
+        for x in 0..60 {
+            let idx = y * 60 + x;
+
+            // 중심부(30, 30)로부터의 Chebyshev 거리 계산
+            let dist_x = (x as isize - cx).abs();
+            let dist_y = (y as isize - cy).abs();
+            let dist = dist_x.max(dist_y);
+
+            if dist >= 27 {
+                // Zone 3: 데드 존 (외곽 3px 영역) -> 중성 회색(128)으로 덮어 씌움
+                gray[idx] = 128;
+            } else if dist >= 20 {
+                // Zone 2: 버퍼 존 (경계면 완충 지대) -> 대비 완화 및 스무딩 효과
+                let original = gray[idx] as f32;
+                let weight = (27 - dist) as f32 / 7.0; // 1.0 (dist=20) ~ 0.0 (dist=27)
+                gray[idx] = (original * weight + 128.0 * (1.0 - weight)).round() as u8;
+            }
+            // Zone 1 (dist < 20): 코어 존 -> 원본 픽셀 100% 보존
+        }
+    }
+}

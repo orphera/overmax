@@ -8,6 +8,29 @@ pub struct ImageRegion {
     pub bgra: Vec<u8>,
 }
 
+impl ImageRegion {
+    pub fn compute_hashes(
+        &self,
+        channels: usize,
+    ) -> Result<(u64, u64, u64), overmax_cv::error::CvError> {
+        overmax_cv::compute_image_hashes(
+            &self.bgra,
+            self.width as usize,
+            self.height as usize,
+            channels,
+        )
+    }
+
+    pub fn detect_edges(&self, margin: usize) -> Result<f32, overmax_cv::error::CvError> {
+        overmax_cv::detect_rect_edges(
+            &self.bgra,
+            self.width as usize,
+            self.height as usize,
+            margin,
+        )
+    }
+}
+
 pub fn crop_roi(frame: &CapturedFrame, roi: RoiRect) -> Option<ImageRegion> {
     let x1 = roi.x1.clamp(0, frame.width);
     let y1 = roi.y1.clamp(0, frame.height);

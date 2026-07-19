@@ -4,7 +4,6 @@ use crate::ui::debug_ui;
 use crate::ui::native_app::NativeApp;
 use crate::ui::ui_command::UiCommand;
 
-#[cfg(target_os = "linux")]
 fn set_overlay_position(settings: &mut serde_json::Value, x: i32, y: i32) -> bool {
     let Some(settings) = settings.as_object_mut() else {
         return false;
@@ -52,15 +51,11 @@ impl NativeApp {
                 }
             }
             UiCommand::SetOverlayPosition { x, y } => {
-                #[cfg(target_os = "linux")]
                 self.save_overlay_position(x, y);
-                #[cfg(target_os = "windows")]
-                let _ = (x, y);
             }
         }
     }
 
-    #[cfg(target_os = "linux")]
     fn save_overlay_position(&self, x: i32, y: i32) {
         let max_log_lines = self.max_log_lines();
         let base = overmax_core::lock_clone_or_default(&self.settings.base);
@@ -87,8 +82,8 @@ impl NativeApp {
             let _ = set_overlay_position(&mut draft, x, y);
         }
         let message = match result {
-            Ok(()) => format!("[Overlay] Linux layer position saved: ({x},{y})"),
-            Err(error) => format!("[Overlay] Linux layer position save failed: {error}"),
+            Ok(()) => format!("[Overlay] position saved: ({x},{y})"),
+            Err(error) => format!("[Overlay] position save failed: {error}"),
         };
         debug_ui::push_log(&self.debug_state.log_lines, max_log_lines, message);
     }

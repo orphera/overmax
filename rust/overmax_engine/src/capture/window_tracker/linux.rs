@@ -1,5 +1,4 @@
 use super::{WindowRect, WindowSnapshot};
-use std::cell::Cell;
 use x11rb::connection::Connection;
 use x11rb::errors::ReplyError;
 use x11rb::protocol::xproto::{
@@ -31,7 +30,6 @@ struct TrackerConnection {
 pub struct WindowTracker {
     title: Vec<u8>,
     connection: Result<TrackerConnection, String>,
-    cached_snapshot: Cell<Option<WindowSnapshot>>,
 }
 
 impl WindowTracker {
@@ -39,35 +37,14 @@ impl WindowTracker {
         Self {
             title: title.as_bytes().to_vec(),
             connection: TrackerConnection::new(),
-            cached_snapshot: Cell::new(None),
         }
     }
 
     pub fn game_snapshot(&self) -> Result<Option<WindowSnapshot>, String> {
-        let result = self
-            .connection
+        self.connection
             .as_ref()
             .map_err(Clone::clone)
-            .and_then(|connection| connection.game_snapshot(&self.title));
-        self.cached_snapshot
-            .set(result.as_ref().ok().copied().flatten());
-        result
-    }
-
-    pub fn game_rect(&self) -> Option<WindowRect> {
-        self.cached_snapshot.get().map(|snapshot| snapshot.rect)
-    }
-
-    pub fn is_foreground(&self) -> bool {
-        self.cached_snapshot
-            .get()
-            .is_some_and(|snapshot| snapshot.foreground)
-    }
-
-    pub fn is_fullscreen(&self) -> bool {
-        self.cached_snapshot
-            .get()
-            .is_some_and(|snapshot| snapshot.fullscreen)
+            .and_then(|connection| connection.game_snapshot(&self.title))
     }
 }
 
@@ -417,7 +394,7 @@ mod tests {
         let (conn, screen_num) = x11rb::connect(None).expect("connect test X11 client");
         let screen = &conn.setup().roots[screen_num];
         let window = conn.generate_id().expect("allocate test window ID");
-        let title = format!("overmax-m1-lifecycle-{}", std::process::id());
+        let title = format!("overmax-vertical-slice-lifecycle-{}", std::process::id());
         let atoms = Atoms::new(&conn)
             .expect("request atoms")
             .reply()

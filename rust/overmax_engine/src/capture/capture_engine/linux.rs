@@ -62,13 +62,6 @@ enum CaptureFailure {
     Permanent(String),
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TargetTransition {
-    Keep,
-    Clear,
-    Replace(Window),
-}
-
 impl AdaptiveCaptureEngine {
     pub fn new() -> Result<Self, String> {
         let (conn, fatal) = match initialize() {
@@ -91,15 +84,11 @@ impl AdaptiveCaptureEngine {
         self.fatal = Some(message.clone());
         message
     }
-
-    fn fatal_error(&self) -> Option<String> {
-        self.fatal.clone()
-    }
 }
 
 impl CaptureEngine for AdaptiveCaptureEngine {
     fn set_target(&mut self, target: Option<WindowSnapshot>) -> Result<(), String> {
-        if let Some(error) = self.fatal_error() {
+        if let Some(error) = self.fatal.clone() {
             return Err(error);
         }
         let requested = match snapshot_window(target) {
@@ -135,7 +124,7 @@ impl CaptureEngine for AdaptiveCaptureEngine {
         _rect: WindowRect,
         out_frame: &mut CapturedFrame,
     ) -> Result<(), String> {
-        if let Some(error) = self.fatal_error() {
+        if let Some(error) = self.fatal.clone() {
             return Err(error);
         }
         let result = capture_frame(
@@ -241,45 +230,29 @@ fn apply_target(
     requested: Option<Window>,
 ) -> Result<Option<String>, CaptureFailure> {
     poll_lifecycle_events(conn, binding)?;
-    let transition = target_transition(binding.as_ref().map(|bound| bound.window), requested);
-    match transition {
-        TargetTransition::Keep => {
-            let Some(bound) = binding.as_mut() else {
-                return Ok(None);
-            };
-            match ensure_generation(conn, bound) {
-                Ok(()) => Ok(None),
-                Err(CaptureFailure::Transient(error)) => Ok(Some(error)),
-                Err(error) => Err(error),
-            }
-        }
-        TargetTransition::Clear => {
-            if let Some(bound) = binding.take() {
-                release_binding_checked(conn, bound)?;
-            }
-            Ok(None)
-        }
-        TargetTransition::Replace(window) => {
-            if let Some(bound) = binding.take() {
-                release_binding_checked(conn, bound)?;
-            }
-            match create_binding(conn, window) {
-                Ok((bound, transient)) => {
-                    *binding = Some(bound);
-                    Ok(transient)
-                }
-                Err(CaptureFailure::Transient(error)) => Ok(Some(error)),
-                Err(error) => Err(error),
-            }
-        }
+    if binding.as_ref().map(|bound| bound.window) == requested {
+        let Some(bound) = binding.as_mut() else {
+            return Ok(None);
+        };
+        return match ensure_generation(conn, bound) {
+            Ok(()) => Ok(None),
+            Err(CaptureFailure::Transient(error)) => Ok(Some(error)),
+            Err(error) => Err(error),
+        };
     }
-}
-
-fn target_transition(current: Option<Window>, requested: Option<Window>) -> TargetTransition {
-    match (current, requested) {
-        (current, requested) if current == requested => TargetTransition::Keep,
-        (_, None) => TargetTransition::Clear,
-        (_, Some(window)) => TargetTransition::Replace(window),
+    if let Some(bound) = binding.take() {
+        release_binding_checked(conn, bound)?;
+    }
+    let Some(window) = requested else {
+        return Ok(None);
+    };
+    match create_binding(conn, window) {
+        Ok((bound, transient)) => {
+            *binding = Some(bound);
+            Ok(transient)
+        }
+        Err(CaptureFailure::Transient(error)) => Ok(Some(error)),
+        Err(error) => Err(error),
     }
 }
 
@@ -818,7 +791,7 @@ fn transient_error_kind(kind: ErrorKind) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{calculate_layout, pixel_format_supported, target_transition, TargetTransition};
+    use super::{calculate_layout, pixel_format_supported};
     use crate::capture::capture_engine::{AdaptiveCaptureEngine, CaptureEngine};
     use crate::capture::frame::CapturedFrame;
     use crate::capture::window_tracker::{WindowRect, WindowSnapshot};
@@ -859,17 +832,6 @@ mod tests {
             0x0000_ff00,
             0x0000_00ff,
         ));
-    }
-
-    #[test]
-    fn same_target_is_idempotent() {
-        assert_eq!(target_transition(Some(7), Some(7)), TargetTransition::Keep);
-        assert_eq!(target_transition(None, None), TargetTransition::Keep);
-        assert_eq!(target_transition(Some(7), None), TargetTransition::Clear);
-        assert_eq!(
-            target_transition(Some(7), Some(8)),
-            TargetTransition::Replace(8)
-        );
     }
 
     #[test]

@@ -2682,7 +2682,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "smithay-client-toolkit 0.20.0",
- "wayland-backend",
  "wayland-client",
  "wgpu",
  "windows 0.62.2",

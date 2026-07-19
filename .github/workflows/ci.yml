@@ -49,4 +49,4 @@ jobs:
           sudo apt-get install --yes openbox xauth xvfb
           dpkg-query --show openbox xvfb
       - name: Test X11 tracker and capture lifecycle
-        run: bash .github/scripts/linux-m1-lifecycle.sh
+        run: bash .github/scripts/linux-vertical-slice-lifecycle.sh

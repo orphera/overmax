@@ -52,8 +52,7 @@ image = { version = "0.25", default-features = false, features = ["png", "ico", 
 
 [target.'cfg(target_os = "linux")'.dependencies]
 smithay-client-toolkit = { version = "0.20", default-features = false }
-wayland-client = "0.31"
-wayland-backend = { version = "0.3", features = ["client_system"] }
+wayland-client = { version = "0.31", features = ["system"] }
 egui-wgpu = { version = "0.33.3", default-features = false }
 # ponytail: M0's Intel target has a Vulkan ICD; add GLES only after a supported target needs it.
 wgpu = { version = "27.0.1", default-features = false, features = ["std", "wgsl", "vulkan"] }

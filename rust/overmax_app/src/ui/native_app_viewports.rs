@@ -767,58 +767,16 @@ impl NativeApp {
                 self.handle_window_drag(ctx, actions.start_drag);
 
                 if actions.restore_game_focus {
-                    let max_log_lines = self.max_log_lines();
                     let settings = self.settings.get_merged();
                     window_tracker::restore_foreground_by_title(game_window_title(&settings));
 
                     if let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
-                        if let Ok(mut draft) = self.settings.draft.lock() {
-                            if let Ok(mut merged_lock) = self.settings.merged.lock() {
-                                let mut overlay = merged_lock
-                                    .get("overlay")
-                                    .cloned()
-                                    .unwrap_or_else(|| serde_json::json!({}));
-                                if let Some(overlay_obj) = overlay.as_object_mut() {
-                                    let mut position_map = overlay_obj
-                                        .get("position")
-                                        .and_then(|v| v.as_object())
-                                        .cloned()
-                                        .unwrap_or_default();
-                                    position_map.insert(
-                                        "x".to_string(),
-                                        serde_json::json!(rect.min.x as i32),
-                                    );
-                                    position_map.insert(
-                                        "y".to_string(),
-                                        serde_json::json!(rect.min.y as i32),
-                                    );
-                                    overlay_obj.insert(
-                                        "position".to_string(),
-                                        serde_json::Value::Object(position_map),
-                                    );
-                                }
-                                merged_lock["overlay"] = overlay.clone();
-                                draft["overlay"] = overlay;
-
-                                let base_g =
-                                    overmax_core::lock_clone_or_default(&self.settings.base);
-                                let _ = settings_ui::save_settings_to_disk(
-                                    self.root.as_ref(),
-                                    self.settings.defaults.as_ref(),
-                                    &base_g,
-                                    &mut draft,
-                                    &mut merged_lock,
-                                );
-                                debug_ui::push_log(
-                                    &self.debug_state.log_lines,
-                                    max_log_lines,
-                                    format!(
-                                        "[Overlay] 오버레이 위치 저장 (user.json): ({},{})",
-                                        rect.min.x as i32, rect.min.y as i32
-                                    ),
-                                );
-                            }
-                        }
+                        self.handle_ui_command(
+                            crate::ui::ui_command::UiCommand::SetOverlayPosition {
+                                x: rect.min.x as i32,
+                                y: rect.min.y as i32,
+                            },
+                        );
                     }
                 }
                 if let Some(command) = actions.command {

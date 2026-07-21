@@ -16,6 +16,8 @@ impl NativeApp {
             if let Ok(mut r) = self.game_rect.lock() {
                 *r = output.game_rect;
             }
+            self.window_snapshot = output.window_snapshot;
+            self.capture_fatal = output.capture_fatal.clone();
             if !output.is_song_select {
                 self.recorded_states.clear();
             }

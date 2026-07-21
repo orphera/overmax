@@ -6,6 +6,14 @@ pub struct WindowRect {
     pub height: i32,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WindowSnapshot {
+    pub window: u64,
+    pub rect: WindowRect,
+    pub foreground: bool,
+    pub fullscreen: bool,
+}
+
 impl WindowRect {
     #[allow(dead_code)]
     pub fn abs(self, rx: f32, ry: f32) -> (i32, i32) {

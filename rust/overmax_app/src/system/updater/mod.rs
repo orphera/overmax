@@ -58,14 +58,7 @@ pub fn app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
-/// Main executable to restart after update (default `overmax.exe` on Windows, `overmax` on Linux).
 pub fn main_exe_name() -> String {
-    std::env::var("OVERMAX_MAIN_EXE").unwrap_or_else(|_| {
-        if cfg!(target_os = "windows") {
-            "overmax.exe"
-        } else {
-            "overmax"
-        }
-        .into()
-    })
+    std::env::var("OVERMAX_MAIN_EXE")
+        .unwrap_or_else(|_| format!("overmax{}", std::env::consts::EXE_SUFFIX))
 }

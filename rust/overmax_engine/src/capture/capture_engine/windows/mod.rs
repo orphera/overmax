@@ -1,8 +1,11 @@
+pub mod dxgi;
+pub mod gdi;
+
 use crate::capture::capture_engine::CaptureEngine;
-use crate::capture::dxgi_capture::DxgiCaptureEngine;
 use crate::capture::frame::CapturedFrame;
-use crate::capture::screen_capture::GdiCaptureEngine;
 use crate::capture::window_tracker::{WindowRect, WindowTracker};
+use dxgi::DxgiCaptureEngine;
+use gdi::GdiCaptureEngine;
 
 pub struct AdaptiveCaptureEngine {
     tracker: WindowTracker,

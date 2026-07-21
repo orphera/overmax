@@ -85,7 +85,7 @@ fn overlay_section(ui: &mut egui::Ui, draft: &mut Value) {
                     } else {
                         Theme::TAB_DIM_BG
                     })
-                    .stroke(Stroke::new(1.0, Theme::STROKE))
+                    .stroke(Stroke::new(1.0_f32, Theme::STROKE))
                     .corner_radius(egui::CornerRadius::same(Theme::R_SM))
                     .wrap();
 
@@ -163,7 +163,7 @@ fn overlay_section(ui: &mut egui::Ui, draft: &mut Value) {
             rect,
             egui::CornerRadius::same(Theme::R_SM),
             egui::Color32::from_black_alpha(220),
-            egui::Stroke::new(1.0, Theme::STROKE),
+            egui::Stroke::new(1.0_f32, Theme::STROKE),
             egui::StrokeKind::Inside,
         );
 
@@ -211,7 +211,7 @@ fn overlay_section(ui: &mut egui::Ui, draft: &mut Value) {
                 } else {
                     Theme::TAB_DIM_BG
                 })
-                .stroke(egui::Stroke::new(1.0, Theme::STROKE))
+                .stroke(egui::Stroke::new(1.0_f32, Theme::STROKE))
                 .corner_radius(egui::CornerRadius::same(Theme::R_SM))
                 .wrap();
             if ui.put(target_rect, btn).clicked() {
@@ -310,7 +310,7 @@ fn steam_account_rows(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiCont
             for b in [4, 5, 6, 8] {
                 let btn = egui::Button::new(RichText::new(format!("{b}B")).size(Theme::FONT_SMALL))
                     .fill(Theme::TAB_DIM_BG)
-                    .stroke(Stroke::new(1.0, Theme::STROKE))
+                    .stroke(Stroke::new(1.0_f32, Theme::STROKE))
                     .corner_radius(egui::CornerRadius::same(Theme::R_SM))
                     .wrap();
                 if ui
@@ -479,7 +479,7 @@ pub fn close_if_requested(ctx: &egui::Context, open: &Arc<AtomicBool>) {
 fn section_frame(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
     Frame::new()
         .fill(Theme::CARD)
-        .stroke(Stroke::new(1.0, Theme::STROKE))
+        .stroke(Stroke::new(1.0_f32, Theme::STROKE))
         .corner_radius(CornerRadius::same(Theme::R_MD))
         .inner_margin(Margin::same(20))
         .show(ui, |ui| {

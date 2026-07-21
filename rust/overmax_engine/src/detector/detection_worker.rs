@@ -2,6 +2,8 @@
 
 use crate::capture::capture_engine::{AdaptiveCaptureEngine, CaptureEngine};
 use crate::capture::frame::CapturedFrame;
+#[cfg(target_os = "linux")]
+use crate::capture::window_tracker::WindowSnapshot;
 use crate::capture::window_tracker::WindowTracker;
 use crate::detector::detection_pipeline::{DetectionOutput, DetectionPipeline, JacketMatchStatus};
 use overmax_core::{Changed, GameSessionState};
@@ -65,6 +67,10 @@ struct DetectionWorker {
     last_is_fullscreen: Changed<bool>,
     frame_buffer: CapturedFrame,
     window_scheduler: WindowQueryScheduler,
+    #[cfg(target_os = "linux")]
+    window_snapshot: Option<WindowSnapshot>,
+    #[cfg(target_os = "linux")]
+    capture_failure_active: bool,
 }
 
 impl DetectionWorker {
@@ -99,6 +105,10 @@ impl DetectionWorker {
                 bgra: Vec::new(),
             },
             window_scheduler: WindowQueryScheduler::new(true),
+            #[cfg(target_os = "linux")]
+            window_snapshot: None,
+            #[cfg(target_os = "linux")]
+            capture_failure_active: false,
         }
     }
 
@@ -115,7 +125,12 @@ impl DetectionWorker {
         ));
 
         loop {
+            #[cfg(target_os = "windows")]
             self.tick(&tracker, &mut capturer, &mut pipeline);
+            #[cfg(target_os = "linux")]
+            if !self.tick_linux(&tracker, &mut capturer, &mut pipeline) {
+                return;
+            }
             std::thread::sleep(self.sleep_duration());
         }
     }
@@ -140,6 +155,7 @@ impl DetectionWorker {
         DetectionPipeline::new(db)
     }
 
+    #[cfg(target_os = "windows")]
     fn tick(
         &mut self,
         tracker: &WindowTracker,
@@ -195,6 +211,155 @@ impl DetectionWorker {
         }
     }
 
+    #[cfg(target_os = "linux")]
+    fn tick_linux(
+        &mut self,
+        tracker: &WindowTracker,
+        capturer: &mut Box<dyn CaptureEngine>,
+        pipeline: &mut DetectionPipeline,
+    ) -> bool {
+        let mut overlay_snapshot_changed = false;
+        if self.window_scheduler.should_query() {
+            let previous_snapshot = self.window_snapshot;
+            let snapshot = match tracker.game_snapshot() {
+                Ok(snapshot) => snapshot,
+                Err(error) => {
+                    self.on_capture_fatal(pipeline, format!("window tracking failed: {error}"));
+                    return false;
+                }
+            };
+            let target_changed =
+                self.window_snapshot.map(|s| s.window) != snapshot.map(|s| s.window);
+            let capture_state_changed = previous_snapshot
+                .map(|current| (current.window, current.foreground, current.fullscreen))
+                != snapshot.map(|current| (current.window, current.foreground, current.fullscreen));
+            overlay_snapshot_changed = previous_snapshot != snapshot;
+            if let Err(error) = capturer.set_target(snapshot) {
+                self.on_capture_fatal(pipeline, error);
+                return false;
+            }
+            self.window_scheduler.update(
+                snapshot.map(|s| s.rect),
+                snapshot.is_some_and(|s| s.foreground),
+            );
+            self.window_snapshot = snapshot;
+
+            if capture_state_changed {
+                self.capture_failure_active = false;
+            }
+            if target_changed && snapshot.is_some() && self.was_found {
+                self.on_capture_interrupted(pipeline, "capture target changed");
+            } else if snapshot.is_some_and(|current| {
+                !current.foreground
+                    && previous_snapshot.is_none_or(|previous| {
+                        previous.window != current.window || previous.foreground
+                    })
+            }) {
+                self.on_capture_interrupted(pipeline, "game window is in the background");
+            }
+        }
+
+        let Some(snapshot) = self.window_snapshot else {
+            self.on_linux_window_missing(pipeline);
+            return true;
+        };
+        if !self.on_window_found(snapshot.rect, snapshot.foreground) {
+            return true;
+        }
+        if !snapshot.fullscreen {
+            self.on_capture_interrupted(pipeline, "borderless fullscreen is required");
+            return true;
+        }
+
+        match capturer.capture_bgra_inplace(snapshot.rect, &mut self.frame_buffer) {
+            Ok(()) => {
+                self.capture_failure_active = false;
+                let mut out =
+                    pipeline.detect(&self.frame_buffer, self.start.elapsed().as_secs_f64());
+                out.game_rect = Some(snapshot.rect);
+                out.window_snapshot = Some(snapshot);
+                out.state.is_fullscreen = snapshot.fullscreen;
+                self.log_detection_summary(&out);
+
+                // IMPORTANT: `.update()` has side effects (mutates cached state).
+                let jacket_changed = self.last_jacket_status.update(out.jacket_status.clone());
+                let song_changed = self.last_song_id.update(out.current_song_id);
+                let song_select_changed = self.last_is_song_select.update(out.is_song_select);
+                let logo_changed = self.last_logo_detected.update(out.logo_detected);
+                let fullscreen_changed = self.last_is_fullscreen.update(out.state.is_fullscreen);
+                let state_changed = jacket_changed
+                    | song_changed
+                    | song_select_changed
+                    | logo_changed
+                    | fullscreen_changed;
+
+                let _ = self.detection_tx.send(out);
+                if state_changed || overlay_snapshot_changed {
+                    self.request_repaint();
+                }
+            }
+            Err(error) => {
+                self.on_capture_interrupted(pipeline, "capture failed");
+                self.log_detection_throttled(format!("[Detection] capture failed: {error}"));
+            }
+        }
+        true
+    }
+
+    /// `detecting()` output that closes stale verified state after a capture failure.
+    #[cfg(target_os = "linux")]
+    fn linux_detecting_output(&self, capture_fatal: Option<String>) -> DetectionOutput {
+        DetectionOutput {
+            logo_detected: false,
+            is_song_select: false,
+            is_result: false,
+            is_leaving: false,
+            confidence: 0.0,
+            state: GameSessionState::detecting(),
+            current_song_id: None,
+            image_db_ready: false,
+            jacket_status: JacketMatchStatus::NotSongSelect,
+            game_rect: self.window_snapshot.map(|s| s.rect),
+            window_snapshot: self.window_snapshot,
+            capture_fatal,
+            ocr_telemetry: None,
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn on_capture_interrupted(&mut self, pipeline: &mut DetectionPipeline, reason: &str) {
+        // ponytail: immediate reset can repeatedly repay stabilization after noisy transient
+        // failures; add a time debounce only if real sessions show that cost.
+        pipeline.reset();
+        if self.capture_failure_active {
+            return;
+        }
+        self.capture_failure_active = true;
+        let _ = self.detection_tx.send(self.linux_detecting_output(None));
+        self.request_repaint();
+        self.log(format!("[Detection] {reason}; state reset"));
+    }
+
+    #[cfg(target_os = "linux")]
+    fn on_capture_fatal(&mut self, pipeline: &mut DetectionPipeline, error: String) {
+        pipeline.reset();
+        let _ = self
+            .detection_tx
+            .send(self.linux_detecting_output(Some(error.clone())));
+        self.request_repaint();
+        self.log(format!("[Detection] capture unavailable: {error}"));
+    }
+
+    #[cfg(target_os = "linux")]
+    fn on_linux_window_missing(&mut self, pipeline: &mut DetectionPipeline) {
+        if self.was_found {
+            self.on_capture_interrupted(pipeline, "game window lost");
+            self.log("[WindowTracker] game window lost".into());
+        }
+        self.was_found = false;
+        self.is_foreground = false;
+    }
+
     fn on_window_found(
         &mut self,
         rect: crate::capture::window_tracker::WindowRect,
@@ -221,6 +386,7 @@ impl DetectionWorker {
         true
     }
 
+    #[cfg(target_os = "windows")]
     fn on_window_missing(&mut self) {
         if self.was_found {
             let _ = self.detection_tx.send(DetectionOutput {
@@ -234,6 +400,8 @@ impl DetectionWorker {
                 image_db_ready: false,
                 jacket_status: JacketMatchStatus::NotSongSelect,
                 game_rect: None,
+                window_snapshot: None,
+                capture_fatal: None,
                 ocr_telemetry: None,
             });
             self.request_repaint();
@@ -436,5 +604,40 @@ impl WindowQueryScheduler {
 
         self.cached_rect = rect;
         self.cached_foreground = foreground;
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::{DetectionPipeline, DetectionWorker};
+    use overmax_data::{ImageIndexDb, Settings};
+    use std::sync::mpsc;
+
+    #[test]
+    fn sends_detecting_once_per_capture_failure_streak() {
+        let (log_tx, _log_rx) = mpsc::channel();
+        let (game_tx, _game_rx) = mpsc::channel();
+        let (detection_tx, detection_rx) = mpsc::channel();
+        let mut worker = DetectionWorker::new(
+            std::path::PathBuf::new(),
+            Settings::default(),
+            log_tx,
+            game_tx,
+            detection_tx,
+            Box::new(|| {}),
+        );
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+
+        worker.on_capture_interrupted(&mut pipeline, "first");
+        worker.on_capture_interrupted(&mut pipeline, "same streak");
+
+        let first_streak: Vec<_> = detection_rx.try_iter().collect();
+        assert_eq!(first_streak.len(), 1);
+        assert!(first_streak[0].state.context.is_none());
+        assert!(first_streak[0].capture_fatal.is_none());
+
+        worker.capture_failure_active = false;
+        worker.on_capture_interrupted(&mut pipeline, "next streak");
+        assert_eq!(detection_rx.try_iter().count(), 1);
     }
 }

@@ -224,7 +224,7 @@ fn render_controls(
         let clear_btn = egui::Button::new(RichText::new("🗑 지우기").size(Theme::FONT_SMALL))
             .min_size(egui::vec2(80.0, Theme::CONTROL_HEIGHT))
             .fill(Theme::CARD)
-            .stroke(Stroke::new(1.0, Theme::STROKE))
+            .stroke(Stroke::new(1.0_f32, Theme::STROKE))
             .corner_radius(egui::CornerRadius::same(Theme::R_SM));
         if ui.add(clear_btn).clicked() {
             if let Ok(mut g) = lines.lock() {
@@ -306,7 +306,7 @@ fn log_scroll(
 
     Frame::new()
         .fill(Theme::CARD)
-        .stroke(Stroke::new(1.0, Theme::STROKE))
+        .stroke(Stroke::new(1.0_f32, Theme::STROKE))
         .corner_radius(CornerRadius::same(Theme::R_MD))
         .inner_margin(Margin::same(12))
         .show(ui, |ui| {

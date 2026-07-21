@@ -26,7 +26,7 @@ impl LitePanel {
                 (10.0 * props.scale) as i8,
                 (6.0 * props.scale) as i8,
             ))
-            .stroke(egui::Stroke::new(1.0, Theme::PANEL_STROKE))
+            .stroke(egui::Stroke::new(1.0_f32, Theme::PANEL_STROKE))
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 3.0 * props.scale;
 

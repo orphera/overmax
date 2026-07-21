@@ -154,6 +154,17 @@ impl PlayStateDetector {
         self.cache.clear_result_cache();
     }
 
+    #[cfg(test)]
+    pub(crate) fn seed_detected_cache_for_test(&mut self) {
+        self.cache.result_mode.update(Some("4B".into()));
+        self.cache.result_diff.update(Some("NM".into()));
+    }
+
+    #[cfg(test)]
+    pub(crate) fn detected_cache_is_empty_for_test(&self) -> bool {
+        self.cache.result_mode.get().is_none() && self.cache.result_diff.get().is_none()
+    }
+
     fn resolve_result_mode_diff(
         &mut self,
         scene: overmax_core::SceneType,

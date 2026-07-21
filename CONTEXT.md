@@ -8,9 +8,9 @@
 
 Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선택된 곡의 난이도별 정보를 오버레이로 보여주는 도구이다.
 
-- **인식 방식**: 화면 캡처 + Rust 네이티브 CV 이미지 매칭 (`overmax_cv`) + OCR (Windows OCR)
-  - *캡처 엔진*: GDI 캡처 엔진 및 DXGI Desktop Duplication 캡처 엔진을 감싸는 `AdaptiveCaptureEngine` Facade 구성. 게임이 전체화면(Borderless 포함)일 때만 DXGI 백엔드를 런타임에 동적으로 기동하여 CPU 부하를 해소하고, 창 모드에서는 GDI 캡처로 스위칭하며 불필요한 DXGI 리소스는 즉시 해제함.
-- **UI**: egui / winit (하드웨어 가속 활용 멀티 뷰포트 네이티브 UI)
+- **현재 Windows 인식 방식**: 화면 캡처 + Rust 네이티브 CV 이미지 매칭 (`overmax_cv`) + OCR (Windows OCR)
+  - _Windows 캡처 엔진_: GDI 캡처 엔진 및 DXGI Desktop Duplication 캡처 엔진을 감싸는 `AdaptiveCaptureEngine` Facade 구성. 게임이 전체화면(Borderless 포함)일 때만 DXGI 백엔드를 런타임에 동적으로 기동하여 CPU 부하를 해소하고, 창 모드에서는 GDI 캡처로 스위칭하며 불필요한 DXGI 리소스는 즉시 해제함.
+- **현재 Windows UI**: egui / winit (하드웨어 가속 활용 멀티 뷰포트 네이티브 UI)
   - 전체화면 포커스 차단 및 Z-Order 유지: 게임 윈도우 최소화 방지를 위해 `WS_EX_NOACTIVATE` 및 `WS_EX_TOOLWINDOW` 스타일을 주입하고, 게임 창을 오버레이 창의 Owner(`GWL_HWNDPARENT`)로 연결하여 전체 창 모드(Borderless Fullscreen) 플레이 시 드래그 앤 드롭 후 포커스가 게임으로 복귀해도 오버레이가 항상 최상단에 물리도록 보장함. 비활성 시 topmost 해제로 인한 DWM 소유 관계 깜빡임을 막기 위해 `is_active` 상태 검증 캐싱을 정밀화하고, `cached_game_hwnd`를 이용해 매 프레임 `FindWindowW` 오버헤드를 차단함.
   - 오버레이 스냅과 드래그 제어: egui의 내장 네이티브 드래그 기능인 `ViewportCommand::StartDrag`를 도입하여 OS가 오버레이 창의 드래그를 네이티브로 처리하도록 위임함. 이로써 불필요한 마우스 절대 좌표 연산 및 임시 구조체 필드를 소멸시킴. 구석 고정(Snap) 시에는 `try_lock()`으로 백그라운드 스레드와의 락 경합을 방지하고, 기하 구조 캐시(`PREV_SNAP_GEOMETRY`)를 적용하여 좌표 변화가 없을 때는 `SetWindowPos` 호출을 생략(0회)함.
 - **데이터**: V-Archive DB (JSON) 및 로컬 기록 DB (SQLite)
@@ -19,12 +19,12 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 
 # Core Constraints
 
-- 메모리 접근 / 프로세스 인젝션 금지 (화면 캡처 및 Win32 API 추적 방식 유지)
+- 메모리 접근 / 프로세스 인젝션 금지 (화면 캡처와 OS 창 API 추적만 허용: Windows는 Win32, Linux는 X11/XWayland)
 - 인게임 성능 영향 최소화 (최우선 과제)
 - 자가 업데이트 및 락 제어: 업데이트 후 재시작 시 중복 실행 락(Named Mutex) 해제 지연으로 새 인스턴스가 조기 종료되는 것을 방지하기 위해, 부모 프로세스의 락 가드(`SingleInstanceGuard`)를 명시적으로 `drop()`한 후 새 프로세스를 spawn하고 기존 프로세스를 즉시 종료하는 안전한 재시작 워크플로우를 유지함.
 - Python 레거시 코드 완전 제거 및 순수 Rust 코드베이스로 전환 완료 (`rust/` workspace)
 - 스팀(Steam) 경로 탐색 및 계정 연동: V-Archive 연동 등을 위한 스팀 계정 정보(`loginusers.vdf`)를 탐색할 때, 하드코딩된 기본 경로 및 HKCU/HKLM 레지스트리를 먼저 조회합니다. 만약 검색에 실패할 경우 최종 폴백으로 실행 중인 `steam.exe` 프로세스를 Win32 Toolhelp 스냅샷 API로 스캔하여 실행 경로를 동적으로 검출합니다.
-- Windows 10 (버전 1809) / 11 64-bit 환경 전용 (Windows OCR API 및 Win32 API 의존성). 단, Non-Windows 환경에서 빌드가 깨지지 않도록 `target_os` 조건부 컴파일 가드와 egui 폴백 코드를 적용하여 크로스 플랫폼 빌드 이식성을 확보함.
+- 현재 릴리스 및 실동작 지원 기준은 Windows 10 (버전 1809) / 11 64-bit이다. Linux는 아래 최초 지원 범위로 포팅 중이며, 최소 수직 슬라이스 완료 전의 Non-Windows 빌드 통과는 실동작 지원을 의미하지 않는다.
 - 기존 사용자 파일과의 호환성 유지:
   - `settings.user.json` (사용자 설정 델타 저장)
   - `cache/record.db` (로컬 플레이 기록 SQLite DB)
@@ -33,9 +33,38 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 
 ---
 
+# Linux Port
+
+- **현재 상태**: 최소 수직 슬라이스가 완료됐다(2026-07-18). Linux unit/workspace 회귀, Xvfb 21.1.24 + Openbox 3.6.1 lifecycle, hosted Windows build/test, mpv(X11)+native overlay 수동 검증, 실게임(DJMAX RESPECT V, Proton/XWayland, niri) E2E, 출력 off→on 후 앱 생존·degraded panel 전환을 모두 통과했다. 실게임 E2E에서 발견된 XWayland stale backing pixmap 결함은 per-frame `NameWindowPixmap` 재획득으로 수정 후 재검증했다. 다음 단계는 인식 정확도 holdout 검증이다.
+- **최초 지원 범위**: 같은 `DISPLAY`에서 XID가 관측되는 Proton/XWayland 게임을 exact title로 추적하고, XComposite named pixmap + MIT-SHM으로 캡처해 wlr-layer-shell `Layer::Overlay` surface에 표시한다. borderless fullscreen 단일 출력만 지원하며 capability가 부족하거나 대상이 모호하면 fail closed한다.
+- **제외 범위**: Gamescope/Steam Deck Gaming Mode, native Wayland 게임 surface, wlr-layer-shell 또는 XWayland가 없는 세션, windowed/multi-output, non-SHM 캡처 fallback은 최초 포팅에 포함하지 않는다.
+- **Linux 직접 의존성** (`cfg(target_os = "linux")` 한정): 추적·캡처는 `x11rb 0.13`(`composite`, `shm`)와 `memmap2`, overlay는 `smithay-client-toolkit 0.20`, system feature를 켠 `wayland-client 0.31`, `egui-wgpu 0.33.3`, Vulkan 한정 `wgpu 27.0.1`, `raw-window-handle 0.6`, `pollster 0.4`, `rustix 1`을 사용한다. 기존 eframe/Glow와 공용 verified pipeline은 유지한다.
+- **호환 원칙**: Linux 구현은 플랫폼별 신규 코드와 공용 계약의 additive 최소 확장만 허용한다. Windows 기본 동작, OCR 1-Pass, history 기반 안정화, 사용자 파일 호환성은 바꾸지 않는다.
+- **CI**: fork 전용 [ci.yml](.github/workflows/ci.yml)에서 Rust `1.97.0`을 명시하고 Linux build/test/clippy, hosted Windows build/test와 Ubuntu 24.04의 Xvfb+Openbox lifecycle을 모두 `--locked`로 실행한다. Hosted Windows 검증은 실제 DJMAX+GPU의 GDI/DXGI 수동 회귀를 대신하지 않는다.
+
+## 포팅 실행 순서
+
+1. **기술 타당성 검증 — 완료**: XWayland 창 캡처와 native layer overlay가 성능, 캡처 지연, 리소스 사용, Z-order, 입력 및 픽셀 정합 기준을 만족하는지 검증했다.
+2. **최소 수직 슬라이스 — 완료 (2026-07-18)**: `창 추적 → 캡처 → 기존 verified pipeline → native overlay`를 Linux에서 end-to-end로 연결했다.
+   - [x] Linux 지원 범위, 직접 의존성 및 Windows 호환 원칙 확정
+   - [x] Linux build/test/clippy와 hosted Windows build/test workflow 추가
+   - [x] `WindowSnapshot`, 캡처 대상 전달 및 필요한 detection output 필드의 additive 계약 추가
+   - [x] exact-title 창 추적과 단일 snapshot 기반 rect/foreground/fullscreen 판정
+   - [x] XComposite + MIT-SHM 캡처(per-frame named pixmap) 및 Xvfb+Openbox lifecycle/fail-closed 검증
+   - [x] 캡처 실패 시 pipeline full reset 및 `detecting()` 전송으로 stale verified 상태 차단
+   - [x] fontconfig CJK 폰트 로딩과 startup capability probe
+   - [x] capability 기반 compact native layer overlay와 기존 UI 연결
+   - [x] 기존 재킷/엣지 인식 flow 연결 (새 matcher 및 OCR loop 추가 없음)
+   - [x] 완료 조건 충족: Linux unit/lifecycle, hosted Windows 회귀, mpv(X11)+native overlay 수동 검증, 실게임 E2E, 출력 off→on 후 앱 생존·재표시를 모두 통과 (2026-07-18)
+3. **인식 정확도 검증**: 최소 수직 슬라이스 완료 후 독립 holdout으로 기존 공용 인식 flow의 지연·정확도를 평가한다. 실제 실패가 확인되기 전에는 새 matcher를 설계하지 않는다.
+4. **릴리스 보강**: 인식 검증 완료 후 RC 성능 재측정, 사용자 파일 호환, 패키징 및 README를 정리한다.
+
+---
+
 # Current Architecture
 
 ## Workspace Crate 구조
+
 - `overmax_app`: 메인 GUI 애플리케이션 (`egui/winit` 기반 멀티 뷰포트 오버레이 UI, 설정/동기화/디버그 창 및 윈도우 스타일 제어)
 - `overmax_engine`: 화면 캡처 및 실시간 디텍션 핵심 엔진 (GDI/DXGI 캡처, OCR 디텍터, Hysteresis 버퍼, ROI 관리 및 템플릿 데이터)
 - `overmax_core`: 공통 데이터 모델 및 핵심 상태 구조체 (`GameSessionState`, `PlayContext`, `SceneType`)
@@ -43,19 +72,20 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 - `overmax_cv`: 이미지 매칭(HOG, Perceptual Hash), OCR 전처리(Grayscale, Upscale, Otsu 이진화, 컬러 패스 등)
 
 ## 데이터 흐름 및 스레드 구조
+
 ```
 [Main GUI Thread (egui/winit)]
-   ├── Overlay Window (오버레이 정보 표시, 드래그 이동/스케일링)
+   ├── Overlay (Windows eframe viewport / Linux native layer-shell surface)
    ├── Settings / Sync / Debug Windows (설정 변경, V-Archive 기록 동기화, 실시간 로그)
    └── Channel Receiver (디텍션 결과 수신 및 UI 상태 반영)
            ▲
            │ (mpsc channel)
            ▼
 [Detection Worker Thread]
-   ├── WindowTracker: DJMAX RESPECT V 창 추적 (Win32 API)
-   ├── ScreenCapture: GDI 기반의 실시간 프레임 캡처
+   ├── WindowTracker: Win32 또는 X11/XWayland exact-title 추적
+   ├── ScreenCapture: Windows GDI/DXGI 또는 Linux XComposite + MIT-SHM
    └── DetectionPipeline
-        ├── OcrDetector: Windows OCR 멀티패스 (Color / Grayscale / Binarized / Inverted) → logo SceneType 판별, rate f32 추출
+        ├── OcrDetector: 1-pass OCR fallback/검증 → rate 등 제한된 텍스트 값 추출
         ├── ImageIndexDb: overmax_cv (HOG + Hash 매칭 -> song_id 탐색)
         └── PlayStateDetector: (버튼 모드, 난이도, 맥스콤보 감지)
 ```
@@ -65,6 +95,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 # Detection Pipeline & State Handling
 
 ## 1. 프레임 제어 및 쿨다운 스케줄링 (Centralized Control & Cooldowns)
+
 - **Window Tracker 동적 폴링**: DJMAX Respect V 창의 위치 및 포커스를 조회하는 Win32 시스템 콜 오버헤드를 막기 위해 `WindowQueryScheduler`가 주기적으로 호출을 차단합니다. 창 드래그 중인 경우 `16ms`(60FPS), 창이 정지 상태인 경우 `300ms`, 창 미발견 시 `1000ms`로 주기를 자동 변환합니다.
 - **DXGI 재생성 쿨다운**: `AdaptiveCaptureEngine`이 DXGI 캡처에 실패하여 GDI로 폴백할 시, 매 프레임 재생성을 시도하지 않고 최소 **3초**의 쿨다운 간격을 보장하여 CPU 스팸 루프를 차단합니다.
 - **OCR 픽셀 체크섬 조기 리턴 (Early Return)**: `PlayStateDetector`가 `rate` 영역을 인식할 때 매 프레임 `crop_roi` 및 썸네일을 힙에 생성하지 않고, 원본 버퍼 상에서 즉각 픽셀 값을 건너뛰어 합산하는 `compute_pixel_checksum`을 호출합니다. 이전 체크섬과 차이가 50 이하이고 캐시 강제 만료 시간(5초)이 지나지 않았다면 OCR API와 이미지 크롭 호출 자체를 바이패스합니다. 실제 OCR 분석은 값이 바뀌었을 때 최소 **200ms** 간격으로만 실행됩니다.
@@ -72,6 +103,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 - **egui 마우스 호버 렌더링 스팸 억제**: 비활성 창 상태에서 십자선 소프트웨어 커서 렌더링을 위해 마우스 호버 시 매 프레임 `request_repaint()`를 스팸하던 문제를 해결하여, 마우스 이동 또는 드래그가 감지된 경우에만 repainting하도록 억제했습니다.
 
 ## 2. 씬 감지 및 동적 ROI (Scene-Aware ROI)
+
 - **재킷 엣지/유사도 기반 씬 우선 판독 (Bypass logo OCR)**: 결과창(Result), 오픈매치(OpenMatch), 프리스타일(Freestyle) 씬의 경우, 상단 로고의 Windows OCR을 수행하기 전에 재킷 영역의 엣지 강도(JACKET_EDGE_THRESHOLD = 15.0) 또는 우측의 곡 카테고리 띠(5x60) 영역의 단색 감지(check_category_band_solid)가 활성화되는 경우에 한해 재킷 이미지 매칭을 시도합니다. 이때 사용되는 재킷 매칭 임계값은 설정 파일의 `similarity_threshold` 값을 모든 씬에서 오프셋 없이 100% 동일하게 일관되게 연동하여 사용합니다. 매칭에 성공하면 Windows OCR을 전혀 호출하지 않고 즉시 해당 씬과 곡 ID를 확정하여 씬 감지 반응성을 대폭 개선하고 CPU 부하를 경감합니다.
 - **로고 OCR 감지 (비활성화됨)**: 씬 감지의 정확성과 반응 속도를 엣지/재킷 이미지 매칭으로 100% 보장함에 따라, 최종 폴백으로 수행되던 `logo` ROI 영역에 대한 Windows OCR 분석은 완전히 비활성화되었습니다. (씬 판독 시 의존성 100% 제거)
 - **동적 ROI 전환**: `RoiManager`가 감지된 씬(`SceneType`)에 따라 최적의 ROI 세트(Freestyle / Online)를 동적으로 전환.
@@ -79,11 +111,13 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 - **히스테리시스 버퍼**: `HysteresisBuffer`를 통해 선곡 화면 진입/이탈 판정 및 신뢰도(Confidence) 계산.
 
 ## 3. 곡 인식 (Song Recognition)
+
 - **재킷 이미지 매칭**: `ImageIndexDb`를 통해 캡처된 재킷 영역과 미리 색인된 곡 재킷의 유사도를 계산.
 - **Rust Native CV**: `overmax_cv`를 통해 3종 Perceptual Hash(pHash, dHash, aHash)를 사용한 재킷 매칭 및 검색 지원. CPU 성능 최적화를 위한 HOG 특징 연산 비활성화 옵션(`disable_hog`, 기본값 `false`)을 지원합니다.
 - **매칭 캐시 레이어 (Match Cache)**: `JacketMatcher` 내부에서 최근 매칭에 성공한 곡 인덱스를 최대 8개까지 추적하는 LRU 캐시(`MatchCache`)를 운용합니다. 매칭 시 캐시된 항목에 대해 먼저 유사도를 대조해보고 임계치 이상이면 전체 DB 루프 및 정렬을 생략하고 조기 리턴하여 CPU 연산 부하를 획기적으로 경감합니다.
 
 ## 3. 원자적 상태 감지 및 안정화 (Atomic Play Context Sync)
+
 - **PlayState 감지**:
   - **버튼 모드 (Button Mode)**: 선곡창에서는 `btn_mode` ROI의 평균 BGR 색상과 미리 정의된 대표색의 Euclidean 거리가 60 이하인 모드 중 최적 매칭값을 선택하고, 결과창에서는 선곡창 캐시 폴백 없이 오직 결과창 자체의 픽셀들로만 독립적으로 모드 템플릿 매칭을 수행합니다.
   - **난이도 (Difficulty)**: 선곡창에서는 각 난이도 패널 ROI의 평균 밝기를 계산해 상위 1위 밝기가 최소 밝기(45) 이상이고 2위와의 차이가 15.0 이상일 때 판정하며, 결과창에서는 선곡창 캐시 폴백 없이 오직 결과창 난이도 패널의 템플릿 매칭만을 수행합니다.
@@ -200,8 +234,19 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-17 | 즐겨찾기(Favorite) 마크 영역 마스킹 도입 | 즐겨찾기 마크 오버레이로 인한 자켓 유사도 저하를 막기 위해 좌상단 23% 영역을 마스킹하고 DB를 재구축함 | [image.rs](rust/overmax_cv/src/image.rs) / [lib.rs](rust/overmax_cv/src/lib.rs) |
 | 2026-07-17 | 런타임 해시 및 HOG 마스킹 도입 | 기존 DB 데이터의 무결성을 깨뜨리지 않고 좌상단 즐겨찾기 뱃지 노이즈를 런타임에 소거하기 위해, Hamming Distance 및 HOG 코사인 유사도 연산 시 좌상단/테두리 영역에 해당하는 비트와 원소를 동적으로 AND 마스킹 처리 | [jacket_matcher.rs](rust/overmax_data/src/service/jacket_matcher.rs) |
 | 2026-07-17 | `image_index.db` 스키마 확장 및 자동 마이그레이션 적용 | 확장성 확보를 위한 `metadata` 컬럼을 추가하고 구버전 DB 및 외부 파이프라인(`overmax-image-db`) 증분 빌드 시 스키마 미스매치를 방지하고자 최초 로드 시 `ALTER TABLE` 자동 보정 가드 구현 | [db_builder.rs](rust/overmax_data/src/bin/db_builder.rs) / [image_index.rs](rust/overmax_data/src/store/image_index.rs) |
-| 2026-07-17 | ROI 체이닝 추상화 및 CV 연산 캡슐화 | `.flatten()` 중복 호출 해소를 위해 `and_then` 계열 모나딕 체이닝 메서드(`and_then_roi`)를 추가하고, `ImageRegion` 자체에 CV 연산(`compute_hashes`, `detect_edges`)을 직접 바인딩하여 타입 안전하고 가독성 높은 관용적(Idiomatic) Rust 스타일 실현 | [roi.rs](rust/overmax_engine/src/detector/roi.rs) / [play_state.rs](rust/overmax_engine/src/detector/play_state.rs) / [detection_pipeline.rs](rust/overmax_engine/src/detector/detection_pipeline.rs) / [frame_utils.rs](rust/overmax_engine/src/capture/frame_utils.rs) |
+| 2026-07-17 | ROI 체이닝 추상화 및 CV 연산 캡슐화 | `.flatten()` 중복 호출 해소를 위해 `and_then` 계열 모나딕 체이닝 메서드(`and_then_roi`)를 추가하고, `ImageRegion` 자체에 CV 연산(`compute_hashes`, `detect_edges`)를 직접 바인딩하여 타입 안전하고 가독성 높은 관용적(Idiomatic) Rust 스타일 실현 | [roi.rs](rust/overmax_engine/src/detector/roi.rs) / [play_state.rs](rust/overmax_engine/src/detector/play_state.rs) / [detection_pipeline.rs](rust/overmax_engine/src/detector/detection_pipeline.rs) / [frame_utils.rs](rust/overmax_engine/src/capture/frame_utils.rs) |
 | 2026-07-17 | OCR 및 PlayState 내 중첩 Option 분기 모나딕 정돈 | `ocr_engine.rs` 및 `play_state.rs` 내 이중 중첩 `if let` 분기들과 중복 폴백 논리를 `and_then`/`unwrap_or`/클로저 조합으로 모나딕하게 캡슐화 및 정돈 | [ocr_engine.rs](rust/overmax_engine/src/detector/ocr_engine.rs) / [play_state.rs](rust/overmax_engine/src/detector/play_state.rs) |
 | 2026-07-17 | `overmax_data` 곡 매칭 및 추천 분기 가드 정돈 | `client.rs` 및 `recommend.rs` 내의 2중 `if let` 중첩들을 `and_then` 모나딕 체인으로 정리하고, `split_once` 및 `let Some = ... else { continue }` 가드 패턴 도입 | [client.rs](rust/overmax_data/src/community/client.rs) / [recommend.rs](rust/overmax_data/src/service/recommend.rs) |
 | 2026-07-17 | V2/Metadata 컬럼 구조 전면 철회 및 V1 비트 매핑 복구 | HOG 생략의 원인이었던 불필요하게 비대해진 metadata 컬럼 및 JSON 직렬화/파싱 코드를 전면 제거하고, V1의 안정적인 런타임 비트 마스크 및 HOG 마스크 대조 구조로 단순화 복귀 | [db_builder.rs](rust/overmax_data/src/bin/db_builder.rs) / [image_index.rs](rust/overmax_data/src/store/image_index.rs) / [jacket_matcher.rs](rust/overmax_data/src/service/jacket_matcher.rs) |
 | 2026-07-18 | db_builder.rs 타입 불일치 빌드 오류 수정 | overmax_cv::compute_image_features 반환값이 4-tuple(phash, dhash, ahash, hog)로 변경됨에 따라, db_builder.rs의 구조 분해 및 중복 HOG 계산 코드를 수정 | [db_builder.rs](rust/overmax_data/src/bin/db_builder.rs) |
+
+## Linux Port
+
+| 날짜 | 결정 | 이유 | 참조 |
+|------|------|------|------|
+| 2026-07-17 | Linux 최초 포팅 범위·의존성·fork CI 전제 확정 | Linux 포팅이 Windows 전용 제약과 충돌하지 않도록 최초 지원 범위와 additive 변경 원칙을 SSOT에 명시 | [Linux Port](#linux-port) |
+| 2026-07-17 | Linux/Windows fork CI workflow 추가 | 첫 공용 계약 변경 전에 양 OS의 컴파일·테스트 회귀를 검증하도록 구성 | [ci.yml](.github/workflows/ci.yml) |
+| 2026-07-17 | LINUX 최소 수직 슬라이스를 fail-closed 경계로 조립 | exact-title snapshot을 persistent XComposite/MIT-SHM 캡처와 기존 verified pipeline, native layer overlay에 연결하고 오류 시 stale 상태를 즉시 초기화하기 위함. 수동·hosted 검증 전에는 최소 수직 슬라이스 완료로 승격하지 않음 | |
+| 2026-07-17 | Xvfb+Openbox lifecycle 게이트 추가 | exact-title/EWMH, BGRA 캡처, resize·remap·recreate와 extension 부재 fail-closed를 재현 가능한 단일 스크립트로 고정 | [linux-vertical-slice-lifecycle.sh](.github/scripts/linux-vertical-slice-lifecycle.sh) |
+| 2026-07-18 | 캡처 pixmap을 per-frame 재획득으로 전환 | 실게임 E2E에서 XWayland가 fullscreen 게임의 buffer flip/swapchain 재생성 시 map/resize 이벤트 없이 backing pixmap을 교체해, bind 시점의 persistent named pixmap handle이 에러 없이 frozen frame을 반환하는 결함 확인(첫 곡 인식 후 곡 변경 미반영). 캡처 tick마다 NameWindowPixmap→ShmGetImage→FreePixmap으로 stale handle을 원천 차단, SHM·redirect·인플레이스 버퍼는 persistent 유지 | [linux.rs](rust/overmax_engine/src/capture/capture_engine/linux.rs) |
+| 2026-07-21 | 플랫폼 전용 코드 서브모듈 파사드 패턴 구조화 | scattered #[cfg(target_os)] 인라인 코드들을 ui::platform 및 capture_engine::windows 등의 서브모듈 파사드로 완전 분리하고, handle_ui_command 단일 통로로 이벤트 흐름을 통합하여 플랫폼 컴파일 격리성 및 가독성 대폭 향상 | [platform/mod.rs](rust/overmax_app/src/ui/platform/mod.rs) / [capture_engine/windows/](rust/overmax_engine/src/capture/capture_engine/windows/) / [native_app_viewports.rs](rust/overmax_app/src/ui/native_app_viewports.rs) |

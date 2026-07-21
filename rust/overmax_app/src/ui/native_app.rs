@@ -1,6 +1,5 @@
 //! Single `eframe` app: overlay + deferred debug / settings / sync viewports.
 
-use eframe::egui::ViewportBuilder;
 use overmax_core::{Changed, GameSessionState};
 use overmax_data::{
     build_candidates, load_base_settings, load_merged_settings, normalize_settings,
@@ -24,38 +23,19 @@ use crate::system::updater::{self, AppUpdateConfig};
 use crate::system::varchive_upload;
 use crate::ui::debug_ui;
 use crate::ui::overlay_ui;
-#[cfg(target_os = "windows")]
-use crate::ui::tray_icon::TrayIcon;
+use crate::ui::platform;
 use crate::ui::ui_command::UiCommand;
 use eframe::egui;
 use overmax_engine::detector::detection_pipeline::DetectionOutput;
 use overmax_engine::detector::detection_worker;
 use overmax_engine::detector::ocr_engine::OcrTelemetry;
 
-fn load_icon() -> Option<eframe::egui::IconData> {
-    let icon_bytes = include_bytes!("../../../../assets/overmax.ico");
-    if let Ok(img) = image::load_from_memory(icon_bytes) {
-        let rgba = img.to_rgba8();
-        let (width, height) = rgba.dimensions();
-        return Some(eframe::egui::IconData {
-            rgba: rgba.into_raw(),
-            width,
-            height,
-        });
-    }
-    None
-}
-
-#[cfg(target_os = "windows")]
-unsafe extern "system" fn console_ctrl_handler(_ctrl_type: u32) -> i32 {
-    crate::ui::tray_icon::force_cleanup_tray();
-    0 // FALSE
-}
-
 pub fn run_native_app() -> eframe::Result<()> {
-    #[cfg(target_os = "windows")]
-    unsafe {
-        windows_sys::Win32::System::Console::SetConsoleCtrlHandler(Some(console_ctrl_handler), 1);
+    if let Err(error) = platform::init_platform_on_startup() {
+        platform::show_startup_error(&error);
+        return Err(eframe::Error::AppCreation(Box::new(std::io::Error::other(
+            error,
+        ))));
     }
 
     let Some(_single) = SingleInstanceGuard::try_acquire() else {
@@ -102,84 +82,23 @@ pub fn run_native_app() -> eframe::Result<()> {
         }
     }
 
-    let options = native_options(&app_settings);
+    let options = platform::native_options(&app_settings);
 
     eframe::run_native(
         "Overmax",
         options,
         Box::new(|cc| {
             cc.egui_ctx.set_visuals(eframe::egui::Visuals::dark());
-            overlay_ui::install_cjk_fonts(&cc.egui_ctx);
-            NativeApp::new()
+            let _ = overlay_ui::install_cjk_fonts(&cc.egui_ctx);
+            NativeApp::new(cc.egui_ctx.clone())
                 .map(|app| Box::new(app) as Box<dyn eframe::App>)
                 .map_err(|e| {
                     eprintln!("native app init: {e}");
+                    platform::show_startup_error(&e);
                     Box::new(std::io::Error::other(e)) as Box<dyn std::error::Error + Send + Sync>
                 })
         }),
     )
-}
-
-#[cfg(target_os = "windows")]
-fn is_position_on_screen(x: f32, y: f32) -> bool {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
-        SM_YVIRTUALSCREEN,
-    };
-    unsafe {
-        let vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
-        let vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
-        let vwidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-        let vheight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-
-        if vwidth > 0 && vheight > 0 {
-            let px = x as i32;
-            let py = y as i32;
-            px >= vx && px < (vx + vwidth) && py >= vy && py < (vy + vheight)
-        } else {
-            x >= 0.0 && y >= 0.0
-        }
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn is_position_on_screen(_x: f32, _y: f32) -> bool {
-    true
-}
-
-fn native_options(settings: &overmax_data::Settings) -> eframe::NativeOptions {
-    let overlay = settings.overlay();
-    let is_lite = overlay.lite_mode;
-
-    let mut builder = ViewportBuilder::default()
-        .with_title("Overmax")
-        .with_inner_size([overlay_ui::BASE_WIDTH, overlay_ui::BASE_HEIGHT])
-        .with_resizable(true)
-        .with_decorations(false)
-        .with_transparent(true)
-        .with_taskbar(false)
-        .with_always_on_top()
-        .with_visible(!is_lite);
-
-    if let Some(icon) = load_icon() {
-        builder = builder.with_icon(icon);
-    }
-
-    if !is_lite {
-        let pos = &overlay.position;
-        if let (Some(x), Some(y)) = (pos.x, pos.y) {
-            let px = x as f32;
-            let py = y as f32;
-            if is_position_on_screen(px, py) {
-                builder = builder.with_position(eframe::egui::pos2(px, py));
-            }
-        }
-    }
-
-    eframe::NativeOptions {
-        viewport: builder,
-        ..Default::default()
-    }
 }
 
 pub struct SharedSettings {
@@ -238,6 +157,7 @@ pub(crate) struct SyncWorkerChannels {
 }
 
 pub struct AppStateTracker {
+    pub prev_debug_open: Changed<bool>,
     pub prev_settings_open: Changed<bool>,
     pub prev_sync_open: Changed<bool>,
     pub prev_scale: Changed<f32>,
@@ -257,6 +177,7 @@ impl Default for AppStateTracker {
 impl AppStateTracker {
     pub fn new() -> Self {
         Self {
+            prev_debug_open: Changed::new(false),
             prev_settings_open: Changed::new(false),
             prev_sync_open: Changed::new(false),
             prev_scale: Changed::new(1.0),
@@ -269,16 +190,6 @@ impl AppStateTracker {
     }
 }
 
-#[cfg(target_os = "windows")]
-#[derive(Default)]
-pub struct WindowsWindowCache {
-    pub cached_hwnd: Option<isize>,
-    pub cached_game_hwnd: Option<isize>,
-    pub last_applied_opacity: Option<f32>,
-    pub logged_opacity_fail: bool,
-    pub prev_snap_geometry: Option<(i32, i32, i32, i32)>,
-}
-
 pub struct NativeApp {
     pub(crate) root: Arc<std::path::PathBuf>,
     pub(crate) settings: SharedSettings,
@@ -287,6 +198,8 @@ pub struct NativeApp {
     pub(crate) sync_state: SharedSyncState,
     pub(crate) log_rx: Option<Receiver<String>>,
     pub(crate) game_rect: Arc<Mutex<Option<overmax_engine::capture::window_tracker::WindowRect>>>,
+    pub(crate) window_snapshot: Option<overmax_engine::capture::window_tracker::WindowSnapshot>,
+    pub(crate) capture_fatal: Option<String>,
     pub(crate) session: GameSessionState,
     pub(crate) confidence: f32,
     pub(crate) recorded_states:
@@ -299,7 +212,6 @@ pub struct NativeApp {
     pub(crate) recommendations: RecommendResult,
     pub(crate) pattern_tabs: Vec<crate::ui::overlay_recommend_ui::PatternTabInfo>,
     pub(crate) state_tracker: AppStateTracker,
-    pub(crate) is_dragging: bool,
     pub(crate) record_db: Arc<RecordDB>,
     pub(crate) record_manager: Arc<RecordManager>,
     pub(crate) recommender: Arc<Recommender>,
@@ -307,16 +219,12 @@ pub struct NativeApp {
     pub(crate) exit_requested: Arc<AtomicBool>,
     pub(crate) ctx_holder: Arc<Mutex<Option<egui::Context>>>,
     pub(crate) session_initial_record: Option<overmax_data::RecordValue>,
-    #[cfg(target_os = "windows")]
-    pub(crate) _tray: Option<TrayIcon>,
-    #[cfg(target_os = "windows")]
-    pub(crate) win_cache: WindowsWindowCache,
-    pub(crate) last_painted_rect: Option<egui::Rect>,
+    pub(crate) platform: platform::PlatformState,
     pub(crate) toast: Option<crate::ui::components::ToastMessage>,
 }
 
 impl NativeApp {
-    fn new() -> Result<Self, String> {
+    fn new(initial_ctx: egui::Context) -> Result<Self, String> {
         let root = std::env::current_dir().map_err(|e| e.to_string())?;
         let root = Arc::new(root);
         let defaults: Value = serde_json::from_str(include_str!(concat!(
@@ -402,7 +310,7 @@ impl NativeApp {
         let (upload_res_tx, upload_res_rx) = mpsc::channel();
         let (delete_req_tx, delete_req_rx) = mpsc::channel::<usize>();
         let (ui_cmd_tx, ui_cmd_rx) = mpsc::channel();
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
         let _ = &ui_cmd_tx;
         let (fetch_req_tx, fetch_req_rx) = mpsc::channel();
         let (fetch_res_tx, fetch_res_rx) = mpsc::channel();
@@ -417,7 +325,10 @@ impl NativeApp {
             }
         }
 
-        let ctx_holder: Arc<Mutex<Option<egui::Context>>> = Arc::new(Mutex::new(None));
+        let ctx_holder: Arc<Mutex<Option<egui::Context>>> = Arc::new(Mutex::new(Some(initial_ctx)));
+
+        let platform = platform::PlatformState::new(&ctx_holder, &merged_settings, &ui_cmd_tx)?;
+
         let ctx_holder_clone = ctx_holder.clone();
 
         let repaint_callback = Box::new(move || {
@@ -486,6 +397,8 @@ impl NativeApp {
             sync_state,
             log_rx: Some(log_rx),
             game_rect: Arc::new(Mutex::new(None)),
+            window_snapshot: None,
+            capture_fatal: None,
             session: GameSessionState::detecting(),
             confidence: 0.0,
             recorded_states: std::collections::HashMap::new(),
@@ -510,7 +423,6 @@ impl NativeApp {
             recommendations: RecommendResult::empty(),
             pattern_tabs: Vec::new(),
             state_tracker: AppStateTracker::new(),
-            is_dragging: false,
             record_db,
             record_manager,
             recommender,
@@ -518,15 +430,7 @@ impl NativeApp {
             exit_requested: exit_requested.clone(),
             ctx_holder: ctx_holder.clone(),
             session_initial_record: None,
-            #[cfg(target_os = "windows")]
-            _tray: Some(TrayIcon::spawn(
-                ui_cmd_tx,
-                merged_settings.clone(),
-                ctx_holder,
-            )),
-            #[cfg(target_os = "windows")]
-            win_cache: WindowsWindowCache::default(),
-            last_painted_rect: None,
+            platform,
             toast: None,
         };
 
@@ -1073,7 +977,7 @@ impl NativeApp {
 
 #[cfg(test)]
 mod tests {
-    use super::native_options;
+    use crate::ui::platform::native_options;
 
     #[test]
     fn main_overlay_stays_out_of_taskbar() {

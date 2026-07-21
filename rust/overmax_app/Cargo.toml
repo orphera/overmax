@@ -50,6 +50,16 @@ zip = { version = "2.4", default-features = false, features = ["deflate"] }
 rfd = "0.15"
 image = { version = "0.25", default-features = false, features = ["png", "ico", "jpeg"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+smithay-client-toolkit = { version = "0.20", default-features = false }
+wayland-client = { version = "0.31", features = ["system"] }
+egui-wgpu = { version = "0.33.3", default-features = false }
+# ponytail: M0's Intel target has a Vulkan ICD; add GLES only after a supported target needs it.
+wgpu = { version = "27.0.1", default-features = false, features = ["std", "wgsl", "vulkan"] }
+raw-window-handle = "0.6"
+pollster = "0.4"
+rustix = { version = "1", features = ["event"] }
+
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
 windows = { version = "0.62.2", features = [

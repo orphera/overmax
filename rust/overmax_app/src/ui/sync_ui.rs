@@ -61,7 +61,7 @@ pub fn render_sync<F1, F2, F3>(
 
         Frame::new()
             .fill(Theme::CARD)
-            .stroke(Stroke::new(1.0, Theme::STROKE))
+            .stroke(Stroke::new(1.0_f32, Theme::STROKE))
             .corner_radius(CornerRadius::same(Theme::R_MD))
             .inner_margin(Margin::same(20))
             .show(ui, |ui| {
@@ -233,7 +233,7 @@ fn candidate_row<F: Fn(usize), D: Fn(usize)>(
 ) {
     Frame::new()
         .fill(Theme::ROW_BG)
-        .stroke(Stroke::new(1.0, Theme::STROKE))
+        .stroke(Stroke::new(1.0_f32, Theme::STROKE))
         .corner_radius(CornerRadius::same(Theme::R_MD))
         .inner_margin(Margin::same(12))
         .show(ui, |ui| {
@@ -275,7 +275,7 @@ fn candidate_row<F: Fn(usize), D: Fn(usize)>(
                         egui::Button::new(RichText::new("등록").size(Theme::FONT_SMALL).strong())
                             .min_size(egui::vec2(60.0, Theme::CONTROL_HEIGHT))
                             .fill(Theme::PRIMARY)
-                            .stroke(Stroke::new(1.0, Theme::STROKE))
+                            .stroke(Stroke::new(1.0_f32, Theme::STROKE))
                             .corner_radius(CornerRadius::same(Theme::R_SM));
                     if ui.add(upload_btn).clicked() {
                         on_upload(index);
@@ -286,7 +286,7 @@ fn candidate_row<F: Fn(usize), D: Fn(usize)>(
                     let del_btn = egui::Button::new(RichText::new("삭제").size(Theme::FONT_SMALL))
                         .min_size(egui::vec2(60.0, Theme::CONTROL_HEIGHT))
                         .fill(egui::Color32::TRANSPARENT)
-                        .stroke(Stroke::new(1.0, Theme::STROKE))
+                        .stroke(Stroke::new(1.0_f32, Theme::STROKE))
                         .corner_radius(CornerRadius::same(Theme::R_SM));
                     if ui.add(del_btn).clicked() {
                         on_delete(index);

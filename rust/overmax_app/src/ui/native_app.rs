@@ -266,10 +266,7 @@ impl NativeApp {
             let _ = log_tx.send(format!("[VArchive] 캐시 마이그레이션 실패: {e}"));
         }
 
-        let record_manager = Arc::new(RecordManager::new(
-            record_db.clone(),
-            root.join("cache").join("varchive"),
-        ));
+        let record_manager = Arc::new(RecordManager::new(record_db.clone()));
         record_manager.refresh();
 
         let mut varchive_db = VArchiveDB::new();
@@ -632,8 +629,7 @@ impl NativeApp {
                 ctx.request_repaint();
                 return;
             }
-            let cache_root = root.join("cache").join("varchive");
-            let list = build_candidates(&db, rdb.as_ref(), &steam, &cache_root);
+            let list = build_candidates(&db, rdb.as_ref(), &steam);
             let _ = tx.send(Ok(list));
             ctx.request_repaint();
         });

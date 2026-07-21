@@ -1,7 +1,6 @@
 use crate::store::record_db::RecordDB;
 use overmax_core::{RecordKey, RecordValue};
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -12,7 +11,6 @@ pub trait RecordSource {
 
 pub struct RecordManager {
     record_db: Arc<RecordDB>,
-    varchive_cache_root: PathBuf,
     varchive_cache: Mutex<HashMap<RecordKey, RecordValue>>,
     data_revision: AtomicU64,
     dirty_record_keys: Mutex<HashSet<RecordKey>>,
@@ -20,10 +18,9 @@ pub struct RecordManager {
 }
 
 impl RecordManager {
-    pub fn new(record_db: Arc<RecordDB>, varchive_cache_root: impl AsRef<Path>) -> Self {
+    pub fn new(record_db: Arc<RecordDB>) -> Self {
         Self {
             record_db,
-            varchive_cache_root: varchive_cache_root.as_ref().to_path_buf(),
             varchive_cache: Mutex::new(HashMap::new()),
             data_revision: AtomicU64::new(0),
             dirty_record_keys: Mutex::new(HashSet::new()),
@@ -83,21 +80,8 @@ impl RecordManager {
 
     pub fn delete(&self, song_id: i32, button_mode: &str, difficulty: &str) -> bool {
         if self.record_db.delete(song_id, button_mode, difficulty) {
-            let steam_id = self.record_db.get_steam_id();
             if let Ok(mut guard) = self.varchive_cache.lock() {
                 guard.remove(&(song_id, button_mode.to_string(), difficulty.to_string()));
-            }
-            if !steam_id.is_empty() && steam_id != "__unknown__" {
-                let btn = crate::community::client::Mode::from_str(button_mode)
-                    .map(|m| m.button_count())
-                    .unwrap_or(4);
-                let _ = crate::community::sync::delete_varchive_cache_record(
-                    &self.varchive_cache_root,
-                    &steam_id,
-                    btn,
-                    song_id,
-                    difficulty,
-                );
             }
             if let Ok(mut guard) = self.dirty_record_keys.lock() {
                 guard.insert((song_id, button_mode.to_string(), difficulty.to_string()));
@@ -203,7 +187,7 @@ mod tests {
         db.migrate_json_cache_to_db(&cache_root).unwrap();
 
         let db = Arc::new(db);
-        let manager = RecordManager::new(db, &cache_root);
+        let manager = RecordManager::new(db);
         manager.refresh();
 
         let map = manager.get_rate_map(&[42, 99]);
@@ -293,7 +277,7 @@ mod tests {
         assert!(db.upsert(2, "4B", "MX", 97.0, false, false));
 
         let record_db = Arc::new(db);
-        let record_manager = Arc::new(RecordManager::new(record_db, dir.join("varchive")));
+        let record_manager = Arc::new(RecordManager::new(record_db));
         record_manager.refresh();
 
         let recommender = Recommender::new(Arc::new(vdb), record_manager);
@@ -325,7 +309,7 @@ mod tests {
         db.migrate_json_cache_to_db(&cache_root).unwrap();
 
         let db = Arc::new(db);
-        let manager = RecordManager::new(db, &cache_root);
+        let manager = RecordManager::new(db);
         manager.refresh();
 
         // 1. Verify get_local_record

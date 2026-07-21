@@ -1260,7 +1260,7 @@ mod tests {
         let settings_open = Arc::new(AtomicBool::new(false));
         let sync_open = Arc::new(AtomicBool::new(false));
         let record_db = Arc::new(RecordDB::new("unused-record.db", None));
-        let record_manager = Arc::new(RecordManager::new(record_db, "."));
+        let record_manager = Arc::new(RecordManager::new(record_db));
         let snapshot = LinuxOverlaySnapshot {
             state: GameSessionState::detecting(),
             song_label: String::new(),

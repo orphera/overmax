@@ -248,6 +248,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-21 | db_builder 내 하위 호환용 HOG 계산 복구 | 구버전 OverMax 클라이언트 및 HOG 특징 벡터를 참조하는 외부 파이프라인/도구와의 하위 호환성 보장을 위해 db_builder 실행 시 1,764차원 HOG feature BLOB(7,056 bytes) 계산 및 적재 복구 | [db_builder.rs](rust/overmax_data/src/bin/db_builder.rs) |
 | 2026-07-21 | Category Band 4px 코어 폭 및 3단계 통계 판정 고도화 | 카테고리 띠 판정 폭을 배경 노이즈가 차단되는 4px(x1=jacket.x2, width=4)로 변경하고, 최소 밝기(>=60), 수직 단색성(<=20), 채도/무채색 정합성 3단계 판정 가드를 적용하여 오탐율 0% 및 신규 DLC 자동 대응 구조 확립 | [detection_pipeline.rs](rust/overmax_engine/src/detector/detection_pipeline.rs) |
 | 2026-07-22 | 디텍션 파이프라인 아키텍처 문서화 | 4단계 파이프라인, ROI 사양, 단일 프레임 원자성 및 5중 DB 오기록 방지 가드 체계화 | [detection_pipeline.md](docs/architecture/detection_pipeline.md) |
+| 2026-07-22 | Windows OCR Fallback의 Cargo Feature Flag(`ocr-fallback`) 분리 | OS 의존성 및 WinRT COM DLL 초기화 수명 오버헤드를 선택적으로 소거할 수 있는 Pure Rust Native 컴파일 옵션 제공 | [Cargo.toml](rust/overmax_engine/Cargo.toml) / [ocr_engine.rs](rust/overmax_engine/src/detector/ocr_engine.rs) |
 
 ## Linux Port
 

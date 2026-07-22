@@ -60,15 +60,21 @@ raw-window-handle = "0.6"
 pollster = "0.4"
 rustix = { version = "1", features = ["event"] }
 
+[features]
+default = ["ocr-fallback"]
+ocr-fallback = [
+    "overmax-engine/ocr-fallback",
+    "windows/Foundation",
+    "windows/Globalization",
+    "windows/Graphics_Imaging",
+    "windows/Media_Ocr",
+    "windows/Storage_Streams",
+    "windows/Win32_System_WinRT",
+]
+
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
 windows = { version = "0.62.2", features = [
-    "Foundation",
-    "Globalization",
-    "Graphics_Imaging",
-    "Media_Ocr",
-    "Storage_Streams",
-    "Win32_System_WinRT",
     "Graphics_Capture",
     "Win32_Graphics_Direct3D",
     "Win32_Graphics_Direct3D11",

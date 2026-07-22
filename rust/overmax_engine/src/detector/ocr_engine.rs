@@ -2,14 +2,14 @@ use crate::capture::frame_utils::ImageRegion;
 use overmax_core::SceneType;
 use std::fmt;
 
-#[cfg(target_os = "linux")]
-mod linux;
-#[cfg(target_os = "windows")]
+#[cfg(not(all(target_os = "windows", feature = "ocr-fallback")))]
+mod stub;
+#[cfg(all(target_os = "windows", feature = "ocr-fallback"))]
 mod windows;
 
-#[cfg(target_os = "linux")]
-use linux::OcrEngine as PlatformOcrEngine;
-#[cfg(target_os = "windows")]
+#[cfg(not(all(target_os = "windows", feature = "ocr-fallback")))]
+use stub::OcrEngine as PlatformOcrEngine;
+#[cfg(all(target_os = "windows", feature = "ocr-fallback"))]
 use windows::OcrEngine as PlatformOcrEngine;
 
 #[derive(Clone, Default, PartialEq)]

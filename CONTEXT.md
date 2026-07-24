@@ -123,7 +123,8 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
   - **난이도 (Difficulty)**: 선곡창에서는 각 난이도 패널 ROI의 평균 밝기를 계산해 상위 1위 밝기가 최소 밝기(45) 이상이고 2위와의 차이가 15.0 이상일 때 판정하며, 결과창에서는 선곡창 캐시 폴백 없이 오직 결과창 난이도 패널의 템플릿 매칭만을 수행합니다.
   - **Max Combo**: 결과창 및 선곡창의 `max_combo_badge` ROI 영역에 대해 사전에 수집된 대표 뱃지 이미지 템플릿과의 이미지 해시(pHash, dHash, ahash) 비교를 수행. 결과창의 경우 가중 해밍 거리가 20.0 이하(선곡창은 10.0 이하)인 경우에 한해 True로 판정하여, 연출 그래픽 변화나 노이즈에 의한 Jitter 및 오인식을 완벽하게 차단.
   - **Rate**: `rate` ROI 영역의 Windows OCR 멀티패스(Color → Grayscale → Grayscale Inverted) 결과를 실수값(`f32`)으로 실시간 수집. 유효 파싱값이 나온 첫 번째 패스 결과를 채택.
-  - **Score & Rate Cross-Validation**: 결과창 및 선곡창에서 `score` ROI 영역을 단일 패스 OCR로 추출하여 판정율을 역산(`Rate = Score / 10,000`)합니다. 두 OCR 결과(Rate vs. Score 역산값) 간에 불일치가 발생할 경우, 오차가 0.1% 이내이면 정밀한 스코어 역산값으로 보정하고, 오차가 클 경우 각 값의 정확도 범위(`90%~100%`, `70%~90%` 등)를 기준으로 타당성(Plausibility) 신뢰도를 평가해 더 상식적이고 가능성이 높은 값을 최종 채택합니다. 추가로 선곡창 자릿수 오인식에 대비해 신뢰 범위 가드(MIN_VALID_RATE인 80% ~ 100%)를 둡니다.
+  - **Score & Rate Cross-Validation**: 결과창 및 선곡창에서 `score` ROI 영역을 단일 패스 템플릿 매칭/OCR로 추출하여 판정율을 역산(`Rate = Score / 10,000`)합니다. 두 결과(Rate OCR vs. Score 역산값) 간에 불일치가 발생할 경우, 템플릿 매칭 기반으로 신뢰도가 매우 높은 스코어 역산 값을 우선적으로 적용하여 Rate를 책정합니다. 추가로 선곡창 자릿수 오인식에 대비해 신뢰 범위 가드(MIN_VALID_RATE인 80% ~ 100%)를 둡니다.
+
 - **원자적 안정화**:
   - 곡 ID, 버튼 모드, 난이도, Rate, Max Combo 전체를 하나의 `PlayContext`로 묶어 관리.
   - `PlayStateDetector`에서 이 전체 필드가 연속으로 N 프레임(기본 3프레임) 동안 완벽히 동일하게 감지될 때만 `GameSessionState.is_stable = true` 상태로 commit.
@@ -260,3 +261,5 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-17 | Xvfb+Openbox lifecycle 게이트 추가 | exact-title/EWMH, BGRA 캡처, resize·remap·recreate와 extension 부재 fail-closed를 재현 가능한 단일 스크립트로 고정 | [linux-vertical-slice-lifecycle.sh](.github/scripts/linux-vertical-slice-lifecycle.sh) |
 | 2026-07-18 | 캡처 pixmap을 per-frame 재획득으로 전환 | 실게임 E2E에서 XWayland가 fullscreen 게임의 buffer flip/swapchain 재생성 시 map/resize 이벤트 없이 backing pixmap을 교체해, bind 시점의 persistent named pixmap handle이 에러 없이 frozen frame을 반환하는 결함 확인(첫 곡 인식 후 곡 변경 미반영). 캡처 tick마다 NameWindowPixmap→ShmGetImage→FreePixmap으로 stale handle을 원천 차단, SHM·redirect·인플레이스 버퍼는 persistent 유지 | [linux.rs](rust/overmax_engine/src/capture/capture_engine/linux.rs) |
 | 2026-07-21 | 플랫폼 전용 코드 서브모듈 파사드 패턴 구조화 | scattered #[cfg(target_os)] 인라인 코드들을 ui::platform 및 capture_engine::windows 등의 서브모듈 파사드로 완전 분리하고, handle_ui_command 단일 통로로 이벤트 흐름을 통합하여 플랫폼 컴파일 격리성 및 가독성 대폭 향상 | [platform/mod.rs](rust/overmax_app/src/ui/platform/mod.rs) / [capture_engine/windows/](rust/overmax_engine/src/capture/capture_engine/windows/) / [native_app_viewports.rs](rust/overmax_app/src/ui/native_app_viewports.rs) |
+| 2026-07-24 | Rate/Score 불일치 시 Score 우선 판정 적용 | Rate OCR의 점/소수점 오독 대비 템플릿 매칭 기반 Score 역산값(Score / 10,000)의 정확도가 월등히 높으므로 불일치 시 Score 기준 Rate 선반영 | [play_state.rs](rust/overmax_engine/src/detector/play_state.rs) |
+

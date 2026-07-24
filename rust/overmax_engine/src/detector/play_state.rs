@@ -531,46 +531,22 @@ fn color_dist(left: (u8, u8, u8), right: (u8, u8, u8)) -> f32 {
 pub fn resolve_most_plausible_rate(
     rate_ocr: f32,
     score_rate: f32,
-    is_song_select: bool,
+    _is_song_select: bool,
 ) -> Option<f32> {
-    if (rate_ocr - score_rate).abs() < 0.1 {
-        return Some((score_rate * 100.0).floor() / 100.0);
-    }
-
-    let score_plaus = get_rate_plausibility(score_rate);
-    let ocr_plaus = get_rate_plausibility(rate_ocr);
-
-    if score_plaus != ocr_plaus {
-        if score_plaus > ocr_plaus {
-            debug_println!(
-                "    [detect] Plausibility: Trusting Score Rate ({:.2}%) over Rate OCR ({:.2}%)",
-                score_rate,
-                rate_ocr
-            );
-            return Some((score_rate * 100.0).floor() / 100.0);
-        } else {
-            debug_println!(
-                "    [detect] Plausibility: Trusting Rate OCR ({:.2}%) over Score Rate ({:.2}%)",
-                rate_ocr,
-                score_rate
-            );
-            return Some(rate_ocr);
-        }
-    }
-
-    if is_song_select {
-        // 신뢰 레벨이 같고 오차가 큰 선곡창은 보수적으로 원래 Rate OCR 유지
+    let score_rate_rounded = (score_rate * 100.0).floor() / 100.0;
+    if (rate_ocr - score_rate_rounded).abs() >= 0.01 {
         debug_println!(
-            "    [detect] Plausibility tie in song select. Keeping Rate OCR: {:.2}%",
-            rate_ocr
+            "    [detect] Rate mismatch (Rate OCR: {:.2}%, Score Rate: {:.2}%). Prioritizing Score Rate: {:.2}% (is_song_select: {})",
+            rate_ocr,
+            score_rate,
+            score_rate_rounded,
+            _is_song_select
         );
-        Some(rate_ocr)
-    } else {
-        // 결과창은 스코어 역산 값을 우선 신뢰
-        Some((score_rate * 100.0).floor() / 100.0)
     }
+    Some(score_rate_rounded)
 }
 
+#[allow(dead_code)]
 pub fn get_rate_plausibility(rate: f32) -> i32 {
     if (90.0..=100.0).contains(&rate) {
         3
@@ -668,5 +644,20 @@ mod tests {
                 frame.bgra[idx + 2] = bgr.2;
             }
         }
+    }
+
+    #[test]
+    fn test_resolve_most_plausible_rate_prioritizes_score() {
+        use super::resolve_most_plausible_rate;
+        // Rate OCR: 98.85%, Score Rate: 99.85% (from score 998,500)
+        // In both song select and result screen, score rate (99.85%) must be prioritized
+        assert_eq!(resolve_most_plausible_rate(98.85, 99.85, true), Some(99.85));
+        assert_eq!(
+            resolve_most_plausible_rate(98.85, 99.85, false),
+            Some(99.85)
+        );
+
+        // When matching
+        assert_eq!(resolve_most_plausible_rate(99.85, 99.85, true), Some(99.85));
     }
 }

@@ -360,7 +360,7 @@ impl NativeApp {
         // game_rect 락 단 1회 획득으로 통합하여 경합 방지
         let game_rect_val = *overmax_core::lock_or_recover(&self.game_rect);
         let game_found = game_rect_val.is_some();
-        let overlay_on = game_found && self.confidence > 0.1;
+        let overlay_on = game_found && self.session.scene != overmax_core::SceneType::Unknown;
 
         let overlay_on_changed = self.state_tracker.prev_overlay_on.update(overlay_on);
 

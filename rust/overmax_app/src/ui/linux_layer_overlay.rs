@@ -920,9 +920,10 @@ fn is_degraded(snapshot: &LinuxOverlaySnapshot) -> bool {
 
 fn is_hidden(snapshot: &LinuxOverlaySnapshot) -> bool {
     snapshot.capture_fatal.is_none()
-        && snapshot
-            .window_snapshot
-            .is_some_and(|window| !window.foreground)
+        && snapshot.window_snapshot.is_some_and(|window| {
+            !window.foreground
+                || (window.fullscreen && snapshot.state.scene == overmax_core::SceneType::Unknown)
+        })
 }
 
 fn panel_size(snapshot: Option<&LinuxOverlaySnapshot>) -> (u32, u32) {
@@ -1228,7 +1229,7 @@ mod tests {
         calculate_margin, panel_size, LinuxLayerOverlayHandle, LinuxOverlaySnapshot,
         PublishedSnapshots,
     };
-    use overmax_core::GameSessionState;
+    use overmax_core::{GameSessionState, SceneType};
     use overmax_data::{RecommendResult, RecordDB, RecordManager};
     use overmax_engine::capture::window_tracker::{WindowRect, WindowSnapshot};
     use std::io::Read as _;
@@ -1296,6 +1297,8 @@ mod tests {
         });
         assert_eq!(panel_size(Some(&background)), (1, 1));
         background.window_snapshot.as_mut().unwrap().foreground = true;
+        assert_eq!(panel_size(Some(&background)), (1, 1));
+        background.state.scene = SceneType::Freestyle;
         assert_eq!(panel_size(Some(&background)), (360, 406));
         background.window_snapshot.as_mut().unwrap().fullscreen = false;
         assert_eq!(panel_size(Some(&background)), (320, 116));

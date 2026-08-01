@@ -130,7 +130,6 @@ impl DetectionPipeline {
 
         let logo_detected =
             self.last_logo_scene != SceneType::Unknown && self.last_logo_scene != SceneType::Online;
-        self.hysteresis.update(logo_detected);
         self.process_frame_shared(frame, logo_detected, now)
     }
 
@@ -201,7 +200,8 @@ impl DetectionPipeline {
     fn detect_logo_if_due(&mut self, frame: &CapturedFrame, now: f64) -> Option<SceneType> {
         // 씬이 Unknown인 경우(진입 대기): 빠른 인식을 위해 0.3초 주기로 감시
         // 씬이 이미 확정된 경우(유지 중): CPU 소모 최소화를 위해 2.0초 주기로 완화 (이탈은 픽셀 매칭으로 즉시 처리되므로 반응성 무관)
-        if self.last_logo_scene == SceneType::Unknown {
+        let acquiring = self.last_logo_scene == SceneType::Unknown || !self.hysteresis.is_active;
+        if acquiring {
             if self.unknown_since.is_none() {
                 self.unknown_since = Some(now);
             }
@@ -209,7 +209,7 @@ impl DetectionPipeline {
             self.unknown_since = None;
         }
 
-        let cooldown = if self.last_logo_scene == SceneType::Unknown {
+        let cooldown = if acquiring {
             let unknown_duration = now - self.unknown_since.unwrap_or(now);
             if unknown_duration < 3.0 {
                 0.3
@@ -458,6 +458,7 @@ pub fn detect_openmatch_color_match(mean: (u8, u8, u8)) -> bool {
 }
 
 pub fn check_open_match_badge(frame: &CapturedFrame, rois: &RoiManager) -> Option<SceneType> {
+    let edge_threshold = strict_edge_threshold(frame);
     // PlayerPanel ROI 엣지 확인
     let edge_strength_result_open3 = rois
         .get_roi_for_scene("player_panel", SceneType::ResultOpen3)
@@ -469,25 +470,25 @@ pub fn check_open_match_badge(frame: &CapturedFrame, rois: &RoiManager) -> Optio
 
     match (edge_strength_result_open2, edge_strength_result_open3) {
         (Some(strength2), Some(strength3)) => {
-            if strength2 >= STRICT_EDGE_THRESHOLD && strength3 >= STRICT_EDGE_THRESHOLD {
+            if strength2 >= edge_threshold && strength3 >= edge_threshold {
                 return Some(if strength2 > strength3 {
                     SceneType::ResultOpen2
                 } else {
                     SceneType::ResultOpen3
                 });
-            } else if strength2 >= STRICT_EDGE_THRESHOLD {
+            } else if strength2 >= edge_threshold {
                 return Some(SceneType::ResultOpen2);
-            } else if strength3 >= STRICT_EDGE_THRESHOLD {
+            } else if strength3 >= edge_threshold {
                 return Some(SceneType::ResultOpen3);
             }
         }
         (Some(strength2), None) => {
-            if strength2 >= STRICT_EDGE_THRESHOLD {
+            if strength2 >= edge_threshold {
                 return Some(SceneType::ResultOpen2);
             }
         }
         (None, Some(strength3)) => {
-            if strength3 >= STRICT_EDGE_THRESHOLD {
+            if strength3 >= edge_threshold {
                 return Some(SceneType::ResultOpen3);
             }
         }
@@ -542,9 +543,13 @@ fn detect_result_scene_via_edge(
                 "    [detect_result_scene_via_edge] Result screen detected via jacket edge/band. Colorbar mean BGR={:?}",
                 mean
             );
+            let colorbar_edge_roi = crate::detector::roi::RoiRect {
+                x2: colorbar_roi.x2.max(colorbar_roi.x1 + 5),
+                ..colorbar_roi
+            };
             if detect_freestyle_color_match(mean)
-                && detect_rect_edges(frame, colorbar_roi)
-                    .map(|edge_strength| edge_strength >= STRICT_EDGE_THRESHOLD)
+                && detect_rect_edges(frame, colorbar_edge_roi)
+                    .map(|edge_strength| edge_strength >= strict_edge_threshold(frame))
                     .unwrap_or(false)
             {
                 debug_println!("    [detect_result_scene_via_edge] Result screen detected via freestyle colorbar!");
@@ -671,6 +676,13 @@ fn detect_rect_edges(frame: &CapturedFrame, roi: crate::detector::roi::RoiRect) 
         .and_then(frame, |ext_img| ext_img.detect_edges(margin as usize).ok())
 }
 
+fn strict_edge_threshold(frame: &CapturedFrame) -> f32 {
+    let scale = (frame.width as f32 / 1920.0)
+        .min(frame.height as f32 / 1080.0)
+        .min(1.0);
+    (STRICT_EDGE_THRESHOLD * scale).max(19.0)
+}
+
 fn detect_jacket_edges(
     frame: &CapturedFrame,
     jacket_roi: crate::detector::roi::RoiRect,
@@ -784,9 +796,26 @@ fn check_category_band_solid(
 
 #[cfg(test)]
 mod tests {
-    use super::{DetectionPipeline, JacketMatchStatus};
+    use super::{strict_edge_threshold, DetectionPipeline, JacketMatchStatus};
     use crate::capture::frame::CapturedFrame;
     use overmax_data::ImageIndexDb;
+
+    #[test]
+    fn scales_strict_edge_threshold_only_below_1080p() {
+        assert!((strict_edge_threshold(&blank_frame()) - 25.0).abs() < f32::EPSILON);
+        let frame_720p = CapturedFrame {
+            width: 1280,
+            height: 720,
+            bgra: Vec::new(),
+        };
+        assert!((strict_edge_threshold(&frame_720p) - 19.0).abs() < f32::EPSILON);
+        let frame_4k = CapturedFrame {
+            width: 3840,
+            height: 2160,
+            bgra: Vec::new(),
+        };
+        assert!((strict_edge_threshold(&frame_4k) - 25.0).abs() < f32::EPSILON);
+    }
 
     #[test]
     fn stays_detecting_until_hysteresis_activates() {
@@ -816,6 +845,41 @@ mod tests {
 
         assert!(output.is_song_select);
         assert!(output.state.context.is_none());
+    }
+
+    #[test]
+    fn cached_frames_do_not_repeat_a_scene_miss() {
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let frame = blank_frame();
+        use overmax_core::SceneType;
+
+        pipeline.process_frame_with_logo(&frame, SceneType::Freestyle, 1.0);
+        pipeline.process_frame_with_logo(&frame, SceneType::Freestyle, 2.0);
+        let miss = pipeline.process_frame_with_logo(&frame, SceneType::Unknown, 3.0);
+        assert!(miss.is_song_select);
+        assert!(!miss.is_leaving);
+
+        for now in [3.1, 3.2, 3.3, 3.4] {
+            let cached = pipeline.process_frame_cached(&frame, now);
+            assert!(cached.is_song_select);
+            assert!(!cached.is_leaving);
+        }
+    }
+
+    #[test]
+    fn cached_frames_do_not_complete_scene_entry() {
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let frame = blank_frame();
+        use overmax_core::SceneType;
+
+        let fresh = pipeline.process_frame_with_logo(&frame, SceneType::Freestyle, 1.0);
+        pipeline.last_logo_scene = SceneType::Freestyle;
+        let cached = pipeline.process_frame_cached(&frame, 1.1);
+        let second_fresh = pipeline.process_frame_with_logo(&frame, SceneType::Freestyle, 1.2);
+
+        assert!(!fresh.is_song_select);
+        assert!(!cached.is_song_select);
+        assert!(second_fresh.is_song_select);
     }
 
     #[test]

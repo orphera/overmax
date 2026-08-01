@@ -113,7 +113,10 @@ impl DetectionWorker {
     }
 
     fn run(&mut self) {
+        #[cfg(target_os = "windows")]
         let tracker = WindowTracker::new(&window_title(&self.settings));
+        #[cfg(target_os = "linux")]
+        let mut tracker = WindowTracker::new(&window_title(&self.settings));
         let mut capturer: Box<dyn CaptureEngine> = match AdaptiveCaptureEngine::new() {
             Ok(c) => Box::new(c),
             Err(e) => return self.log(format!("[Detection] capture init failed: {e}")),
@@ -126,7 +129,16 @@ impl DetectionWorker {
             self.tick(&tracker, &mut capturer, &mut pipeline);
             #[cfg(target_os = "linux")]
             if !self.tick_linux(&tracker, &mut capturer, &mut pipeline) {
-                return;
+                std::thread::sleep(Duration::from_secs(1));
+                tracker = WindowTracker::new(&window_title(&self.settings));
+                capturer = match AdaptiveCaptureEngine::new() {
+                    Ok(capturer) => Box::new(capturer),
+                    Err(error) => {
+                        self.log(format!("[Detection] capture reconnect failed: {error}"));
+                        continue;
+                    }
+                };
+                continue;
             }
             std::thread::sleep(self.sleep_duration());
         }

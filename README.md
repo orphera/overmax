@@ -26,17 +26,32 @@ DJMAX RESPECT V 선곡 화면에서 V-Archive 기반 비공식 난이도 정보�
 
 ### 설치 방법
 
+#### Windows
+
 1. [Releases](https://github.com/orphera/overmax/releases) 에서 최신 버전의 `overmax.zip`을 다운로드합니다.
 2. 압축을 풀고 `overmax.exe`를 실행합니다.
 3. 실행 중 DJMAX RESPECT V를 실행하면 자동으로 인식이 시작됩니다.
 
 > **자동 업데이트**: 앱 시작 시 자동으로 최신 버전 여부 및 곡 DB(`image_index.db`) 상태를 확인하여 업데이트를 수행합니다.
 
+#### Linux (초기 지원)
+
+1. Releases에서 `overmax-linux-x86_64.tar.gz`를 다운로드해 사용자 쓰기 가능한 디렉터리에 풉니다.
+2. 해당 디렉터리에서 `./overmax`를 실행합니다. 설정과 캐시는 실행 디렉터리에 저장됩니다.
+3. 같은 세션에서 Proton/XWayland로 DJMAX RESPECT V를 실행합니다.
+
+Linux는 x86_64, Wayland compositor의 `wlr-layer-shell`, XWayland의 XComposite·MIT-SHM, Vulkan, fontconfig와 한글 글꼴이 필요합니다. 현재 검증 범위는 같은 `DISPLAY`의 Proton/XWayland 게임, borderless fullscreen, 단일 출력입니다.
+
 ### 요구사항
 
-- Windows 10 이상 (64bit)
+- Windows 10 1809 이상 (64bit), 또는 위 초기 지원 범위를 만족하는 x86_64 Linux
 - DJMAX RESPECT V (Steam)
 - 실행 중 인터넷 연결 (V-Archive 데이터 다운로드, 앱 및 DB 자동 업데이트 확인)
+
+### Linux 알려진 제한
+
+- Gamescope/Steam Deck Gaming Mode, native Wayland 게임 surface, XWayland 또는 `wlr-layer-shell`이 없는 환경, 창모드와 다중 출력은 지원하지 않습니다.
+- Linux 앱 자동 업데이트는 아직 지원하지 않습니다. 새 bundle을 직접 받아 기존 `settings.user.json`과 `cache/`를 복사해야 합니다.
 
 > ⚠️ **중요: 게임 화면 설정 안내**
 > * **테두리 없는 전체화면(전체 창 모드) 권장**: 오버레이 창을 게임 화면 위에 정상적으로 띄워놓고 플레이하려면 게임 옵션에서 화면 설정을 **"전체 창 모드(Borderless Fullscreen)"**로 설정해 주세요.
@@ -60,7 +75,7 @@ DJMAX RESPECT V 선곡 화면에서 V-Archive 기반 비공식 난이도 정보�
 ```bash
 # Rust 설치 필요 (rustup)
 cargo build --release -p overmax-app
-./target/release/overmax.exe
+./target/release/overmax-rs
 ```
 
 ### 프로젝트 구조 (Rust)
@@ -73,6 +88,7 @@ cargo build --release -p overmax-app
 ### 빌드 및 배포 스크립트
 
 - `scripts/package-rust.ps1`: 전체 빌드 및 배포용 `overmax.zip`, `release_manifest.json` 생성 자동화 스크립트 (기존 배포 레이아웃과 동일한 규격 유지)
+- `scripts/package-linux.sh`: x86_64 Linux portable `tar.gz` 생성
 
 ---
 
@@ -96,4 +112,3 @@ cargo build --release -p overmax-app
 ## 라이선스
 
 MIT
-

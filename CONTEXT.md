@@ -33,34 +33,6 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 
 ---
 
-# Linux Port
-
-- **현재 상태**: 최소 수직 슬라이스가 완료됐다(2026-07-18). Linux unit/workspace 회귀, Xvfb 21.1.24 + Openbox 3.6.1 lifecycle, hosted Windows build/test, mpv(X11)+native overlay 수동 검증, 실게임(DJMAX RESPECT V, Proton/XWayland, niri) E2E, 출력 off→on 후 앱 생존·degraded panel 전환을 모두 통과했다. 실게임 E2E에서 발견된 XWayland stale backing pixmap 결함은 per-frame `NameWindowPixmap` 재획득으로 수정 후 재검증했다. 다음 단계는 인식 정확도 holdout 검증이다.
-- **최초 지원 범위**: 같은 `DISPLAY`에서 XID가 관측되는 Proton/XWayland 게임을 exact title로 추적하고, XComposite named pixmap + MIT-SHM으로 캡처해 wlr-layer-shell `Layer::Overlay` surface에 표시한다. borderless fullscreen 단일 출력만 지원하며 capability가 부족하거나 대상이 모호하면 fail closed한다.
-- **제외 범위**: Gamescope/Steam Deck Gaming Mode, native Wayland 게임 surface, wlr-layer-shell 또는 XWayland가 없는 세션, windowed/multi-output, non-SHM 캡처 fallback은 최초 포팅에 포함하지 않는다.
-- **Linux 직접 의존성** (`cfg(target_os = "linux")` 한정): 추적·캡처는 `x11rb 0.13`(`composite`, `shm`)와 `memmap2`, overlay는 `smithay-client-toolkit 0.20`, system feature를 켠 `wayland-client 0.31`, `egui-wgpu 0.33.3`, Vulkan 한정 `wgpu 27.0.1`, `raw-window-handle 0.6`, `pollster 0.4`, `rustix 1`을 사용한다. 기존 eframe/Glow와 공용 verified pipeline은 유지한다.
-- **호환 원칙**: Linux 구현은 플랫폼별 신규 코드와 공용 계약의 additive 최소 확장만 허용한다. Windows 기본 동작, OCR 1-Pass, history 기반 안정화, 사용자 파일 호환성은 바꾸지 않는다.
-- **CI**: fork 전용 [ci.yml](.github/workflows/ci.yml)에서 Rust `1.97.0`을 명시하고 Linux build/test/clippy, hosted Windows build/test와 Ubuntu 24.04의 Xvfb+Openbox lifecycle을 모두 `--locked`로 실행한다. Hosted Windows 검증은 실제 DJMAX+GPU의 GDI/DXGI 수동 회귀를 대신하지 않는다.
-
-## 포팅 실행 순서
-
-1. **기술 타당성 검증 — 완료**: XWayland 창 캡처와 native layer overlay가 성능, 캡처 지연, 리소스 사용, Z-order, 입력 및 픽셀 정합 기준을 만족하는지 검증했다.
-2. **최소 수직 슬라이스 — 완료 (2026-07-18)**: `창 추적 → 캡처 → 기존 verified pipeline → native overlay`를 Linux에서 end-to-end로 연결했다.
-   - [x] Linux 지원 범위, 직접 의존성 및 Windows 호환 원칙 확정
-   - [x] Linux build/test/clippy와 hosted Windows build/test workflow 추가
-   - [x] `WindowSnapshot`, 캡처 대상 전달 및 필요한 detection output 필드의 additive 계약 추가
-   - [x] exact-title 창 추적과 단일 snapshot 기반 rect/foreground/fullscreen 판정
-   - [x] XComposite + MIT-SHM 캡처(per-frame named pixmap) 및 Xvfb+Openbox lifecycle/fail-closed 검증
-   - [x] 캡처 실패 시 pipeline full reset 및 `detecting()` 전송으로 stale verified 상태 차단
-   - [x] fontconfig CJK 폰트 로딩과 startup capability probe
-   - [x] capability 기반 compact native layer overlay와 기존 UI 연결
-   - [x] 기존 재킷/엣지 인식 flow 연결 (새 matcher 및 OCR loop 추가 없음)
-   - [x] 완료 조건 충족: Linux unit/lifecycle, hosted Windows 회귀, mpv(X11)+native overlay 수동 검증, 실게임 E2E, 출력 off→on 후 앱 생존·재표시를 모두 통과 (2026-07-18)
-3. **인식 정확도 검증**: 최소 수직 슬라이스 완료 후 독립 holdout으로 기존 공용 인식 flow의 지연·정확도를 평가한다. 실제 실패가 확인되기 전에는 새 matcher를 설계하지 않는다.
-4. **릴리스 보강**: 인식 검증 완료 후 RC 성능 재측정, 사용자 파일 호환, 패키징 및 README를 정리한다.
-
----
-
 # Current Architecture
 
 ## Workspace Crate 구조
@@ -253,16 +225,4 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-28 | Windows OCR 의존성 및 WinRT C++ COM 연동 완전 제거 | 씬 감지의 100% OCR-Free 전환 및 Rate/Score 템플릿 매칭 고도화에 따라, 무거운 WinRT Windows OCR 의존성(`Media_Ocr` 등)과 feature flag(`ocr-fallback`)를 전면 삭제하여 Pure Rust Native 엔진으로 완벽 단일화 | [Cargo.toml](rust/overmax_engine/Cargo.toml) / [play_state.rs](rust/overmax_engine/src/detector/play_state.rs) |
 | 2026-07-28 | OcrDetector 구조체 및 ocr_engine 모듈 전면 삭제, detector::templates 통합 | 상태 없는 0B 껍데기 구조체와 쓸모없던 로고 OCR 잔재 코드(350+줄)를 완전히 삭제하고, Rate/Score/모드/난이도 템플릿 매칭 로직을 detector::templates 모듈의 순수 함수로 전면 재배치하여 깔끔한 모듈 구조 달성 | [templates/mod.rs](rust/overmax_engine/src/detector/templates/mod.rs) / [templates/matching.rs](rust/overmax_engine/src/detector/templates/matching.rs) / [play_state.rs](rust/overmax_engine/src/detector/play_state.rs) |
 | 2026-07-29 | Mode 및 Difficulty Enum 워크스페이스 전면 전용 | 문자열 리터럴 기반 판정으로 인한 오류 방지를 위해 모드(`Mode`) 및 난이도(`Difficulty`)를 전용 Enum 타입으로 전면화하고 RecordKey 및 API 레이어에 전파 | [types.rs](rust/overmax_core/src/types.rs) / [play_state.rs](rust/overmax_engine/src/detector/play_state.rs) |
-
-## Linux Port
-
-| 날짜 | 결정 | 이유 | 참조 |
-|------|------|------|------|
-| 2026-07-17 | Linux 최초 포팅 범위·의존성·fork CI 전제 확정 | Linux 포팅이 Windows 전용 제약과 충돌하지 않도록 최초 지원 범위와 additive 변경 원칙을 SSOT에 명시 | [Linux Port](#linux-port) |
-| 2026-07-17 | Linux/Windows fork CI workflow 추가 | 첫 공용 계약 변경 전에 양 OS의 컴파일·테스트 회귀를 검증하도록 구성 | [ci.yml](.github/workflows/ci.yml) |
-| 2026-07-17 | LINUX 최소 수직 슬라이스를 fail-closed 경계로 조립 | exact-title snapshot을 persistent XComposite/MIT-SHM 캡처와 기존 verified pipeline, native layer overlay에 연결하고 오류 시 stale 상태를 즉시 초기화하기 위함. 수동·hosted 검증 전에는 최소 수직 슬라이스 완료로 승격하지 않음 | |
-| 2026-07-17 | Xvfb+Openbox lifecycle 게이트 추가 | exact-title/EWMH, BGRA 캡처, resize·remap·recreate와 extension 부재 fail-closed를 재현 가능한 단일 스크립트로 고정 | [linux-vertical-slice-lifecycle.sh](.github/scripts/linux-vertical-slice-lifecycle.sh) |
-| 2026-07-18 | 캡처 pixmap을 per-frame 재획득으로 전환 | 실게임 E2E에서 XWayland가 fullscreen 게임의 buffer flip/swapchain 재생성 시 map/resize 이벤트 없이 backing pixmap을 교체해, bind 시점의 persistent named pixmap handle이 에러 없이 frozen frame을 반환하는 결함 확인(첫 곡 인식 후 곡 변경 미반영). 캡처 tick마다 NameWindowPixmap→ShmGetImage→FreePixmap으로 stale handle을 원천 차단, SHM·redirect·인플레이스 버퍼는 persistent 유지 | [linux.rs](rust/overmax_engine/src/capture/capture_engine/linux.rs) |
-| 2026-07-21 | 플랫폼 전용 코드 서브모듈 파사드 패턴 구조화 | scattered #[cfg(target_os)] 인라인 코드들을 ui::platform 및 capture_engine::windows 등의 서브모듈 파사드로 완전 분리하고, handle_ui_command 단일 통로로 이벤트 흐름을 통합하여 플랫폼 컴파일 격리성 및 가독성 대폭 향상 | [platform/mod.rs](rust/overmax_app/src/ui/platform/mod.rs) / [capture_engine/windows/](rust/overmax_engine/src/capture/capture_engine/windows/) / [native_app_viewports.rs](rust/overmax_app/src/ui/native_app_viewports.rs) |
-| 2026-07-24 | Rate/Score 불일치 시 Score 우선 판정 적용 | Rate OCR의 점/소수점 오독 대비 템플릿 매칭 기반 Score 역산값(Score / 10,000)의 정확도가 월등히 높으므로 불일치 시 Score 기준 Rate 선반영 | [play_state.rs](rust/overmax_engine/src/detector/play_state.rs) |
 

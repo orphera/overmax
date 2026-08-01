@@ -66,7 +66,11 @@ impl PlayStateDetector {
     ) -> (f32, Option<RateTelemetry>) {
         if self.should_run_rate_detection(now) {
             if let Some(rate_res) = rois.and_then_roi(frame, "rate", |rate_img| {
-                let mut rate_res = templates::detect_rate(rate_img);
+                let mut rate_res = if is_result {
+                    templates::detect_result_rate(rate_img)
+                } else {
+                    templates::detect_rate(rate_img)
+                };
                 rate_res.0 =
                     Self::cross_validate_rate_with_score(frame, rois, scene, is_result, rate_res.0);
                 Some(rate_res)
@@ -285,12 +289,7 @@ impl PlayStateDetector {
                 let (rate, tel) = self.process_rate_detection(frame, rois, scene, is_result, now);
                 telemetry = tel;
 
-                let rate_valid = !is_result
-                    || self
-                        .last_rate_result
-                        .0
-                        .map(|r| r >= MIN_VALID_RATE)
-                        .unwrap_or(false);
+                let rate_valid = !is_result || self.last_rate_result.0.is_some();
 
                 Some(PlayContext {
                     song_id: sid,

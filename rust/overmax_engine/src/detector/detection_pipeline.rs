@@ -458,7 +458,6 @@ pub fn detect_openmatch_color_match(mean: (u8, u8, u8)) -> bool {
 }
 
 pub fn check_open_match_badge(frame: &CapturedFrame, rois: &RoiManager) -> Option<SceneType> {
-    let edge_threshold = strict_edge_threshold(frame);
     // PlayerPanel ROI 엣지 확인
     let edge_strength_result_open3 = rois
         .get_roi_for_scene("player_panel", SceneType::ResultOpen3)
@@ -470,25 +469,25 @@ pub fn check_open_match_badge(frame: &CapturedFrame, rois: &RoiManager) -> Optio
 
     match (edge_strength_result_open2, edge_strength_result_open3) {
         (Some(strength2), Some(strength3)) => {
-            if strength2 >= edge_threshold && strength3 >= edge_threshold {
+            if strength2 >= STRICT_EDGE_THRESHOLD && strength3 >= STRICT_EDGE_THRESHOLD {
                 return Some(if strength2 > strength3 {
                     SceneType::ResultOpen2
                 } else {
                     SceneType::ResultOpen3
                 });
-            } else if strength2 >= edge_threshold {
+            } else if strength2 >= STRICT_EDGE_THRESHOLD {
                 return Some(SceneType::ResultOpen2);
-            } else if strength3 >= edge_threshold {
+            } else if strength3 >= STRICT_EDGE_THRESHOLD {
                 return Some(SceneType::ResultOpen3);
             }
         }
         (Some(strength2), None) => {
-            if strength2 >= edge_threshold {
+            if strength2 >= STRICT_EDGE_THRESHOLD {
                 return Some(SceneType::ResultOpen2);
             }
         }
         (None, Some(strength3)) => {
-            if strength3 >= edge_threshold {
+            if strength3 >= STRICT_EDGE_THRESHOLD {
                 return Some(SceneType::ResultOpen3);
             }
         }
@@ -543,13 +542,9 @@ fn detect_result_scene_via_edge(
                 "    [detect_result_scene_via_edge] Result screen detected via jacket edge/band. Colorbar mean BGR={:?}",
                 mean
             );
-            let colorbar_edge_roi = crate::detector::roi::RoiRect {
-                x2: colorbar_roi.x2.max(colorbar_roi.x1 + 5),
-                ..colorbar_roi
-            };
             if detect_freestyle_color_match(mean)
-                && detect_rect_edges(frame, colorbar_edge_roi)
-                    .map(|edge_strength| edge_strength >= strict_edge_threshold(frame))
+                && detect_rect_edges(frame, colorbar_roi)
+                    .map(|edge_strength| edge_strength >= STRICT_EDGE_THRESHOLD)
                     .unwrap_or(false)
             {
                 debug_println!("    [detect_result_scene_via_edge] Result screen detected via freestyle colorbar!");
@@ -676,13 +671,6 @@ fn detect_rect_edges(frame: &CapturedFrame, roi: crate::detector::roi::RoiRect) 
         .and_then(frame, |ext_img| ext_img.detect_edges(margin as usize).ok())
 }
 
-fn strict_edge_threshold(frame: &CapturedFrame) -> f32 {
-    let scale = (frame.width as f32 / 1920.0)
-        .min(frame.height as f32 / 1080.0)
-        .min(1.0);
-    (STRICT_EDGE_THRESHOLD * scale).max(19.0)
-}
-
 fn detect_jacket_edges(
     frame: &CapturedFrame,
     jacket_roi: crate::detector::roi::RoiRect,
@@ -796,26 +784,9 @@ fn check_category_band_solid(
 
 #[cfg(test)]
 mod tests {
-    use super::{strict_edge_threshold, DetectionPipeline, JacketMatchStatus};
+    use super::{DetectionPipeline, JacketMatchStatus};
     use crate::capture::frame::CapturedFrame;
     use overmax_data::ImageIndexDb;
-
-    #[test]
-    fn scales_strict_edge_threshold_only_below_1080p() {
-        assert!((strict_edge_threshold(&blank_frame()) - 25.0).abs() < f32::EPSILON);
-        let frame_720p = CapturedFrame {
-            width: 1280,
-            height: 720,
-            bgra: Vec::new(),
-        };
-        assert!((strict_edge_threshold(&frame_720p) - 19.0).abs() < f32::EPSILON);
-        let frame_4k = CapturedFrame {
-            width: 3840,
-            height: 2160,
-            bgra: Vec::new(),
-        };
-        assert!((strict_edge_threshold(&frame_4k) - 25.0).abs() < f32::EPSILON);
-    }
 
     #[test]
     fn stays_detecting_until_hysteresis_activates() {

@@ -10,7 +10,7 @@ use overmax_engine::capture::window_tracker::{WindowRect, WindowSnapshot};
 use raw_window_handle::{
     RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
 };
-use rustix::event::{poll, PollFd, PollFlags};
+use rustix::event::{poll, PollFd, PollFlags, Timespec};
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_compositor, delegate_layer, delegate_output, delegate_pointer, delegate_registry,
@@ -36,7 +36,7 @@ use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Sender, SyncSender};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use wayland_client::{
     backend::WaylandError,
     globals::registry_queue_init,
@@ -253,7 +253,8 @@ fn run(
                 PollFd::new(&wake_reader, PollFlags::IN | PollFlags::ERR),
             ];
             loop {
-                match poll(&mut fds, None) {
+                let timeout = repaint_timeout(backend.next_repaint, Instant::now());
+                match poll(&mut fds, timeout.as_ref()) {
                     Ok(_) => break,
                     Err(rustix::io::Errno::INTR) => continue,
                     Err(error) => return Err(error.to_string()),
@@ -327,6 +328,7 @@ struct Backend {
     events: Vec<egui::Event>,
     start: Instant,
     needs_redraw: bool,
+    next_repaint: Option<Instant>,
     snapshot: Option<Arc<LinuxOverlaySnapshot>>,
     published: Arc<Mutex<PublishedSnapshots>>,
     command_tx: Sender<UiCommand>,
@@ -406,6 +408,7 @@ impl Backend {
                 events: Vec::new(),
                 start: Instant::now(),
                 needs_redraw: false,
+                next_repaint: None,
                 snapshot: None,
                 published,
                 command_tx,
@@ -419,6 +422,13 @@ impl Backend {
     }
 
     fn after_dispatch(&mut self, qh: &QueueHandle<Self>) -> Result<(), String> {
+        if self
+            .next_repaint
+            .is_some_and(|deadline| deadline <= Instant::now())
+        {
+            self.next_repaint = None;
+            self.needs_redraw = true;
+        }
         if self.recreate_on_output
             && self.layer.is_none()
             && self.output_state.outputs().next().is_some()
@@ -511,6 +521,7 @@ impl Backend {
         self.layer = None;
         self.configured = false;
         self.needs_redraw = false;
+        self.next_repaint = None;
     }
 
     fn reset_pointer_state(&mut self) {
@@ -669,14 +680,17 @@ impl Backend {
             self.renderer.free_texture(id);
         }
 
-        let repaint_now = full_output
+        let repaint_delay = full_output
             .viewport_output
             .get(&egui::ViewportId::ROOT)
-            .is_some_and(|output| output.repaint_delay.is_zero());
-        if repaint_now {
+            .map_or(Duration::MAX, |output| output.repaint_delay);
+        if repaint_delay.is_zero() {
+            self.next_repaint = None;
             if let Some(layer) = &self.layer {
                 layer.wl_surface().frame(qh, layer.wl_surface().clone());
             }
+        } else {
+            self.next_repaint = Instant::now().checked_add(repaint_delay);
         }
         self.queue.submit(
             user_buffers
@@ -755,6 +769,12 @@ impl Backend {
             (self.app_repaint)();
         }
     }
+}
+
+fn repaint_timeout(deadline: Option<Instant>, now: Instant) -> Option<Timespec> {
+    deadline
+        .map(|deadline| deadline.saturating_duration_since(now))
+        .and_then(|duration| duration.try_into().ok())
 }
 
 impl Drop for Backend {
@@ -1236,6 +1256,7 @@ mod tests {
     use std::os::unix::net::UnixStream;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
 
     #[test]
     fn calculates_snap_and_clamps_manual_position() {
@@ -1254,6 +1275,21 @@ mod tests {
             (0, 30)
         );
         assert_eq!(panel_size(None), (320, 116));
+    }
+
+    #[test]
+    fn delayed_repaint_becomes_a_poll_timeout() {
+        let now = Instant::now();
+        let timeout = super::repaint_timeout(Some(now + Duration::from_millis(25)), now)
+            .expect("scheduled repaint must set a timeout");
+        assert_eq!(
+            Duration::try_from(timeout).unwrap(),
+            Duration::from_millis(25)
+        );
+
+        let due = super::repaint_timeout(Some(now), now).expect("due repaint uses zero timeout");
+        assert!(Duration::try_from(due).unwrap().is_zero());
+        assert!(super::repaint_timeout(None, now).is_none());
     }
 
     #[test]

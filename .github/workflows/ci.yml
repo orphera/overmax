@@ -7,6 +7,7 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'clippy.toml'
+      - 'scripts/package-linux.sh'
       - '.github/**'
   push:
     branches: [main]
@@ -15,6 +16,7 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'clippy.toml'
+      - 'scripts/package-linux.sh'
       - '.github/**'
 
 permissions:
@@ -29,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -45,6 +47,9 @@ jobs:
       - name: Clippy
         if: runner.os == 'Linux'
         run: cargo clippy --workspace --all-targets --locked
+      - name: Package Linux bundle
+        if: runner.os == 'Linux'
+        run: bash scripts/package-linux.sh
 
   linux-x11-lifecycle:
     runs-on: ubuntu-24.04

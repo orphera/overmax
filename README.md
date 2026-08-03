@@ -44,7 +44,7 @@ Linux는 x86_64, Wayland compositor의 `wlr-layer-shell`, XWayland의 XComposite
 
 ### 요구사항
 
-- Windows 10 1809 이상 (64bit), 또는 위 초기 지원 범위를 만족하는 x86_64 Linux
+- Windows 10 이상 (64bit), 또는 위 초기 지원 범위를 만족하는 x86_64 Linux
 - DJMAX RESPECT V (Steam)
 - 실행 중 인터넷 연결 (V-Archive 데이터 다운로드, 앱 및 DB 자동 업데이트 확인)
 
@@ -88,7 +88,7 @@ cargo build --release -p overmax-app
 ### 빌드 및 배포 스크립트
 
 - `scripts/package-rust.ps1`: 전체 빌드 및 배포용 `overmax.zip`, `release_manifest.json` 생성 자동화 스크립트 (기존 배포 레이아웃과 동일한 규격 유지)
-- `scripts/package-linux.sh`: x86_64 Linux portable `tar.gz` 생성
+- `scripts/package-linux.sh`: glibc 2.39 ABI 기준 x86_64 Linux `tar.gz` 생성
 
 ---
 

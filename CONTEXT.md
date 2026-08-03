@@ -19,17 +19,31 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 
 # Core Constraints
 
-- 메모리 접근 / 프로세스 인젝션 금지 (화면 캡처와 OS 창 API 추적만 허용: Windows는 Win32, Linux는 X11/XWayland)
+- 메모리 접근 / 프로세스 인젝션 금지 (화면 캡처와 OS 창 API 추적만 허용)
 - 인게임 성능 영향 최소화 (최우선 과제)
 - 자가 업데이트 및 락 제어: 업데이트 후 재시작 시 중복 실행 락(Named Mutex) 해제 지연으로 새 인스턴스가 조기 종료되는 것을 방지하기 위해, 부모 프로세스의 락 가드(`SingleInstanceGuard`)를 명시적으로 `drop()`한 후 새 프로세스를 spawn하고 기존 프로세스를 즉시 종료하는 안전한 재시작 워크플로우를 유지함.
 - Python 레거시 코드 완전 제거 및 순수 Rust 코드베이스로 전환 완료 (`rust/` workspace)
 - 스팀(Steam) 경로 탐색 및 계정 연동: V-Archive 연동 등을 위한 스팀 계정 정보(`loginusers.vdf`)를 탐색할 때, 하드코딩된 기본 경로 및 HKCU/HKLM 레지스트리를 먼저 조회합니다. 만약 검색에 실패할 경우 최종 폴백으로 실행 중인 `steam.exe` 프로세스를 Win32 Toolhelp 스냅샷 API로 스캔하여 실행 경로를 동적으로 검출합니다.
-- 현재 릴리스 및 실동작 지원 기준은 Windows 10 (버전 1809) / 11 64-bit이다. Linux는 아래 최초 지원 범위로 포팅 중이며, 최소 수직 슬라이스 완료 전의 Non-Windows 빌드 통과는 실동작 지원을 의미하지 않는다.
+- 현재 Windows 릴리스 및 실동작 지원 기준은 Windows 10 (버전 1809) / 11 64-bit이다.
 - 기존 사용자 파일과의 호환성 유지:
   - `settings.user.json` (사용자 설정 델타 저장)
   - `cache/record.db` (로컬 플레이 기록 SQLite DB)
   - `cache/songs.json` (V-Archive 곡 DB)
   - `cache/image_index.db` (곡 재킷 매칭용 DB)
+
+---
+
+# Linux Support
+
+- **현재 상태**: Linux 핵심 실행 경로(창 추적 → 캡처 → 기존 디텍션 파이프라인 → native overlay)와 배포 번들 생성, hosted CI 검증이 연결되어 있다. Windows와 같은 범용 Linux 지원은 아니며 아래 범위만 지원 대상으로 본다.
+- **지원 범위**: x86_64, glibc 2.39 이상, Wayland `wlr-layer-shell`, XWayland의 XComposite 0.2 이상과 MIT-SHM 1.2 이상, Vulkan, fontconfig와 한글 글꼴이 필요하다. 게임과 앱은 같은 `DISPLAY`에서 실행하며 borderless fullscreen 단일 출력만 지원한다.
+- **추적 및 캡처**: EWMH exact-title로 단일 X11 window를 선택하고 XComposite redirect와 MIT-SHM buffer는 유지한다. XWayland의 backing pixmap 교체로 frozen frame이 발생하지 않도록 named pixmap은 매 캡처마다 재획득·해제한다.
+- **오버레이**: Linux 전용 layer-shell surface가 공용 overlay snapshot을 렌더링한다. background window와 fullscreen의 `SceneType::Unknown` 상태에서는 숨기며, egui의 즉시·지연 repaint 요청을 Wayland frame callback과 poll timeout으로 처리한다.
+- **오류 처리**: 일시적 window/pixmap 오류는 다음 tick에 재시도하고, X11 transport 오류만 tracker와 capturer를 재연결한다. 지원하지 않는 extension·pixel layout 같은 영구 capability 오류는 fail closed 상태를 표시하고 재연결 루프를 중단한다.
+- **단일 인스턴스**: `XDG_RUNTIME_DIR/overmax.lock`을 프로세스 수명 동안 보유하여 캡처 워커, overlay, 설정 및 SQLite 캐시의 중복 실행을 방지한다.
+- **배포 및 CI**: 공식 x86_64 Linux tarball은 glibc 2.39 ABI 기준의 고정 CI 환경에서 생성한다. Linux/Windows build·test와 Linux clippy를 `--locked`로 실행하고, Xvfb+Openbox에서 window tracker, XComposite/MIT-SHM lifecycle 및 extension 부재 fail-closed 경로를 검증한다.
+- **미지원 범위**: Gamescope/Steam Deck Gaming Mode, native Wayland 게임 surface, XWayland 또는 `wlr-layer-shell`이 없는 세션, 창모드, 다중 출력, non-SHM 캡처 fallback, Linux 앱 자동 업데이트와 시스템 트레이는 현재 지원하지 않는다.
+- **호환 원칙**: Linux 구현은 플랫폼 전용 코드와 공용 계약의 최소 확장만 허용한다. 공용 인식 로직, history 기반 안정화, 사용자 설정과 DB 구조의 기존 호환성을 Linux 검증 목적으로 변경하지 않는다.
 
 ---
 
@@ -226,3 +240,15 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-07-28 | OcrDetector 구조체 및 ocr_engine 모듈 전면 삭제, detector::templates 통합 | 상태 없는 0B 껍데기 구조체와 쓸모없던 로고 OCR 잔재 코드(350+줄)를 완전히 삭제하고, Rate/Score/모드/난이도 템플릿 매칭 로직을 detector::templates 모듈의 순수 함수로 전면 재배치하여 깔끔한 모듈 구조 달성 | [templates/mod.rs](rust/overmax_engine/src/detector/templates/mod.rs) / [templates/matching.rs](rust/overmax_engine/src/detector/templates/matching.rs) / [play_state.rs](rust/overmax_engine/src/detector/play_state.rs) |
 | 2026-07-29 | Mode 및 Difficulty Enum 워크스페이스 전면 전용 | 문자열 리터럴 기반 판정으로 인한 오류 방지를 위해 모드(`Mode`) 및 난이도(`Difficulty`)를 전용 Enum 타입으로 전면화하고 RecordKey 및 API 레이어에 전파 | [types.rs](rust/overmax_core/src/types.rs) / [play_state.rs](rust/overmax_engine/src/detector/play_state.rs) |
 
+## Linux 지원 결정 기록
+
+| 날짜 | 결정 | 이유 | 참조 |
+|------|------|------|------|
+| 2026-07-17 | 초기 Linux 지원 범위와 additive 변경 원칙 확정 | Windows 동작과 공용 인식 파이프라인을 유지하면서 검증 가능한 Proton/XWayland 환경만 지원하기 위함 | [Linux Support](#linux-support) |
+| 2026-07-17 | Linux 핵심 실행 경로 연결 | exact-title window snapshot, XComposite/MIT-SHM 캡처, 기존 디텍션 파이프라인과 native layer overlay를 fail-closed 경계로 연결 | [detection_worker.rs](rust/overmax_engine/src/detector/detection_worker.rs) / [linux_layer_overlay.rs](rust/overmax_app/src/ui/linux_layer_overlay.rs) |
+| 2026-07-17 | Xvfb+Openbox lifecycle 게이트 추가 | window 추적, BGRA 캡처, resize·remap·recreate와 extension 부재 경로를 hosted CI에서 재현하기 위함 | [linux-vertical-slice-lifecycle.sh](.github/scripts/linux-vertical-slice-lifecycle.sh) |
+| 2026-07-18 | named pixmap을 매 캡처마다 재획득 | XWayland가 map/resize 이벤트 없이 backing pixmap을 교체할 때 이전 handle이 frozen frame을 반환하는 문제를 방지 | [linux.rs](rust/overmax_engine/src/capture/capture_engine/linux.rs) |
+| 2026-07-31 | x86_64 tarball과 glibc 2.39 ABI 기준 확정 | 실행 권한과 실행 디렉터리 기준 설정·캐시 계약을 유지하면서 빌드 호스트의 최신 glibc가 배포물에 유입되는 것을 방지 | [package-linux.sh](scripts/package-linux.sh) / [ci.yml](.github/workflows/ci.yml) |
+| 2026-08-03 | Linux 단일 인스턴스 파일 락 추가 | 중복 캡처·overlay와 설정 및 SQLite 캐시 갱신 경합을 방지 | [linux.rs](rust/overmax_app/src/system/single_instance/linux.rs) |
+| 2026-08-03 | layer overlay 지연 repaint 예약 | egui의 `request_repaint_after` 요청을 poll timeout으로 연결해 외부 Wayland 이벤트가 없어도 tooltip 등 지연 UI를 갱신 | [linux_layer_overlay.rs](rust/overmax_app/src/ui/linux_layer_overlay.rs) |
+| 2026-08-03 | 캡처 오류 복구 정책 분리 | transport 오류만 재연결하고 영구 capability 오류의 반복 probe·로그·repaint를 중단해 성능 우선 제약을 유지 | [capture_engine.rs](rust/overmax_engine/src/capture/capture_engine.rs) / [detection_worker.rs](rust/overmax_engine/src/detector/detection_worker.rs) |

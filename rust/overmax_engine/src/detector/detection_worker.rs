@@ -1,5 +1,7 @@
 //! Runtime detection worker: window tracking -> capture -> pipeline -> UI state.
 
+#[cfg(target_os = "linux")]
+use crate::capture::capture_engine::CaptureErrorAction;
 use crate::capture::capture_engine::{AdaptiveCaptureEngine, CaptureEngine};
 use crate::capture::frame::CapturedFrame;
 #[cfg(target_os = "linux")]
@@ -13,6 +15,13 @@ use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
 const LOG_INTERVAL: Duration = Duration::from_secs(3);
+
+#[cfg(target_os = "linux")]
+enum LinuxTickResult {
+    Continue,
+    Reconnect,
+    Stop,
+}
 
 pub fn spawn(
     root: PathBuf,
@@ -128,17 +137,21 @@ impl DetectionWorker {
             #[cfg(target_os = "windows")]
             self.tick(&tracker, &mut capturer, &mut pipeline);
             #[cfg(target_os = "linux")]
-            if !self.tick_linux(&tracker, &mut capturer, &mut pipeline) {
-                std::thread::sleep(Duration::from_secs(1));
-                tracker = WindowTracker::new(&window_title(&self.settings));
-                capturer = match AdaptiveCaptureEngine::new() {
-                    Ok(capturer) => Box::new(capturer),
-                    Err(error) => {
-                        self.log(format!("[Detection] capture reconnect failed: {error}"));
-                        continue;
-                    }
-                };
-                continue;
+            match self.tick_linux(&tracker, &mut capturer, &mut pipeline) {
+                LinuxTickResult::Continue => {}
+                LinuxTickResult::Stop => return,
+                LinuxTickResult::Reconnect => {
+                    std::thread::sleep(Duration::from_secs(1));
+                    tracker = WindowTracker::new(&window_title(&self.settings));
+                    capturer = match AdaptiveCaptureEngine::new() {
+                        Ok(capturer) => Box::new(capturer),
+                        Err(error) => {
+                            self.log(format!("[Detection] capture reconnect failed: {error}"));
+                            continue;
+                        }
+                    };
+                    continue;
+                }
             }
             std::thread::sleep(self.sleep_duration());
         }
@@ -226,7 +239,7 @@ impl DetectionWorker {
         tracker: &WindowTracker,
         capturer: &mut Box<dyn CaptureEngine>,
         pipeline: &mut DetectionPipeline,
-    ) -> bool {
+    ) -> LinuxTickResult {
         let mut overlay_snapshot_changed = false;
         if self.window_scheduler.should_query() {
             let previous_snapshot = self.window_snapshot;
@@ -234,7 +247,7 @@ impl DetectionWorker {
                 Ok(snapshot) => snapshot,
                 Err(error) => {
                     self.on_capture_fatal(pipeline, format!("window tracking failed: {error}"));
-                    return false;
+                    return LinuxTickResult::Reconnect;
                 }
             };
             let target_changed =
@@ -244,8 +257,7 @@ impl DetectionWorker {
                 != snapshot.map(|current| (current.window, current.foreground, current.fullscreen));
             overlay_snapshot_changed = previous_snapshot != snapshot;
             if let Err(error) = capturer.set_target(snapshot) {
-                self.on_capture_fatal(pipeline, error);
-                return false;
+                return self.handle_linux_capture_error(capturer.as_ref(), pipeline, error);
             }
             self.window_scheduler.update(
                 snapshot.map(|s| s.rect),
@@ -270,14 +282,14 @@ impl DetectionWorker {
 
         let Some(snapshot) = self.window_snapshot else {
             self.on_linux_window_missing(pipeline);
-            return true;
+            return LinuxTickResult::Continue;
         };
         if !self.on_window_found(snapshot.rect, snapshot.foreground) {
-            return true;
+            return LinuxTickResult::Continue;
         }
         if !snapshot.fullscreen {
             self.on_capture_interrupted(pipeline, "borderless fullscreen is required");
-            return true;
+            return LinuxTickResult::Continue;
         }
 
         match capturer.capture_bgra_inplace(snapshot.rect, &mut self.frame_buffer) {
@@ -308,11 +320,35 @@ impl DetectionWorker {
                 }
             }
             Err(error) => {
-                self.on_capture_interrupted(pipeline, "capture failed");
-                self.log_detection_throttled(format!("[Detection] capture failed: {error}"));
+                return self.handle_linux_capture_error(capturer.as_ref(), pipeline, error);
             }
         }
-        true
+        LinuxTickResult::Continue
+    }
+
+    #[cfg(target_os = "linux")]
+    fn handle_linux_capture_error(
+        &mut self,
+        capturer: &dyn CaptureEngine,
+        pipeline: &mut DetectionPipeline,
+        error: String,
+    ) -> LinuxTickResult {
+        match capturer.error_action() {
+            CaptureErrorAction::Retry => {
+                self.on_capture_interrupted(pipeline, "capture failed");
+                self.log_detection_throttled(format!("[Detection] capture failed: {error}"));
+                LinuxTickResult::Continue
+            }
+            CaptureErrorAction::Reconnect => {
+                self.on_capture_interrupted(pipeline, "capture connection lost");
+                self.log(format!("[Detection] capture reconnect required: {error}"));
+                LinuxTickResult::Reconnect
+            }
+            CaptureErrorAction::Stop => {
+                self.on_capture_fatal(pipeline, error);
+                LinuxTickResult::Stop
+            }
+        }
     }
 
     /// `detecting()` output that closes stale verified state after a capture failure.
@@ -618,9 +654,32 @@ impl WindowQueryScheduler {
 
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
-    use super::{DetectionPipeline, DetectionWorker};
+    use super::{DetectionPipeline, DetectionWorker, LinuxTickResult};
+    use crate::capture::capture_engine::{CaptureEngine, CaptureErrorAction};
+    use crate::capture::frame::CapturedFrame;
+    use crate::capture::window_tracker::WindowRect;
     use overmax_data::{ImageIndexDb, Settings};
     use std::sync::mpsc;
+
+    struct FailedCapture(CaptureErrorAction);
+
+    impl CaptureEngine for FailedCapture {
+        fn capture_bgra(&mut self, _rect: WindowRect) -> Result<CapturedFrame, String> {
+            unreachable!()
+        }
+
+        fn capture_bgra_inplace(
+            &mut self,
+            _rect: WindowRect,
+            _out_frame: &mut CapturedFrame,
+        ) -> Result<(), String> {
+            unreachable!()
+        }
+
+        fn error_action(&self) -> CaptureErrorAction {
+            self.0
+        }
+    }
 
     #[test]
     fn sends_detecting_once_per_capture_failure_streak() {
@@ -648,5 +707,33 @@ mod tests {
         worker.capture_failure_active = false;
         worker.on_capture_interrupted(&mut pipeline, "next streak");
         assert_eq!(detection_rx.try_iter().count(), 1);
+    }
+
+    #[test]
+    fn permanent_capture_error_stops_instead_of_reconnecting() {
+        let (log_tx, _log_rx) = mpsc::channel();
+        let (game_tx, _game_rx) = mpsc::channel();
+        let (detection_tx, detection_rx) = mpsc::channel();
+        let mut worker = DetectionWorker::new(
+            std::path::PathBuf::new(),
+            Settings::default(),
+            log_tx,
+            game_tx,
+            detection_tx,
+            Box::new(|| {}),
+        );
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+
+        let result = worker.handle_linux_capture_error(
+            &FailedCapture(CaptureErrorAction::Stop),
+            &mut pipeline,
+            "unsupported pixel format".to_string(),
+        );
+
+        assert!(matches!(result, LinuxTickResult::Stop));
+        assert_eq!(
+            detection_rx.recv().unwrap().capture_fatal.as_deref(),
+            Some("unsupported pixel format")
+        );
     }
 }

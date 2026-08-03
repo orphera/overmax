@@ -1,4 +1,4 @@
-use crate::capture::capture_engine::CaptureEngine;
+use crate::capture::capture_engine::{CaptureEngine, CaptureErrorAction};
 use crate::capture::frame::CapturedFrame;
 use crate::capture::window_tracker::{WindowRect, WindowSnapshot};
 use memmap2::{MmapMut, MmapOptions};
@@ -22,6 +22,7 @@ pub struct AdaptiveCaptureEngine {
     binding: Option<TargetBinding>,
     fatal: Option<String>,
     transient: Option<String>,
+    reconnect: bool,
 }
 
 struct TargetBinding {
@@ -59,6 +60,7 @@ struct PixelLayout {
 #[derive(Debug)]
 enum CaptureFailure {
     Transient(String),
+    Reconnect(String),
     Permanent(String),
 }
 
@@ -73,6 +75,7 @@ impl AdaptiveCaptureEngine {
             binding: None,
             fatal,
             transient: None,
+            reconnect: false,
         })
     }
 
@@ -81,7 +84,15 @@ impl AdaptiveCaptureEngine {
             release_binding_best_effort(conn, binding);
         }
         self.transient = None;
+        self.reconnect = false;
         self.fatal = Some(message.clone());
+        message
+    }
+
+    fn reconnect(&mut self, message: String) -> String {
+        self.binding = None;
+        self.transient = None;
+        self.reconnect = true;
         message
     }
 }
@@ -103,12 +114,15 @@ impl CaptureEngine for AdaptiveCaptureEngine {
         match result {
             Ok(transient) => {
                 self.transient = transient;
+                self.reconnect = false;
                 Ok(())
             }
             Err(CaptureFailure::Transient(error)) => {
                 self.transient = Some(error);
+                self.reconnect = false;
                 Ok(())
             }
+            Err(CaptureFailure::Reconnect(error)) => Err(self.reconnect(error)),
             Err(CaptureFailure::Permanent(error)) => Err(self.latch(error)),
         }
     }
@@ -135,14 +149,27 @@ impl CaptureEngine for AdaptiveCaptureEngine {
         match result {
             Ok(()) => {
                 self.transient = None;
+                self.reconnect = false;
                 Ok(())
             }
             Err(CaptureFailure::Transient(error)) => {
                 let error = self.transient.clone().unwrap_or(error);
                 self.transient = Some(error.clone());
+                self.reconnect = false;
                 Err(error)
             }
+            Err(CaptureFailure::Reconnect(error)) => Err(self.reconnect(error)),
             Err(CaptureFailure::Permanent(error)) => Err(self.latch(error)),
+        }
+    }
+
+    fn error_action(&self) -> CaptureErrorAction {
+        if self.fatal.is_some() {
+            CaptureErrorAction::Stop
+        } else if self.reconnect {
+            CaptureErrorAction::Reconnect
+        } else {
+            CaptureErrorAction::Retry
         }
     }
 }
@@ -753,11 +780,18 @@ fn prefer_cleanup_error(
 }
 
 fn connection_failure(context: &str, error: ConnectionError) -> CaptureFailure {
-    CaptureFailure::Permanent(format!("{context}: {error}"))
+    let message = format!("{context}: {error}");
+    match error {
+        ConnectionError::IoError(_) | ConnectionError::UnknownError => {
+            CaptureFailure::Reconnect(message)
+        }
+        _ => CaptureFailure::Permanent(message),
+    }
 }
 
 fn id_failure(context: &str, error: ReplyOrIdError) -> CaptureFailure {
     match error {
+        ReplyOrIdError::ConnectionError(error) => connection_failure(context, error),
         ReplyOrIdError::X11Error(error) if transient_error_kind(error.error_kind) => {
             CaptureFailure::Transient(format!("{context}: {error:?}"))
         }
@@ -767,6 +801,7 @@ fn id_failure(context: &str, error: ReplyOrIdError) -> CaptureFailure {
 
 fn reply_failure(context: &str, error: ReplyError) -> CaptureFailure {
     match error {
+        ReplyError::ConnectionError(error) => connection_failure(context, error),
         ReplyError::X11Error(error) if transient_error_kind(error.error_kind) => {
             CaptureFailure::Transient(format!("{context}: {error:?}"))
         }
@@ -778,6 +813,7 @@ fn cleanup_reply(context: &str, result: Result<(), ReplyError>) -> Result<(), Ca
     match result {
         Ok(()) => Ok(()),
         Err(ReplyError::X11Error(error)) if transient_error_kind(error.error_kind) => Ok(()),
+        Err(ReplyError::ConnectionError(error)) => Err(connection_failure(context, error)),
         Err(error) => Err(CaptureFailure::Permanent(format!("{context}: {error}"))),
     }
 }
@@ -791,11 +827,14 @@ fn transient_error_kind(kind: ErrorKind) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{calculate_layout, pixel_format_supported};
-    use crate::capture::capture_engine::{AdaptiveCaptureEngine, CaptureEngine};
+    use super::{calculate_layout, connection_failure, pixel_format_supported, CaptureFailure};
+    use crate::capture::capture_engine::{
+        AdaptiveCaptureEngine, CaptureEngine, CaptureErrorAction,
+    };
     use crate::capture::frame::CapturedFrame;
     use crate::capture::window_tracker::{WindowRect, WindowSnapshot};
     use x11rb::connection::Connection;
+    use x11rb::errors::ConnectionError;
     use x11rb::protocol::xproto::{
         ConfigureWindowAux, ConnectionExt as _, CreateWindowAux, ImageOrder, VisualClass, Window,
         WindowClass,
@@ -835,6 +874,18 @@ mod tests {
     }
 
     #[test]
+    fn reconnects_transport_errors_but_stops_on_capability_errors() {
+        assert!(matches!(
+            connection_failure("test", ConnectionError::UnknownError),
+            CaptureFailure::Reconnect(_)
+        ));
+        assert!(matches!(
+            connection_failure("test", ConnectionError::UnsupportedExtension),
+            CaptureFailure::Permanent(_)
+        ));
+    }
+
+    #[test]
     #[ignore = "requires DISPLAY without Composite 0.2 or MIT-SHM 1.2"]
     fn unavailable_capture_backend_is_deferred_to_set_target() {
         let mut capture = AdaptiveCaptureEngine::new().expect("construct capture engine");
@@ -842,6 +893,7 @@ mod tests {
             .set_target(None)
             .expect_err("unsupported capture backend must fail closed");
         assert!(error.contains("Composite") || error.contains("MIT-SHM"));
+        assert_eq!(capture.error_action(), CaptureErrorAction::Stop);
     }
 
     #[test]

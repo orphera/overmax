@@ -11,6 +11,13 @@ pub use linux::AdaptiveCaptureEngine;
 #[cfg(target_os = "windows")]
 pub use windows::AdaptiveCaptureEngine;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CaptureErrorAction {
+    Retry,
+    Reconnect,
+    Stop,
+}
+
 pub trait CaptureEngine: Send + Sync {
     fn set_target(&mut self, _target: Option<WindowSnapshot>) -> Result<(), String> {
         Ok(())
@@ -22,4 +29,8 @@ pub trait CaptureEngine: Send + Sync {
         rect: WindowRect,
         out_frame: &mut CapturedFrame,
     ) -> Result<(), String>;
+
+    fn error_action(&self) -> CaptureErrorAction {
+        CaptureErrorAction::Retry
+    }
 }

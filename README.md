@@ -40,18 +40,13 @@ DJMAX RESPECT V 선곡 화면에서 V-Archive 기반 비공식 난이도 정보�
 2. 해당 디렉터리에서 `./overmax`를 실행합니다. 설정과 캐시는 실행 디렉터리에 저장됩니다.
 3. 같은 세션에서 Proton/XWayland로 DJMAX RESPECT V를 실행합니다.
 
-Linux는 x86_64, Wayland compositor의 `wlr-layer-shell`, XWayland의 XComposite·MIT-SHM, Vulkan, fontconfig와 한글 글꼴이 필요합니다. 현재 검증 범위는 같은 `DISPLAY`의 Proton/XWayland 게임, borderless fullscreen, 단일 출력입니다.
+지원 범위, 환경 확인 방법, 현재 구현 상태와 미지원 기능은 [Linux 지원 안내](docs/linux-support.md)를 확인해 주세요.
 
 ### 요구사항
 
 - Windows 10 이상 (64bit), 또는 위 초기 지원 범위를 만족하는 x86_64 Linux
 - DJMAX RESPECT V (Steam)
-- 실행 중 인터넷 연결 (V-Archive 데이터 다운로드, 앱 및 DB 자동 업데이트 확인)
-
-### Linux 알려진 제한
-
-- Gamescope/Steam Deck Gaming Mode, native Wayland 게임 surface, XWayland 또는 `wlr-layer-shell`이 없는 환경, 창모드와 다중 출력은 지원하지 않습니다.
-- Linux 앱 자동 업데이트는 아직 지원하지 않습니다. 새 bundle을 직접 받아 기존 `settings.user.json`과 `cache/`를 복사해야 합니다.
+- 실행 중 인터넷 연결 (V-Archive 데이터 및 DB 업데이트, Windows 앱 자동 업데이트 확인)
 
 > ⚠️ **중요: 게임 화면 설정 안내**
 > * **테두리 없는 전체화면(전체 창 모드) 권장**: 오버레이 창을 게임 화면 위에 정상적으로 띄워놓고 플레이하려면 게임 옵션에서 화면 설정을 **"전체 창 모드(Borderless Fullscreen)"**로 설정해 주세요.

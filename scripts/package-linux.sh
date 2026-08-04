@@ -27,6 +27,7 @@ install -Dm644 settings.json "$stage/settings.json"
 install -Dm644 README.md "$stage/README.md"
 mkdir "$stage/cache"
 tar -czf "$archive" -C dist overmax
+tar -tzf "$archive" overmax/overmax >/dev/null
 sha256sum "$archive" > "$archive.sha256"
 
 echo "Created $archive"

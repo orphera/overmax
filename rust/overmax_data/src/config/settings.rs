@@ -486,6 +486,7 @@ pub struct AppUpdateSettings {
     pub owner: Option<String>,
     pub repo: Option<String>,
     pub asset_name: Option<String>,
+    pub linux_asset_name: Option<String>,
     pub latest_release_url: Option<String>,
 }
 
@@ -591,6 +592,7 @@ impl Default for AppUpdateSettings {
             owner: None,
             repo: None,
             asset_name: None,
+            linux_asset_name: None,
             latest_release_url: None,
         }
     }

@@ -43,7 +43,7 @@ fc-match ':lang=ko' | head -n 1
 3. DJMAX RESPECT V를 Proton/XWayland의 테두리 없는 전체화면으로 실행합니다.
 4. 같은 데스크톱 세션의 터미널에서 `./overmax`를 실행합니다.
 
-설정과 캐시는 실행 디렉터리에 저장됩니다. 기존 버전에서 옮길 때는 `settings.user.json`과 `cache/`를 함께 복사합니다.
+설정과 캐시는 실행 디렉터리에 저장됩니다. 자동 업데이트를 사용하려면 실행 파일이 있는 디렉터리에 쓰기 권한이 있어야 합니다. 직접 업데이트하는 경우 `settings.user.json`과 `cache/`를 함께 복사합니다.
 
 ## 실행되지 않을 때
 
@@ -73,10 +73,7 @@ x86_64가 아니거나 compositor가 `wlr-layer-shell`을 지원하지 않는 �
 
 - 창모드
 - Gamescope 및 Steam Deck Gaming Mode
-- 앱 자체 자동 업데이트
 - Linux 시스템 트레이 아이콘
-
-Linux에서는 앱 자체 자동 업데이트를 사용하지 않습니다. 곡 및 이미지 DB의 시작 시 업데이트는 공통 기능으로 유지됩니다. 새 앱 버전은 bundle을 직접 받아 교체해야 합니다.
 
 ## 아직 검증 범위가 부족한 환경
 

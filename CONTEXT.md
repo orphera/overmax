@@ -41,8 +41,8 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 - **오버레이**: Linux 전용 layer-shell surface가 공용 overlay snapshot을 렌더링한다. background window와 fullscreen의 `SceneType::Unknown` 상태에서는 숨기며, egui의 즉시·지연 repaint 요청을 Wayland frame callback과 poll timeout으로 처리한다.
 - **오류 처리**: 일시적 window/pixmap 오류는 다음 tick에 재시도하고, X11 transport 오류만 tracker와 capturer를 재연결한다. 지원하지 않는 extension·pixel layout 같은 영구 capability 오류는 fail closed 상태를 표시하고 재연결 루프를 중단한다.
 - **단일 인스턴스**: `XDG_RUNTIME_DIR/overmax.lock`을 프로세스 수명 동안 보유하여 캡처 워커, overlay, 설정 및 SQLite 캐시의 중복 실행을 방지한다.
-- **배포 및 CI**: 공식 x86_64 Linux tarball은 glibc 2.39 ABI 기준의 고정 CI 환경에서 생성한다. Linux/Windows build·test와 Linux clippy를 `--locked`로 실행하고, Xvfb+Openbox에서 window tracker, XComposite/MIT-SHM lifecycle 및 extension 부재 fail-closed 경로를 검증한다.
-- **미지원 범위**: Gamescope/Steam Deck Gaming Mode, native Wayland 게임 surface, XWayland 또는 `wlr-layer-shell`이 없는 세션, 창모드, 다중 출력, non-SHM 캡처 fallback, Linux 앱 자동 업데이트와 시스템 트레이는 현재 지원하지 않는다.
+- **배포 및 CI**: 공식 x86_64 Linux tarball은 glibc 2.39 ABI 기준의 고정 CI 환경에서 생성한다. Linux/Windows build·test와 Linux clippy를 `--locked`로 실행하고, Xvfb+Openbox에서 window tracker, XComposite/MIT-SHM lifecycle 및 extension 부재 fail-closed 경로를 검증한다. 앱 시작 시 GitHub Releases의 Linux tarball에서 실행 파일만 원자적으로 교체하며, 사용자 승인 후 단일 인스턴스 락을 해제하고 재시작한다.
+- **미지원 범위**: Gamescope/Steam Deck Gaming Mode, native Wayland 게임 surface, XWayland 또는 `wlr-layer-shell`이 없는 세션, 창모드, 다중 출력, non-SHM 캡처 fallback과 시스템 트레이는 현재 지원하지 않는다.
 - **호환 원칙**: Linux 구현은 플랫폼 전용 코드와 공용 계약의 최소 확장만 허용한다. 공용 인식 로직, history 기반 안정화, 사용자 설정과 DB 구조의 기존 호환성을 Linux 검증 목적으로 변경하지 않는다.
 
 ---
@@ -254,3 +254,4 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 | 2026-08-03 | Linux 단일 인스턴스 파일 락 추가 | 중복 캡처·overlay와 설정 및 SQLite 캐시 갱신 경합을 방지 | [linux.rs](rust/overmax_app/src/system/single_instance/linux.rs) |
 | 2026-08-03 | layer overlay 지연 repaint 예약 | egui의 `request_repaint_after` 요청을 poll timeout으로 연결해 외부 Wayland 이벤트가 없어도 tooltip 등 지연 UI를 갱신 | [linux_layer_overlay.rs](rust/overmax_app/src/ui/linux_layer_overlay.rs) |
 | 2026-08-03 | 캡처 오류 복구 정책 분리 | transport 오류만 재연결하고 영구 capability 오류의 반복 probe·로그·repaint를 중단해 성능 우선 제약을 유지 | [capture_engine.rs](rust/overmax_engine/src/capture/capture_engine.rs) / [detection_worker.rs](rust/overmax_engine/src/detector/detection_worker.rs) |
+| 2026-08-04 | Linux 앱 자동 업데이트 연결 | 기존 `self_update`와 공용 락 해제·재시작 흐름을 재사용하고 Linux tarball에서 실행 파일만 원자적으로 교체해 설정·캐시 호환성을 유지 | [linux.rs](rust/overmax_app/src/system/updater/linux.rs) / [package-linux.sh](scripts/package-linux.sh) |

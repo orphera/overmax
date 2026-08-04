@@ -46,7 +46,7 @@ DJMAX RESPECT V 선곡 화면에서 V-Archive 기반 비공식 난이도 정보�
 
 - Windows 10 이상 (64bit), 또는 위 초기 지원 범위를 만족하는 x86_64 Linux
 - DJMAX RESPECT V (Steam)
-- 실행 중 인터넷 연결 (V-Archive 데이터 및 DB 업데이트, Windows 앱 자동 업데이트 확인)
+- 실행 중 인터넷 연결 (V-Archive 데이터, DB 및 앱 업데이트 확인)
 
 > ⚠️ **중요: 게임 화면 설정 안내**
 > * **테두리 없는 전체화면(전체 창 모드) 권장**: 오버레이 창을 게임 화면 위에 정상적으로 띄워놓고 플레이하려면 게임 옵션에서 화면 설정을 **"전체 창 모드(Borderless Fullscreen)"**로 설정해 주세요.

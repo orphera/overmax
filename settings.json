@@ -30,6 +30,7 @@
     "owner": "orphera",
     "repo": "overmax",
     "asset_name": "overmax.zip",
+    "linux_asset_name": "overmax-linux-x86_64.tar.gz",
     "latest_release_url": ""
   },
   "varchive": {

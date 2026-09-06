@@ -615,7 +615,7 @@ unsafe fn crop_texture_to_buffer(
     out_frame.bgra.resize(len, 0);
 
     if is_hdr {
-        super::hdr_pipeline::maybe_dump_hdr_frame(
+        super::hdr_pipeline::check_and_dump_hdr_frame(
             data_ptr,
             desktop_width as usize,
             desktop_height as usize,
@@ -713,8 +713,8 @@ unsafe fn copy_atlas_to_buffer(
     let dst_ptr = out_frame.bgra.as_mut_ptr();
 
     if is_hdr {
-        // HDR 모드 감지 시 최초 1프레임 RAW 버퍼 덤프 (오프라인 정밀 분석용)
-        super::hdr_pipeline::maybe_dump_hdr_frame(data_ptr, w, h, row_pitch, true);
+        // Shift + F11 단축키 입력 시 현재 프레임 RAW 버퍼 덤프 (오프라인 정밀 분석용)
+        super::hdr_pipeline::check_and_dump_hdr_frame(data_ptr, w, h, row_pitch, true);
 
         // R16G16B16A16_FLOAT → BGRA8
         for y in 0..h {

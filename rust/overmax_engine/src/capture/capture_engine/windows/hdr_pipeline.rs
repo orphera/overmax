@@ -1,14 +1,22 @@
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F11, VK_SHIFT};
+
+#[link(name = "user32")]
+extern "system" {
+    fn MessageBeep(u_type: u32) -> i32;
+}
 
 /// scRGB 1.0의 물리적 기준 휘도 (80 nits)
 #[allow(dead_code)]
 pub const SCRGB_REFERENCE_WHITE_NITS: f32 = 80.0;
 
-/// HDR 프레임 1회성 덤프 제어 플래그
-static HDR_DUMPED: AtomicBool = AtomicBool::new(false);
+/// Shift + F11 키 상태 (Edge Detection)
+static WAS_SHIFT_F11_DOWN: AtomicBool = AtomicBool::new(false);
+/// 덤프 누적 횟수
+static DUMP_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 /// FP16 (half-precision IEEE 754) 비트를 f32로 변환합니다.
 ///
@@ -112,24 +120,41 @@ pub unsafe fn convert_scrgb_fp16_to_bgra8(
     }
 }
 
-/// HDR 모드에서 수신된 첫 번째 프레임을 `cache/hdr_snapshot.raw`에 1회 한정으로 자동 덤프합니다.
+/// Shift + F11 단축키 입력을 감지하여 원하는 순간의 HDR 프레임을 `cache/hdr_snapshot.raw`로 덤프합니다.
 ///
-/// 덤프된 파일은 SDR 개발 환경으로 가져와 오프라인 역변환 수식 분석 및 단위 테스트에 사용됩니다.
+/// 로딩/부팅 화면이 아닌, 실제 곡 목록(Freestyle)이나 결과 화면 등 원하는 순간에
+/// Shift + F11을 누르면 비프음과 함께 캡처가 수행됩니다.
 ///
 /// # Safety
 ///
 /// `data_ptr`는 `height * row_pitch` 바이트 이상의 유효하게 매핑된 DXGI 텍스처 버퍼 메모리를 가리켜야 합니다.
-pub unsafe fn maybe_dump_hdr_frame(
+pub unsafe fn check_and_dump_hdr_frame(
     data_ptr: *const u8,
     width: usize,
     height: usize,
     row_pitch: usize,
     is_atlas: bool,
 ) {
-    if HDR_DUMPED.swap(true, Ordering::SeqCst) {
-        return;
-    }
+    let is_shift_down = (GetAsyncKeyState(VK_SHIFT as i32) as u16 & 0x8000) != 0;
+    let is_f11_down = (GetAsyncKeyState(VK_F11 as i32) as u16 & 0x8000) != 0;
+    let is_combo_down = is_shift_down && is_f11_down;
 
+    let was_down = WAS_SHIFT_F11_DOWN.swap(is_combo_down, Ordering::Relaxed);
+
+    // Rising edge: 방금 단축키가 눌렸을 때만 1회 실행
+    if is_combo_down && !was_down {
+        dump_hdr_snapshot(data_ptr, width, height, row_pitch, is_atlas);
+    }
+}
+
+unsafe fn dump_hdr_snapshot(
+    data_ptr: *const u8,
+    width: usize,
+    height: usize,
+    row_pitch: usize,
+    is_atlas: bool,
+) {
+    let count = DUMP_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
     let cache_dir = Path::new("cache");
     if !cache_dir.exists() {
         let _ = std::fs::create_dir_all(cache_dir);
@@ -152,18 +177,22 @@ pub unsafe fn maybe_dump_hdr_frame(
             total_written += line_bytes;
         }
 
+        // 성공 오디오 피드백 (Windows 기본 알림 사운드)
+        MessageBeep(0xFFFFFFFF);
+
         eprintln!(
-            "[HDR DUMP] Successfully dumped 1st HDR frame: {}x{} ({} bytes) -> {:?}",
-            width, height, total_written, raw_path
+            "[HDR DUMP] 📸 (Shift+F11 #{}) Successfully captured HDR frame: {}x{} ({} bytes) -> {:?}",
+            count, width, height, total_written, raw_path
         );
     }
 
     // 2. 메타데이터 JSON 저장
     let metadata = format!(
-        "{{\n  \"width\": {},\n  \"height\": {},\n  \"channels\": 4,\n  \"format\": \"R16G16B16A16_FLOAT\",\n  \"is_atlas\": {},\n  \"timestamp_unix\": {}\n}}\n",
+        "{{\n  \"width\": {},\n  \"height\": {},\n  \"channels\": 4,\n  \"format\": \"R16G16B16A16_FLOAT\",\n  \"is_atlas\": {},\n  \"dump_count\": {},\n  \"timestamp_unix\": {}\n}}\n",
         width,
         height,
         is_atlas,
+        count,
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())

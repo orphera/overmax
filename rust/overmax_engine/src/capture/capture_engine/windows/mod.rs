@@ -1,5 +1,6 @@
 pub mod dxgi;
 pub mod gdi;
+pub mod hdr_pipeline;
 pub mod normalizer;
 pub mod shader_bytes;
 

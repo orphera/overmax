@@ -75,7 +75,7 @@ OS별 구동 가이드 및 외부 연동 프로토콜 규격을 보관합니다.
 
 ### 5. Release Notes (`docs/releasenotes/`)
 버전별 배포 내역입니다. (작성 규칙은 [`AGENTS.md`](../AGENTS.md)의 Release Protocol 준수)
-* [`RELEASE_NOTES_v0.4.1.md`](releasenotes/RELEASE_NOTES_v0.4.1.md): 실시간 로컬 IPC 이벤트 스트리밍(SSE) 및 원격 RPC 제어, Windows Store(MSIX) 패키징 파이프라인, Linux(Wayland/KDE/Niri) 오버레이 상태 분리, 장면 전환 DXGI 스왑체인 재생성 방지 및 플랫폼 간 워커/텔레메트리 일원화.
+* [`RELEASE_NOTES_v0.4.1.md`](releasenotes/RELEASE_NOTES_v0.4.1.md): 실시간 로컬 IPC 이벤트 스트리밍(SSE) 및 원격 RPC 제어, Windows Store(MSIX) 패키징 파이프라인, Windows HDR(scRGB) 무설정 감지 및 역변환 LUT, Linux(Wayland/KDE/Niri) 오버레이 상태 분리, 장면 전환 DXGI 스왑체인 재생성 방지 및 플랫폼 간 워커/텔레메트리 일원화.
 * [`RELEASE_NOTES_v0.4.0.md`](releasenotes/RELEASE_NOTES_v0.4.0.md): 지능형 다차원 선곡 추천 엔진, 미니멀 사유 뱃지/툴팁, VerifiedPlayEvent 이벤트 아키텍처, ODDS 설정창 개편, 일본어(JA) 지원, 템플릿 매칭 Zero-Allocation 및 MAX COMBO 해시 캐싱.
 * [`RELEASE_NOTES_v0.3.3.md`](releasenotes/RELEASE_NOTES_v0.3.3.md): 다중 모니터 DPI 인식, 1-Pass 매칭, Centroid 사전 게이트, 영어 UI 지원.
 * [`RELEASE_NOTES_v0.3.2.md`](releasenotes/RELEASE_NOTES_v0.3.2.md): 다국어 i18n 시스템 및 UI 설정 개선.

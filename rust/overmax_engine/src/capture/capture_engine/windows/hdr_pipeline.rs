@@ -1,22 +1,8 @@
-use std::fs::File;
-use std::io::Write;
-use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F11, VK_SHIFT};
-
-#[link(name = "user32")]
-extern "system" {
-    fn MessageBeep(u_type: u32) -> i32;
-}
+use std::sync::{Arc, RwLock};
 
 /// scRGB 1.0의 물리적 기준 휘도 (80 nits)
 #[allow(dead_code)]
 pub const SCRGB_REFERENCE_WHITE_NITS: f32 = 80.0;
-
-/// Shift + F11 키 상태 (Edge Detection)
-static WAS_SHIFT_F11_DOWN: AtomicBool = AtomicBool::new(false);
-/// 덤프 누적 횟수
-static DUMP_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 /// FP16 (half-precision IEEE 754) 비트를 f32로 변환합니다.
 ///
@@ -68,9 +54,6 @@ pub fn strict_srgb_oetf(linear: f32) -> f32 {
         1.055 * linear.powf(1.0 / 2.4) - 0.055
     }
 }
-
-use std::sync::{Arc, RwLock};
-
 /// Windows DWM scRGB 모드에서의 SDR Reference White 기본 레벨 (1.0 = 80 nits, 5.168 = 413.44 nits).
 ///
 /// 실측 계측된 DJMAX RESPECT V 환경의 기준 화이트 레벨이며, OS API 감지 실패 시의 안전한 폴백으로 사용됩니다.
@@ -234,87 +217,6 @@ pub unsafe fn convert_scrgb_fp16_to_bgra8(
 ) {
     let lut = get_active_lut();
     convert_scrgb_fp16_to_bgra8_with_lut(src_row, dst_row, pixel_count, &lut);
-}
-
-/// Shift + F11 단축키 입력을 감지하여 원하는 순간의 HDR 프레임을 `cache/hdr_snapshot.raw`로 덤프합니다.
-///
-/// 로딩/부팅 화면이 아닌, 실제 곡 목록(Freestyle)이나 결과 화면 등 원하는 순간에
-/// Shift + F11을 누르면 비프음과 함께 캡처가 수행됩니다.
-///
-/// # Safety
-///
-/// `data_ptr`는 `height * row_pitch` 바이트 이상의 유효하게 매핑된 DXGI 텍스처 버퍼 메모리를 가리켜야 합니다.
-pub unsafe fn check_and_dump_hdr_frame(
-    data_ptr: *const u8,
-    width: usize,
-    height: usize,
-    row_pitch: usize,
-    is_atlas: bool,
-) {
-    let is_shift_down = (GetAsyncKeyState(VK_SHIFT as i32) as u16 & 0x8000) != 0;
-    let is_f11_down = (GetAsyncKeyState(VK_F11 as i32) as u16 & 0x8000) != 0;
-    let is_combo_down = is_shift_down && is_f11_down;
-
-    let was_down = WAS_SHIFT_F11_DOWN.swap(is_combo_down, Ordering::Relaxed);
-
-    // Rising edge: 방금 단축키가 눌렸을 때만 1회 실행
-    if is_combo_down && !was_down {
-        dump_hdr_snapshot(data_ptr, width, height, row_pitch, is_atlas);
-    }
-}
-
-unsafe fn dump_hdr_snapshot(
-    data_ptr: *const u8,
-    width: usize,
-    height: usize,
-    row_pitch: usize,
-    is_atlas: bool,
-) {
-    let count = DUMP_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
-    let cache_dir = Path::new("cache");
-    if !cache_dir.exists() {
-        let _ = std::fs::create_dir_all(cache_dir);
-    }
-
-    let raw_path = cache_dir.join("hdr_snapshot.raw");
-    let json_path = cache_dir.join("hdr_snapshot.json");
-
-    // 1. RAW 버퍼 저장 (row pitch 패딩을 제거한 순수 w * h * 8바이트)
-    if let Ok(mut file) = File::create(&raw_path) {
-        let line_bytes = width * 8;
-        let mut total_written = 0;
-        for y in 0..height {
-            let row_src = data_ptr.add(y * row_pitch);
-            let slice = std::slice::from_raw_parts(row_src, line_bytes);
-            if file.write_all(slice).is_err() {
-                eprintln!("[HDR DUMP] Failed writing row {}", y);
-                return;
-            }
-            total_written += line_bytes;
-        }
-
-        // 성공 오디오 피드백 (Windows 기본 알림 사운드)
-        MessageBeep(0xFFFFFFFF);
-
-        eprintln!(
-            "[HDR DUMP] 📸 (Shift+F11 #{}) Successfully captured HDR frame: {}x{} ({} bytes) -> {:?}",
-            count, width, height, total_written, raw_path
-        );
-    }
-
-    // 2. 메타데이터 JSON 저장
-    let metadata = format!(
-        "{{\n  \"width\": {},\n  \"height\": {},\n  \"channels\": 4,\n  \"format\": \"R16G16B16A16_FLOAT\",\n  \"is_atlas\": {},\n  \"dump_count\": {},\n  \"timestamp_unix\": {}\n}}\n",
-        width,
-        height,
-        is_atlas,
-        count,
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0)
-    );
-    let _ = std::fs::write(&json_path, metadata);
 }
 
 #[cfg(test)]

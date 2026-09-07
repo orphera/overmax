@@ -279,9 +279,6 @@ impl DxgiCaptureEngine {
 
             let desc = duplication.GetDesc();
             let is_hdr = desc.ModeDesc.Format.0 == DXGI_FORMAT_R16G16B16A16_FLOAT.0; // R16G16B16A16
-            println!("{:?}", desc);
-            println!("{:?}", desc.ModeDesc.Format);
-            println!("is_hdr={}", is_hdr);
 
             Ok((
                 duplication,
@@ -690,16 +687,6 @@ unsafe fn crop_texture_to_buffer(
     out_frame.height = crop_height as i32;
     out_frame.bgra.resize(len, 0);
 
-    if is_hdr {
-        super::hdr_pipeline::check_and_dump_hdr_frame(
-            data_ptr,
-            desktop_width as usize,
-            desktop_height as usize,
-            row_pitch,
-            false,
-        );
-    }
-
     let src_bpp = if is_hdr { 8 } else { 4 };
     for y in 0..crop_height {
         let src_offset = (start_y + y) * row_pitch + start_x * src_bpp;
@@ -793,9 +780,6 @@ unsafe fn copy_atlas_to_buffer(
     let dst_ptr = out_frame.bgra.as_mut_ptr();
 
     if is_hdr {
-        // Shift + F11 단축키 입력 시 현재 프레임 RAW 버퍼 덤프 (오프라인 정밀 분석용)
-        super::hdr_pipeline::check_and_dump_hdr_frame(data_ptr, w, h, row_pitch, true);
-
         // R16G16B16A16_FLOAT → BGRA8
         for y in 0..h {
             let src_row = data_ptr.add(y * row_pitch);

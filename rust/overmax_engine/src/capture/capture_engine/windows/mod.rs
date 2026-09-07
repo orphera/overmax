@@ -38,6 +38,7 @@ pub struct AdaptiveCaptureEngine {
     last_dxgi_init_attempt: std::time::Instant,
     preferred_engine: PreferredCaptureEngine,
     enable_gpu_atlas: bool,
+    hdr_sdr_white_level: Option<f32>,
 }
 
 impl AdaptiveCaptureEngine {
@@ -52,6 +53,7 @@ impl AdaptiveCaptureEngine {
                 .unwrap_or_else(std::time::Instant::now),
             preferred_engine: PreferredCaptureEngine::Gdi,
             enable_gpu_atlas: false,
+            hdr_sdr_white_level: None,
         })
     }
 
@@ -67,6 +69,13 @@ impl AdaptiveCaptureEngine {
         self.enable_gpu_atlas = enable;
         if let Some(ref mut dxgi) = self.dxgi_backend {
             dxgi.set_enable_gpu_atlas(enable);
+        }
+    }
+
+    pub fn set_hdr_sdr_white_level(&mut self, level: Option<f32>) {
+        self.hdr_sdr_white_level = level;
+        if let Some(ref mut dxgi) = self.dxgi_backend {
+            dxgi.set_hdr_sdr_white_level(level);
         }
     }
 
@@ -103,6 +112,10 @@ impl CaptureEngine for AdaptiveCaptureEngine {
         self.set_enable_gpu_atlas(enable);
     }
 
+    fn set_hdr_sdr_white_level(&mut self, level: Option<f32>) {
+        self.set_hdr_sdr_white_level(level);
+    }
+
     fn capture_bgra(&mut self, rect: WindowRect) -> Result<CapturedFrame, String> {
         let mut frame = CapturedFrame::default();
         self.capture_bgra_inplace(rect, &mut frame)?;
@@ -134,6 +147,7 @@ impl CaptureEngine for AdaptiveCaptureEngine {
                     match DxgiCaptureEngine::new() {
                         Ok(mut dxgi) => {
                             dxgi.set_enable_gpu_atlas(self.enable_gpu_atlas);
+                            dxgi.set_hdr_sdr_white_level(self.hdr_sdr_white_level);
                             self.dxgi_backend = Some(dxgi);
                         }
                         Err(e) => {

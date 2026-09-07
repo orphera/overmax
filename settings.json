@@ -9,7 +9,8 @@
     "idle_sleep_sec": 0.5,
     "engine": "auto",
     "content_protected": true,
-    "enable_gpu_atlas": true
+    "enable_gpu_atlas": true,
+    "hdr_sdr_white_level": null
   },
   "debug_window": {
     "max_lines": 500,

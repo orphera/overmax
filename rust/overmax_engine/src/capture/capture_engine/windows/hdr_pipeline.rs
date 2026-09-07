@@ -69,43 +69,143 @@ pub fn strict_srgb_oetf(linear: f32) -> f32 {
     }
 }
 
-/// Windows DWM scRGB 모드에서의 SDR Reference White 레벨 (1.0 = 80 nits, 5.168 = 413.44 nits).
+use std::sync::{Arc, RwLock};
+
+/// Windows DWM scRGB 모드에서의 SDR Reference White 기본 레벨 (1.0 = 80 nits, 5.168 = 413.44 nits).
 ///
-/// Windows DWM은 scRGB FP16 버퍼로 합성 시 SDR 100% 흰색(255)을 정확히 5.1680으로 클램핑 및 스케일링합니다.
+/// 실측 계측된 DJMAX RESPECT V 환경의 기준 화이트 레벨이며, OS API 감지 실패 시의 안전한 폴백으로 사용됩니다.
 pub const SCRGB_SDR_WHITE_LEVEL: f32 = 5.168;
 
-/// 64KB 고속 역변환 룩업 테이블 (FP16 u16 비트패턴 65,536개 -> 정규화 sRGB u8 [0..255]).
+/// 주어진 SDR 화이트 레벨(배율, 1.0 = 80 nits)에 대응하는 64KB 고속 역변환 룩업 테이블을 생성합니다.
+pub fn build_lut_table(sdr_white_level: f32) -> Box<[u8; 65536]> {
+    let mut table = Box::new([0u8; 65536]);
+    let safe_level = if sdr_white_level <= 0.0 {
+        1.0
+    } else {
+        sdr_white_level
+    };
+    for bits in 0..=65535u16 {
+        let val_f32 = f16_to_f32(bits);
+        let lin = (val_f32 / safe_level).clamp(0.0, 1.0);
+        let srgb = strict_srgb_oetf(lin);
+        table[bits as usize] = (srgb * 255.0 + 0.5) as u8;
+    }
+    table
+}
+
+/// 활성 64KB 고속 역변환 룩업 테이블.
 ///
-/// 매 프레임 수백만 번 발생하는 f16_to_f32, 부동소수점 나눗셈, clamp, sRGB OETF(powf)를
-/// 단 한 번의 L1/L2 캐시 배열 인덱싱으로 대체하여 변환 시간을 13.4ms에서 0.38ms로 35배 단축합니다.
-/// 부동소수점 연산 결과 대비 최대 오차는 0 (비트 단위 100% 일치)입니다.
-static HDR_FP16_TO_SRGB_LUT: std::sync::LazyLock<Box<[u8; 65536]>> =
+/// 캡처 엔진 초기화 시 감지된 모니터의 SDR 화이트 레벨로 자동 갱신됩니다.
+static ACTIVE_HDR_LUT: std::sync::LazyLock<RwLock<Arc<[u8; 65536]>>> =
     std::sync::LazyLock::new(|| {
-        let mut table = Box::new([0u8; 65536]);
-        for bits in 0..=65535u16 {
-            let val_f32 = f16_to_f32(bits);
-            let lin = (val_f32 / SCRGB_SDR_WHITE_LEVEL).clamp(0.0, 1.0);
-            let srgb = strict_srgb_oetf(lin);
-            table[bits as usize] = (srgb * 255.0 + 0.5) as u8;
-        }
-        table
+        let table = build_lut_table(SCRGB_SDR_WHITE_LEVEL);
+        RwLock::new(Arc::new(*table))
     });
 
-/// R16G16B16A16_FLOAT (scRGB) 버퍼를 디텍션용 BGRA8 버퍼로 초고속 변환합니다.
+/// 현재 활성화된 64KB HDR LUT를 반환합니다.
+pub fn get_active_lut() -> Arc<[u8; 65536]> {
+    ACTIVE_HDR_LUT.read().unwrap().clone()
+}
+
+/// 활성화된 전역 HDR LUT를 새로운 SDR 화이트 레벨로 갱신합니다.
+pub fn set_active_sdr_white_level(level: f32) {
+    let table = build_lut_table(level);
+    *ACTIVE_HDR_LUT.write().unwrap() = Arc::new(*table);
+}
+
+/// Win32 Connecting and Configuring Displays (CCD) API를 통해
+/// 현재 모니터의 OS 설정 SDR 화이트 레벨(배율, 1.0 = 80 nits)을 자동으로 조회합니다.
 ///
-/// 64KB LUT를 사용하여 SIMD/L1 캐시 친화적인 단일 패스 룩업으로 처리합니다.
+/// `target_device_name`이 제공되면 해당 GDI 디바이스명(예: `\\.\DISPLAY1`)과 일치하는 모니터의 값을 조회하며,
+/// `None`이면 첫 번째 활성 디스플레이의 값을 반환합니다.
+#[cfg(windows)]
+pub fn detect_monitor_sdr_white_level(target_device_name: Option<&[u16]>) -> Option<f32> {
+    use windows::Win32::Devices::Display::{
+        DisplayConfigGetDeviceInfo, GetDisplayConfigBufferSizes, QueryDisplayConfig,
+        DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL, DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,
+        DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_PATH_INFO, DISPLAYCONFIG_SDR_WHITE_LEVEL,
+        DISPLAYCONFIG_SOURCE_DEVICE_NAME, QDC_ONLY_ACTIVE_PATHS,
+    };
+    use windows::Win32::Foundation::WIN32_ERROR;
+
+    unsafe {
+        let mut path_count = 0u32;
+        let mut mode_count = 0u32;
+        let err =
+            GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &mut path_count, &mut mode_count);
+        if err != WIN32_ERROR(0) || path_count == 0 {
+            return None;
+        }
+
+        let mut paths = vec![DISPLAYCONFIG_PATH_INFO::default(); path_count as usize];
+        let mut modes = vec![DISPLAYCONFIG_MODE_INFO::default(); mode_count as usize];
+
+        let err = QueryDisplayConfig(
+            QDC_ONLY_ACTIVE_PATHS,
+            &mut path_count,
+            paths.as_mut_ptr(),
+            &mut mode_count,
+            modes.as_mut_ptr(),
+            None,
+        );
+        if err != WIN32_ERROR(0) {
+            return None;
+        }
+
+        for path in paths.iter().take(path_count as usize) {
+            if let Some(target) = target_device_name {
+                let mut source_name = DISPLAYCONFIG_SOURCE_DEVICE_NAME::default();
+                source_name.header.r#type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+                source_name.header.size =
+                    std::mem::size_of::<DISPLAYCONFIG_SOURCE_DEVICE_NAME>() as u32;
+                source_name.header.adapterId = path.sourceInfo.adapterId;
+                source_name.header.id = path.sourceInfo.id;
+
+                let name_err = DisplayConfigGetDeviceInfo(&mut source_name.header);
+                if name_err != 0 {
+                    continue;
+                }
+
+                let target_len = target.iter().position(|&c| c == 0).unwrap_or(target.len());
+                let src_len = source_name
+                    .viewGdiDeviceName
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(source_name.viewGdiDeviceName.len());
+
+                if target[..target_len] != source_name.viewGdiDeviceName[..src_len] {
+                    continue;
+                }
+            }
+
+            let mut sdr_white = DISPLAYCONFIG_SDR_WHITE_LEVEL::default();
+            sdr_white.header.r#type = DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL;
+            sdr_white.header.size = std::mem::size_of::<DISPLAYCONFIG_SDR_WHITE_LEVEL>() as u32;
+            sdr_white.header.adapterId = path.targetInfo.adapterId;
+            sdr_white.header.id = path.targetInfo.id;
+
+            let sdr_err = DisplayConfigGetDeviceInfo(&mut sdr_white.header);
+            if sdr_err == 0 && sdr_white.SDRWhiteLevel > 0 {
+                return Some(sdr_white.SDRWhiteLevel as f32 / 1000.0);
+            }
+        }
+    }
+
+    None
+}
+
+/// R16G16B16A16_FLOAT (scRGB) 버퍼를 특정 LUT를 사용하여 디텍션용 BGRA8 버퍼로 초고속 변환합니다.
 ///
 /// # Safety
 ///
-/// `src_row`는 최소 `pixel_count * 8` 바이트 유효한 메모리를 가리켜야 하며,
-/// `dst_row`는 최소 `pixel_count * 4` 바이트 쓸 수 있는 메모리를 가리켜야 합니다.
-#[inline]
-pub unsafe fn convert_scrgb_fp16_to_bgra8(
+/// `src_row`는 최소 `pixel_count * 8` 바이트, `dst_row`는 최소 `pixel_count * 4` 바이트 쓸 수 있어야 합니다.
+#[inline(always)]
+pub unsafe fn convert_scrgb_fp16_to_bgra8_with_lut(
     src_row: *const u8,
     dst_row: *mut u8,
     pixel_count: usize,
+    lut: &[u8; 65536],
 ) {
-    let lut = &**HDR_FP16_TO_SRGB_LUT;
     let src = src_row as *const u16;
 
     for x in 0..pixel_count {
@@ -119,6 +219,21 @@ pub unsafe fn convert_scrgb_fp16_to_bgra8(
         *dst.add(2) = lut[r_bits as usize];
         *dst.add(3) = 255;
     }
+}
+
+/// R16G16B16A16_FLOAT (scRGB) 버퍼를 전역 활성 LUT를 사용하여 디텍션용 BGRA8 버퍼로 초고속 변환합니다.
+///
+/// # Safety
+///
+/// `src_row`는 최소 `pixel_count * 8` 바이트, `dst_row`는 최소 `pixel_count * 4` 바이트 쓸 수 있어야 합니다.
+#[inline]
+pub unsafe fn convert_scrgb_fp16_to_bgra8(
+    src_row: *const u8,
+    dst_row: *mut u8,
+    pixel_count: usize,
+) {
+    let lut = get_active_lut();
+    convert_scrgb_fp16_to_bgra8_with_lut(src_row, dst_row, pixel_count, &lut);
 }
 
 /// Shift + F11 단축키 입력을 감지하여 원하는 순간의 HDR 프레임을 `cache/hdr_snapshot.raw`로 덤프합니다.
@@ -200,4 +315,33 @@ unsafe fn dump_hdr_snapshot(
             .unwrap_or(0)
     );
     let _ = std::fs::write(&json_path, metadata);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_lut_table_consistency() {
+        let lut = build_lut_table(SCRGB_SDR_WHITE_LEVEL);
+        assert_eq!(lut.len(), 65536);
+
+        // 0.0 (half float 0x0000) -> sRGB 0
+        assert_eq!(lut[0], 0);
+
+        // Half float 5.1680 (0x452b) -> sRGB 255
+        let half_5168 = 0x452bu16;
+        let f = f16_to_f32(half_5168);
+        assert!((f - 5.168).abs() < 0.005);
+        assert_eq!(lut[half_5168 as usize], 255);
+    }
+
+    #[test]
+    fn test_detect_monitor_sdr_white_level() {
+        let level = detect_monitor_sdr_white_level(None);
+        println!("detect_monitor_sdr_white_level(None) = {:?}", level);
+        if let Some(val) = level {
+            assert!((0.5..=20.0).contains(&val));
+        }
+    }
 }

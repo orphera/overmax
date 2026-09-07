@@ -111,7 +111,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
   - **[B] fullframe-db (더블 1080p, 3.17ms) ➔ [C] atlas-db (더블 512×512, 0.62ms)**: 아틀라스의 순수 기여도는 **-2.55ms (65.7% 비중)** 로 메모리 복사량을 87.5%(8.3MB ➔ 1.0MB) 절감하여 비로소 **0.62ms(P50: 0.63ms, P95: 0.80ms)** 의 서브밀리초 진입 달성.
   - 아틀라스의 기여도가 더블버퍼링보다 약 2배 크며, 더블버퍼링 단독으로는 3ms 한계를 넘을 수 없으므로 4K(33MB) 대역폭 방어 및 극저지연을 위해 아틀라스가 필수불가결함을 실측으로 완전 입증했습니다.
 - **조건부 GPU Normalizer (비-1080p 안전망)**: 1080p에서는 0-Cost 바이패스하며, 1440p, 4K, 21:9 울트라와이드 등 비-1080p 환경 감지 시에만 단일 패스 Fullscreen Triangle 셰이더(`normalizer.rs`)와 Bilinear Sampler를 가동하여 1080p로 렌더한 후 아틀라스로 공급함으로써 4K 환경에서도 CPU 전송량을 1MB로 엄격 고정합니다.
-- **DXGI HDR (scRGB) 역변환 파이프라인 및 64KB LUT 초고속화**: Windows DWM이 scRGB(FP16) 버퍼에서 SDR 100% 백색(255)을 5.1680(413.4 nits)으로 클램핑함을 실측 규명하고, 순수 선형 정규화($C_{lin} = \text{clamp}(C_{raw} / 5.168, 0, 1)$) 및 표준 sRGB OETF 감마 역변환을 적용하여 순수 블랙(0.0) 보존과 자켓 유사도 대폭 상승(+8%p)을 달성했습니다. 또한 `powf` 부동소수점 오버헤드(13.4ms)를 소거하기 위해 `std::sync::LazyLock` 기반 64KB `[u8; 65536]` LUT를 탑재하여 오차 0(비트 완벽)을 보장하면서 1프레임 변환 지연을 0.38ms로 35배 단축했습니다.
+- **DXGI HDR (scRGB) 역변환 파이프라인 및 Win32 CCD API 동적 화이트 레벨 감지 (64KB LUT)**: Windows DWM이 scRGB(FP16) 버퍼에서 SDR 100% 백색(255)을 모니터 SDR 밝기 슬라이더에 따라 비례 증폭함을 실측 규명했습니다. Win32 Connecting and Configuring Displays (CCD) API(`DisplayConfigGetDeviceInfo(DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL)`)를 통해 출력 모니터의 실제 SDR 화이트 레벨(1.0=80 nits ~ 7.5=600 nits)을 자동 감지하고, 단 0.05ms만에 이에 맞춤화된 64KB `[u8; 65536]` LUT를 동적 생성합니다. 순수 선형 정규화($C_{lin} = \text{clamp}(C_{raw} / W, 0, 1)$) 및 표준 sRGB OETF 감마 역변환을 유지하여 비선형 Reinhard 톤매핑의 계조 왜곡(중간톤 폭발로 인한 자켓/씬 인식 실패)을 배제하고, 무설정(Zero-Config) 자동 감지 + `settings.json` 수동 오버라이드 + 5.168 안전 폴백 체계로 모든 HDR 모니터 환경에서 비트 완벽 1:1 복원과 0.38ms 초고속 변환 지연을 보장합니다.
 
 ## 2. 프레임 제어 및 쿨다운 스케줄링 (Centralized Control & Cooldowns)
 

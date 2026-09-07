@@ -36,6 +36,10 @@ pub struct DxgiCaptureEngine {
     height: u32,
     output_bounds: RECT,
     is_hdr_format: bool,
+    device_name: [u16; 32],
+    configured_sdr_white_level: Option<f32>,
+    active_sdr_white_level: f32,
+    hdr_lut: std::sync::Arc<[u8; 65536]>,
 }
 
 unsafe impl Send for DxgiCaptureEngine {}
@@ -116,8 +120,14 @@ impl DxgiCaptureEngine {
         unsafe {
             let (device, context, adapter) = create_device_and_adapter()?;
 
-            let (duplication, width, height, output_bounds, is_hdr_format) =
+            let (duplication, width, height, output_bounds, is_hdr_format, device_name) =
                 Self::find_output(&adapter, &device, None)?;
+
+            let active_sdr_white_level = Self::resolve_sdr_white_level(None, Some(&device_name));
+            let hdr_lut = std::sync::Arc::new(*super::hdr_pipeline::build_lut_table(
+                active_sdr_white_level,
+            ));
+            super::hdr_pipeline::set_active_sdr_white_level(active_sdr_white_level);
 
             Ok(Self {
                 device,
@@ -134,15 +144,62 @@ impl DxgiCaptureEngine {
                 height,
                 output_bounds,
                 is_hdr_format,
+                device_name,
+                configured_sdr_white_level: None,
+                active_sdr_white_level,
+                hdr_lut,
             })
         }
+    }
+
+    fn resolve_sdr_white_level(configured: Option<f32>, device_name: Option<&[u16]>) -> f32 {
+        if let Some(cfg) = configured {
+            if cfg > 0.0 {
+                eprintln!(
+                    "[DXGI HDR] Using configured SDR White Level: {:.4} ({:.1} nits)",
+                    cfg,
+                    cfg * 80.0
+                );
+                return cfg;
+            }
+        }
+        if let Some(detected) = super::hdr_pipeline::detect_monitor_sdr_white_level(device_name) {
+            eprintln!(
+                "[DXGI HDR] Auto-detected OS SDR White Level: {:.4} ({:.1} nits)",
+                detected,
+                detected * 80.0
+            );
+            return detected;
+        }
+        eprintln!(
+            "[DXGI HDR] SDR White Level fallback to default: {:.4} ({:.1} nits)",
+            super::hdr_pipeline::SCRGB_SDR_WHITE_LEVEL,
+            super::hdr_pipeline::SCRGB_SDR_WHITE_LEVEL * 80.0
+        );
+        super::hdr_pipeline::SCRGB_SDR_WHITE_LEVEL
+    }
+
+    pub fn set_hdr_sdr_white_level(&mut self, level: Option<f32>) {
+        if self.configured_sdr_white_level == level {
+            return;
+        }
+        self.configured_sdr_white_level = level;
+        let new_level = Self::resolve_sdr_white_level(level, Some(&self.device_name));
+        self.active_sdr_white_level = new_level;
+        self.hdr_lut = std::sync::Arc::new(*super::hdr_pipeline::build_lut_table(new_level));
+        super::hdr_pipeline::set_active_sdr_white_level(new_level);
+    }
+
+    #[allow(dead_code)]
+    pub fn active_sdr_white_level(&self) -> f32 {
+        self.active_sdr_white_level
     }
 
     fn find_output(
         adapter: &IDXGIAdapter,
         device: &ID3D11Device,
         rect_opt: Option<WindowRect>,
-    ) -> Result<(IDXGIOutputDuplication, u32, u32, RECT, bool), String> {
+    ) -> Result<(IDXGIOutputDuplication, u32, u32, RECT, bool, [u16; 32]), String> {
         unsafe {
             let mut best_output = None;
             let mut first_output = None;
@@ -152,7 +209,7 @@ impl DxgiCaptureEngine {
                 if let Ok(desc) = output.GetDesc() {
                     let bounds = desc.DesktopCoordinates;
                     if first_output.is_none() {
-                        first_output = Some((output.clone(), bounds));
+                        first_output = Some((output.clone(), bounds, desc.DeviceName));
                     }
                     if let Some(rect) = rect_opt {
                         let center_x = rect.left + rect.width / 2;
@@ -162,7 +219,7 @@ impl DxgiCaptureEngine {
                             && center_y >= bounds.top
                             && center_y < bounds.bottom
                         {
-                            best_output = Some((output, bounds));
+                            best_output = Some((output, bounds, desc.DeviceName));
                             break;
                         }
                     }
@@ -170,7 +227,8 @@ impl DxgiCaptureEngine {
                 i += 1;
             }
 
-            let (output, bounds) = best_output.or(first_output).ok_or("No DXGI output found")?;
+            let (output, bounds, device_name) =
+                best_output.or(first_output).ok_or("No DXGI output found")?;
 
             // HDR 지원: IDXGIOutput5::DuplicateOutput1 을 사용하여 OS DWM 차원에서
             // 자동 변환하여 수신하도록 요청. 포맷 협상으로 HDR/SDR 호환성 확보
@@ -231,6 +289,7 @@ impl DxgiCaptureEngine {
                 desc.ModeDesc.Height,
                 bounds,
                 is_hdr,
+                device_name,
             ))
         }
     }
@@ -244,7 +303,7 @@ impl DxgiCaptureEngine {
             && center_y < self.output_bounds.bottom;
 
         if !inside {
-            if let Ok((duplication, width, height, bounds, is_hdr)) =
+            if let Ok((duplication, width, height, bounds, is_hdr, device_name)) =
                 Self::find_output(&self.adapter, &self.device, Some(rect))
             {
                 self.duplication = duplication;
@@ -255,6 +314,17 @@ impl DxgiCaptureEngine {
                 self.staging_texture = None;
                 self.atlas_frames_captured = 0;
                 self.atlas_write_idx = 0;
+                self.device_name = device_name;
+                if is_hdr {
+                    let level = Self::resolve_sdr_white_level(
+                        self.configured_sdr_white_level,
+                        Some(&self.device_name),
+                    );
+                    self.active_sdr_white_level = level;
+                    self.hdr_lut =
+                        std::sync::Arc::new(*super::hdr_pipeline::build_lut_table(level));
+                    super::hdr_pipeline::set_active_sdr_white_level(level);
+                }
             }
         }
         Ok(())
@@ -465,6 +535,7 @@ impl CaptureEngine for DxgiCaptureEngine {
                                     staging_write,
                                     out_frame,
                                     self.is_hdr_format,
+                                    &self.hdr_lut,
                                 );
                             } else {
                                 // 2번째 프레임부터: 이미 지난 틱에 GPU 복사가 완료된 이전 버퍼를 맵핑 (0ms Stall!)
@@ -478,6 +549,7 @@ impl CaptureEngine for DxgiCaptureEngine {
                                     staging_read,
                                     out_frame,
                                     self.is_hdr_format,
+                                    &self.hdr_lut,
                                 );
                             }
                         }
@@ -512,6 +584,7 @@ impl CaptureEngine for DxgiCaptureEngine {
                     staging_read,
                     out_frame,
                     self.is_hdr_format,
+                    &self.hdr_lut,
                 );
             }
 
@@ -549,6 +622,7 @@ impl CaptureEngine for DxgiCaptureEngine {
                             self.output_bounds,
                             out_frame,
                             self.is_hdr_format,
+                            &self.hdr_lut,
                         );
                     }
                     let _ = self.duplication.ReleaseFrame();
@@ -577,6 +651,7 @@ impl CaptureEngine for DxgiCaptureEngine {
                 self.output_bounds,
                 out_frame,
                 self.is_hdr_format,
+                &self.hdr_lut,
             )
         }
     }
@@ -592,6 +667,7 @@ unsafe fn crop_texture_to_buffer(
     output_bounds: RECT,
     out_frame: &mut CapturedFrame,
     is_hdr: bool,
+    lut: &[u8; 65536],
 ) -> Result<(), String> {
     let mut mapped = Default::default();
     context
@@ -632,7 +708,9 @@ unsafe fn crop_texture_to_buffer(
         let dst_row = out_frame.bgra.as_mut_ptr().add(dst_offset);
 
         if is_hdr {
-            super::hdr_pipeline::convert_scrgb_fp16_to_bgra8(src_row, dst_row, crop_width);
+            super::hdr_pipeline::convert_scrgb_fp16_to_bgra8_with_lut(
+                src_row, dst_row, crop_width, lut,
+            );
         } else {
             // 기존 B8G8R8A8 복사
             std::ptr::copy_nonoverlapping(src_row, dst_row, crop_width * 4);
@@ -691,6 +769,7 @@ unsafe fn copy_atlas_to_buffer(
     staging_atlas: &ID3D11Texture2D,
     out_frame: &mut CapturedFrame,
     is_hdr: bool,
+    lut: &[u8; 65536],
 ) -> Result<(), String> {
     let mut mapped = Default::default();
 
@@ -722,7 +801,7 @@ unsafe fn copy_atlas_to_buffer(
             let src_row = data_ptr.add(y * row_pitch);
             let dst_row = dst_ptr.add(y * row_bytes);
 
-            super::hdr_pipeline::convert_scrgb_fp16_to_bgra8(src_row, dst_row, w);
+            super::hdr_pipeline::convert_scrgb_fp16_to_bgra8_with_lut(src_row, dst_row, w, lut);
         }
     } else {
         // SDR: B8G8R8A8_UNORM → BGRA8

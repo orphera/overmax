@@ -72,6 +72,7 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [x] Win32 CCD API(`DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL`) 기반 OS SDR 화이트 레벨 무설정(Zero-Config) 1:1 자동 감지
   - [x] $O(1)$ 64KB LUT 기반 scRGB FP16 ➔ sRGB BGRA8 0.38ms 고속 역변환 및 핫루프 락 프리 캐싱
   - [x] 비-1080p GPU Normalizer 및 멀티 모니터 전환 시 아틀라스 스테이징 리셋 안정화 완료
+  - [x] DXGI 1.6 `IDXGIOutput6` 기반 실시간 모니터 색역(ColorSpace) 사전 감지 및 SDR/HDR 최적 포맷 동적 분기 완성
 
 ---
 

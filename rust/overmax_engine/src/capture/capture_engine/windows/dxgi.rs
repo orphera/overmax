@@ -14,11 +14,12 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11_USAGE_STAGING,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
+    DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709, DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020,
     DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT,
 };
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, IDXGIAdapter, IDXGIDevice, IDXGIFactory1, IDXGIOutput1, IDXGIOutput5,
-    IDXGIOutputDuplication, DXGI_OUTDUPL_FRAME_INFO,
+    IDXGIOutput6, IDXGIOutputDuplication, DXGI_OUTDUPL_FRAME_INFO,
 };
 
 pub struct DxgiCaptureEngine {
@@ -123,11 +124,16 @@ impl DxgiCaptureEngine {
             let (duplication, width, height, output_bounds, is_hdr_format, device_name) =
                 Self::find_output(&adapter, &device, None)?;
 
-            let active_sdr_white_level = Self::resolve_sdr_white_level(None, Some(&device_name));
+            let active_sdr_white_level = if is_hdr_format {
+                let level = Self::resolve_sdr_white_level(None, Some(&device_name));
+                super::hdr_pipeline::set_active_sdr_white_level(level);
+                level
+            } else {
+                1.0
+            };
             let hdr_lut = std::sync::Arc::new(*super::hdr_pipeline::build_lut_table(
                 active_sdr_white_level,
             ));
-            super::hdr_pipeline::set_active_sdr_white_level(active_sdr_white_level);
 
             Ok(Self {
                 device,
@@ -184,10 +190,12 @@ impl DxgiCaptureEngine {
             return;
         }
         self.configured_sdr_white_level = level;
-        let new_level = Self::resolve_sdr_white_level(level, Some(&self.device_name));
-        self.active_sdr_white_level = new_level;
-        self.hdr_lut = std::sync::Arc::new(*super::hdr_pipeline::build_lut_table(new_level));
-        super::hdr_pipeline::set_active_sdr_white_level(new_level);
+        if self.is_hdr_format {
+            let new_level = Self::resolve_sdr_white_level(level, Some(&self.device_name));
+            self.active_sdr_white_level = new_level;
+            self.hdr_lut = std::sync::Arc::new(*super::hdr_pipeline::build_lut_table(new_level));
+            super::hdr_pipeline::set_active_sdr_white_level(new_level);
+        }
     }
 
     #[allow(dead_code)]
@@ -230,25 +238,47 @@ impl DxgiCaptureEngine {
             let (output, bounds, device_name) =
                 best_output.or(first_output).ok_or("No DXGI output found")?;
 
-            // HDR 지원: IDXGIOutput5::DuplicateOutput1 을 사용하여 OS DWM 차원에서
-            // 자동 변환하여 수신하도록 요청. 포맷 협상으로 HDR/SDR 호환성 확보
+            // HDR 모니터 여부 감지 (DXGI 1.6 IDXGIOutput6::GetDesc1)
+            let is_output_hdr = if let Ok(output6) = output.cast::<IDXGIOutput6>() {
+                if let Ok(desc1) = output6.GetDesc1() {
+                    let hdr_active = desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020
+                        || desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709
+                        || desc1.BitsPerColor > 8;
+                    eprintln!(
+                        "[DXGI HDR] Monitor ColorSpace: {:?}, BitsPerColor: {}, is_hdr: {}",
+                        desc1.ColorSpace, desc1.BitsPerColor, hdr_active
+                    );
+                    hdr_active
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // HDR/SDR 최적 포맷 협상: IDXGIOutput5::DuplicateOutput1
+            // HDR 모니터인 경우 scRGB FP16 우선, SDR 모니터인 경우 네이티브 B8G8R8A8 우선 요청하여
+            // 불필요한 DWM 변환 및 색 왜곡을 원천 차단함
             let duplication = if let Ok(output5) = output.cast::<IDXGIOutput5>() {
-                // 포맷 협상: R16G16B16A16_FLOAT (scRGB HDR)와 B8G8R8A8 (SDR)를 순차 시도
-                let formats_to_try = [DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_B8G8R8A8_UNORM];
+                let formats_to_try = if is_output_hdr {
+                    [DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_B8G8R8A8_UNORM]
+                } else {
+                    [DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT]
+                };
 
                 let mut dup_result = None;
                 for (fmt_idx, fmt) in formats_to_try.iter().enumerate() {
                     match output5.DuplicateOutput1(device, 0, &[*fmt]) {
                         Ok(dup) => {
                             eprintln!(
-                                "[DXGI HDR] DuplicateOutput1 success with format #{}",
-                                fmt_idx
+                                "[DXGI HDR] DuplicateOutput1 success with format {:?} (attempt #{})",
+                                fmt, fmt_idx
                             );
                             dup_result = Some(dup);
                             break;
                         }
                         Err(e) => {
-                            eprintln!("[DXGI HDR] Format #{} failed: 0x{:X}", fmt_idx, e.code().0);
+                            eprintln!("[DXGI HDR] Format {:?} failed: 0x{:X}", fmt, e.code().0);
                         }
                     }
                 }
@@ -323,6 +353,8 @@ impl DxgiCaptureEngine {
                     self.hdr_lut =
                         std::sync::Arc::new(*super::hdr_pipeline::build_lut_table(level));
                     super::hdr_pipeline::set_active_sdr_white_level(level);
+                } else {
+                    self.active_sdr_white_level = 1.0;
                 }
             }
         }
@@ -813,4 +845,48 @@ unsafe fn copy_atlas_to_buffer(
     context.Unmap(staging_atlas, 0);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows::Win32::Graphics::Dxgi::IDXGIOutput6;
+
+    #[test]
+    fn test_dxgi_output6_check() {
+        use windows::Win32::Graphics::Dxgi::Common::{
+            DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709, DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020,
+            DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709,
+        };
+        unsafe {
+            if let Ok(factory) = CreateDXGIFactory1::<IDXGIFactory1>() {
+                let mut adapter_idx = 0;
+                while let Ok(adapter) = factory.EnumAdapters1(adapter_idx) {
+                    let mut out_idx = 0;
+                    while let Ok(output) = adapter.EnumOutputs(out_idx) {
+                        if let Ok(desc) = output.GetDesc() {
+                            let dev_name = String::from_utf16_lossy(&desc.DeviceName);
+                            println!("Adapter {} Output {}: {}", adapter_idx, out_idx, dev_name);
+                            if let Ok(output6) = output.cast::<IDXGIOutput6>() {
+                                if let Ok(desc1) = output6.GetDesc1() {
+                                    let is_hdr = desc1.ColorSpace
+                                        == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020
+                                        || desc1.ColorSpace
+                                            == DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709
+                                        || desc1.BitsPerColor > 8;
+                                    let is_sdr =
+                                        desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
+                                    println!("  is_hdr: {}, is_sdr: {}", is_hdr, is_sdr);
+                                    assert!(!is_hdr, "Current monitor should be detected as SDR");
+                                    assert!(is_sdr, "Current monitor should be detected as SDR");
+                                }
+                            }
+                        }
+                        out_idx += 1;
+                    }
+                    adapter_idx += 1;
+                }
+            }
+        }
+    }
 }

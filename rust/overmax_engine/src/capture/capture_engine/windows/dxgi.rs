@@ -233,7 +233,7 @@ impl DxgiCaptureEngine {
             // HDR 지원: IDXGIOutput5::DuplicateOutput1 을 사용하여 OS DWM 차원에서
             // 자동 변환하여 수신하도록 요청. 포맷 협상으로 HDR/SDR 호환성 확보
             let duplication = if let Ok(output5) = output.cast::<IDXGIOutput5>() {
-                // 포맷 협상: R10G10B10A2 (HDR)와 B8G8R8A8 (SDR)를 순차 시도
+                // 포맷 협상: R16G16B16A16_FLOAT (scRGB HDR)와 B8G8R8A8 (SDR)를 순차 시도
                 let formats_to_try = [DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_B8G8R8A8_UNORM];
 
                 let mut dup_result = None;
@@ -309,6 +309,8 @@ impl DxgiCaptureEngine {
                 self.output_bounds = bounds;
                 self.is_hdr_format = is_hdr;
                 self.staging_texture = None;
+                self.staging_atlas_textures = [None, None];
+                self.normalizer = None;
                 self.atlas_frames_captured = 0;
                 self.atlas_write_idx = 0;
                 self.device_name = device_name;
@@ -404,7 +406,15 @@ impl DxgiCaptureEngine {
 
     fn ensure_normalizer(&mut self) -> Result<(), String> {
         if self.normalizer.is_none() {
-            self.normalizer = Some(super::normalizer::D3d11Normalizer::new(&self.device)?);
+            let format = if self.is_hdr_format {
+                DXGI_FORMAT_R16G16B16A16_FLOAT
+            } else {
+                DXGI_FORMAT_B8G8R8A8_UNORM
+            };
+            self.normalizer = Some(super::normalizer::D3d11Normalizer::new_with_format(
+                &self.device,
+                format,
+            )?);
         }
         Ok(())
     }
@@ -459,10 +469,9 @@ impl CaptureEngine for DxgiCaptureEngine {
                                 .cast()
                                 .map_err(|e| format!("Query ID3D11Texture2D failed: {e}"))?;
 
-                            let mut tex_desc = D3D11_TEXTURE2D_DESC::default();
-                            texture.GetDesc(&mut tex_desc);
-
                             if self.atlas_frames_captured == 0 {
+                                let mut tex_desc = D3D11_TEXTURE2D_DESC::default();
+                                texture.GetDesc(&mut tex_desc);
                                 eprintln!(
                                     "[CAPTURE SOURCE] {}x{} format={:?} misc=0x{:X} bind=0x{:X} usage={:?}",
                                     tex_desc.Width,

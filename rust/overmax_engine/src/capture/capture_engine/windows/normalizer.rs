@@ -78,6 +78,13 @@ pub fn calculate_uv_rect(
 
 impl D3d11Normalizer {
     pub fn new(device: &ID3D11Device) -> Result<Self, String> {
+        Self::new_with_format(device, DXGI_FORMAT_B8G8R8A8_UNORM)
+    }
+
+    pub fn new_with_format(
+        device: &ID3D11Device,
+        format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT,
+    ) -> Result<Self, String> {
         unsafe {
             // 1. Create Normalized 1920x1080 Render Target Texture
             let rt_desc = D3D11_TEXTURE2D_DESC {
@@ -85,7 +92,7 @@ impl D3d11Normalizer {
                 Height: NORMALIZED_HEIGHT,
                 MipLevels: 1,
                 ArraySize: 1,
-                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                Format: format,
                 SampleDesc: DXGI_SAMPLE_DESC {
                     Count: 1,
                     Quality: 0,

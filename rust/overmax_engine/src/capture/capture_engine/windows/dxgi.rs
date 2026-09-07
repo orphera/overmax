@@ -624,8 +624,9 @@ unsafe fn crop_texture_to_buffer(
         );
     }
 
+    let src_bpp = if is_hdr { 8 } else { 4 };
     for y in 0..crop_height {
-        let src_offset = (start_y + y) * row_pitch + start_x * 4;
+        let src_offset = (start_y + y) * row_pitch + start_x * src_bpp;
         let dst_offset = y * crop_width * 4;
         let src_row = data_ptr.add(src_offset);
         let dst_row = out_frame.bgra.as_mut_ptr().add(dst_offset);

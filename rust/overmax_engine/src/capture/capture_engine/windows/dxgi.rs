@@ -13,6 +13,9 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11_CPU_ACCESS_READ, D3D11_CREATE_DEVICE_FLAG, D3D11_MAP_READ, D3D11_TEXTURE2D_DESC,
     D3D11_USAGE_STAGING,
 };
+use windows::Win32::Graphics::Dxgi::Common::{
+    DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT,
+};
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, IDXGIAdapter, IDXGIDevice, IDXGIFactory1, IDXGIOutput1, IDXGIOutput5,
     IDXGIOutputDuplication, DXGI_OUTDUPL_FRAME_INFO,
@@ -32,6 +35,11 @@ pub struct DxgiCaptureEngine {
     width: u32,
     height: u32,
     output_bounds: RECT,
+    is_hdr_format: bool,
+    device_name: [u16; 32],
+    configured_sdr_white_level: Option<f32>,
+    active_sdr_white_level: f32,
+    hdr_lut: std::sync::Arc<[u8; 65536]>,
 }
 
 unsafe impl Send for DxgiCaptureEngine {}
@@ -112,8 +120,14 @@ impl DxgiCaptureEngine {
         unsafe {
             let (device, context, adapter) = create_device_and_adapter()?;
 
-            let (duplication, width, height, output_bounds) =
+            let (duplication, width, height, output_bounds, is_hdr_format, device_name) =
                 Self::find_output(&adapter, &device, None)?;
+
+            let active_sdr_white_level = Self::resolve_sdr_white_level(None, Some(&device_name));
+            let hdr_lut = std::sync::Arc::new(*super::hdr_pipeline::build_lut_table(
+                active_sdr_white_level,
+            ));
+            super::hdr_pipeline::set_active_sdr_white_level(active_sdr_white_level);
 
             Ok(Self {
                 device,
@@ -129,15 +143,63 @@ impl DxgiCaptureEngine {
                 width,
                 height,
                 output_bounds,
+                is_hdr_format,
+                device_name,
+                configured_sdr_white_level: None,
+                active_sdr_white_level,
+                hdr_lut,
             })
         }
+    }
+
+    fn resolve_sdr_white_level(configured: Option<f32>, device_name: Option<&[u16]>) -> f32 {
+        if let Some(cfg) = configured {
+            if cfg > 0.0 {
+                eprintln!(
+                    "[DXGI HDR] Using configured SDR White Level: {:.4} ({:.1} nits)",
+                    cfg,
+                    cfg * 80.0
+                );
+                return cfg;
+            }
+        }
+        if let Some(detected) = super::hdr_pipeline::detect_monitor_sdr_white_level(device_name) {
+            eprintln!(
+                "[DXGI HDR] Auto-detected OS SDR White Level: {:.4} ({:.1} nits)",
+                detected,
+                detected * 80.0
+            );
+            return detected;
+        }
+        eprintln!(
+            "[DXGI HDR] SDR White Level fallback to default: {:.4} ({:.1} nits)",
+            super::hdr_pipeline::SCRGB_SDR_WHITE_LEVEL,
+            super::hdr_pipeline::SCRGB_SDR_WHITE_LEVEL * 80.0
+        );
+        super::hdr_pipeline::SCRGB_SDR_WHITE_LEVEL
+    }
+
+    pub fn set_hdr_sdr_white_level(&mut self, level: Option<f32>) {
+        if self.configured_sdr_white_level == level {
+            return;
+        }
+        self.configured_sdr_white_level = level;
+        let new_level = Self::resolve_sdr_white_level(level, Some(&self.device_name));
+        self.active_sdr_white_level = new_level;
+        self.hdr_lut = std::sync::Arc::new(*super::hdr_pipeline::build_lut_table(new_level));
+        super::hdr_pipeline::set_active_sdr_white_level(new_level);
+    }
+
+    #[allow(dead_code)]
+    pub fn active_sdr_white_level(&self) -> f32 {
+        self.active_sdr_white_level
     }
 
     fn find_output(
         adapter: &IDXGIAdapter,
         device: &ID3D11Device,
         rect_opt: Option<WindowRect>,
-    ) -> Result<(IDXGIOutputDuplication, u32, u32, RECT), String> {
+    ) -> Result<(IDXGIOutputDuplication, u32, u32, RECT, bool, [u16; 32]), String> {
         unsafe {
             let mut best_output = None;
             let mut first_output = None;
@@ -147,7 +209,7 @@ impl DxgiCaptureEngine {
                 if let Ok(desc) = output.GetDesc() {
                     let bounds = desc.DesktopCoordinates;
                     if first_output.is_none() {
-                        first_output = Some((output.clone(), bounds));
+                        first_output = Some((output.clone(), bounds, desc.DeviceName));
                     }
                     if let Some(rect) = rect_opt {
                         let center_x = rect.left + rect.width / 2;
@@ -157,7 +219,7 @@ impl DxgiCaptureEngine {
                             && center_y >= bounds.top
                             && center_y < bounds.bottom
                         {
-                            best_output = Some((output, bounds));
+                            best_output = Some((output, bounds, desc.DeviceName));
                             break;
                         }
                     }
@@ -165,24 +227,48 @@ impl DxgiCaptureEngine {
                 i += 1;
             }
 
-            let (output, bounds) = best_output.or(first_output).ok_or("No DXGI output found")?;
+            let (output, bounds, device_name) =
+                best_output.or(first_output).ok_or("No DXGI output found")?;
 
             // HDR 지원: IDXGIOutput5::DuplicateOutput1 을 사용하여 OS DWM 차원에서
-            // 8비트 SDR B8G8R8A8_UNORM 으로 자동 다운샘플링/톤 변환하여 수신하도록 요청
+            // 자동 변환하여 수신하도록 요청. 포맷 협상으로 HDR/SDR 호환성 확보
             let duplication = if let Ok(output5) = output.cast::<IDXGIOutput5>() {
-                let supported =
-                    [windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM];
-                output5
-                    .DuplicateOutput1(device, 0, &supported)
-                    .or_else(|_| {
-                        let output1: IDXGIOutput1 = output
-                            .cast()
-                            .map_err(|e| format!("Query IDXGIOutput1 failed: {e}"))?;
-                        output1
-                            .DuplicateOutput(device)
-                            .map_err(|e| format!("DuplicateOutput fallback failed: {e}"))
-                    })?
+                // 포맷 협상: R16G16B16A16_FLOAT (scRGB HDR)와 B8G8R8A8 (SDR)를 순차 시도
+                let formats_to_try = [DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_B8G8R8A8_UNORM];
+
+                let mut dup_result = None;
+                for (fmt_idx, fmt) in formats_to_try.iter().enumerate() {
+                    match output5.DuplicateOutput1(device, 0, &[*fmt]) {
+                        Ok(dup) => {
+                            eprintln!(
+                                "[DXGI HDR] DuplicateOutput1 success with format #{}",
+                                fmt_idx
+                            );
+                            dup_result = Some(dup);
+                            break;
+                        }
+                        Err(e) => {
+                            eprintln!("[DXGI HDR] Format #{} failed: 0x{:X}", fmt_idx, e.code().0);
+                        }
+                    }
+                }
+
+                if let Some(dup) = dup_result {
+                    // DuplicateOutput1 성공
+                    dup
+                } else {
+                    // 모든 DuplicateOutput1 시도 실패 → IDXGIOutput1 폴백
+                    eprintln!("[DXGI HDR] All DuplicateOutput1 attempts failed, trying DuplicateOutput fallback");
+                    let output1: IDXGIOutput1 = output
+                        .cast()
+                        .map_err(|e| format!("Query IDXGIOutput1 failed: {e}"))?;
+                    output1
+                        .DuplicateOutput(device)
+                        .map_err(|e| format!("DuplicateOutput fallback failed: {e}"))?
+                }
             } else {
+                // IDXGIOutput5 미지원 → 직접 IDXGIOutput1 사용
+                eprintln!("[DXGI HDR] IDXGIOutput5 not available, using IDXGIOutput1");
                 let output1: IDXGIOutput1 = output
                     .cast()
                     .map_err(|e| format!("Query IDXGIOutput1 failed: {e}"))?;
@@ -190,13 +276,17 @@ impl DxgiCaptureEngine {
                     .DuplicateOutput(device)
                     .map_err(|e| format!("DuplicateOutput failed: {e}"))?
             };
+
             let desc = duplication.GetDesc();
+            let is_hdr = desc.ModeDesc.Format.0 == DXGI_FORMAT_R16G16B16A16_FLOAT.0; // R16G16B16A16
 
             Ok((
                 duplication,
                 desc.ModeDesc.Width,
                 desc.ModeDesc.Height,
                 bounds,
+                is_hdr,
+                device_name,
             ))
         }
     }
@@ -210,16 +300,30 @@ impl DxgiCaptureEngine {
             && center_y < self.output_bounds.bottom;
 
         if !inside {
-            if let Ok((duplication, width, height, bounds)) =
+            if let Ok((duplication, width, height, bounds, is_hdr, device_name)) =
                 Self::find_output(&self.adapter, &self.device, Some(rect))
             {
                 self.duplication = duplication;
                 self.width = width;
                 self.height = height;
                 self.output_bounds = bounds;
+                self.is_hdr_format = is_hdr;
                 self.staging_texture = None;
+                self.staging_atlas_textures = [None, None];
+                self.normalizer = None;
                 self.atlas_frames_captured = 0;
                 self.atlas_write_idx = 0;
+                self.device_name = device_name;
+                if is_hdr {
+                    let level = Self::resolve_sdr_white_level(
+                        self.configured_sdr_white_level,
+                        Some(&self.device_name),
+                    );
+                    self.active_sdr_white_level = level;
+                    self.hdr_lut =
+                        std::sync::Arc::new(*super::hdr_pipeline::build_lut_table(level));
+                    super::hdr_pipeline::set_active_sdr_white_level(level);
+                }
             }
         }
         Ok(())
@@ -233,7 +337,11 @@ impl DxgiCaptureEngine {
                     Height: height,
                     MipLevels: 1,
                     ArraySize: 1,
-                    Format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM,
+                    Format: if self.is_hdr_format {
+                        DXGI_FORMAT_R16G16B16A16_FLOAT
+                    } else {
+                        DXGI_FORMAT_B8G8R8A8_UNORM
+                    },
                     SampleDesc: windows::Win32::Graphics::Dxgi::Common::DXGI_SAMPLE_DESC {
                         Count: 1,
                         Quality: 0,
@@ -269,7 +377,11 @@ impl DxgiCaptureEngine {
                 Height: ATLAS_HEIGHT,
                 MipLevels: 1,
                 ArraySize: 1,
-                Format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM,
+                Format: if self.is_hdr_format {
+                    DXGI_FORMAT_R16G16B16A16_FLOAT
+                } else {
+                    DXGI_FORMAT_B8G8R8A8_UNORM
+                },
                 SampleDesc: windows::Win32::Graphics::Dxgi::Common::DXGI_SAMPLE_DESC {
                     Count: 1,
                     Quality: 0,
@@ -294,7 +406,15 @@ impl DxgiCaptureEngine {
 
     fn ensure_normalizer(&mut self) -> Result<(), String> {
         if self.normalizer.is_none() {
-            self.normalizer = Some(super::normalizer::D3d11Normalizer::new(&self.device)?);
+            let format = if self.is_hdr_format {
+                DXGI_FORMAT_R16G16B16A16_FLOAT
+            } else {
+                DXGI_FORMAT_B8G8R8A8_UNORM
+            };
+            self.normalizer = Some(super::normalizer::D3d11Normalizer::new_with_format(
+                &self.device,
+                format,
+            )?);
         }
         Ok(())
     }
@@ -348,6 +468,20 @@ impl CaptureEngine for DxgiCaptureEngine {
                             let texture: ID3D11Texture2D = res
                                 .cast()
                                 .map_err(|e| format!("Query ID3D11Texture2D failed: {e}"))?;
+
+                            if self.atlas_frames_captured == 0 {
+                                let mut tex_desc = D3D11_TEXTURE2D_DESC::default();
+                                texture.GetDesc(&mut tex_desc);
+                                eprintln!(
+                                    "[CAPTURE SOURCE] {}x{} format={:?} misc=0x{:X} bind=0x{:X} usage={:?}",
+                                    tex_desc.Width,
+                                    tex_desc.Height,
+                                    tex_desc.Format,
+                                    tex_desc.MiscFlags,
+                                    tex_desc.BindFlags,
+                                    tex_desc.Usage,
+                                );
+                            }
 
                             let staging_write = self.staging_atlas_textures[write_idx]
                                 .as_ref()
@@ -406,6 +540,8 @@ impl CaptureEngine for DxgiCaptureEngine {
                                     &self.context,
                                     staging_write,
                                     out_frame,
+                                    self.is_hdr_format,
+                                    &self.hdr_lut,
                                 );
                             } else {
                                 // 2번째 프레임부터: 이미 지난 틱에 GPU 복사가 완료된 이전 버퍼를 맵핑 (0ms Stall!)
@@ -418,6 +554,8 @@ impl CaptureEngine for DxgiCaptureEngine {
                                     &self.context,
                                     staging_read,
                                     out_frame,
+                                    self.is_hdr_format,
+                                    &self.hdr_lut,
                                 );
                             }
                         }
@@ -447,7 +585,13 @@ impl CaptureEngine for DxgiCaptureEngine {
                 let staging_read = self.staging_atlas_textures[read_idx]
                     .as_ref()
                     .ok_or("Staging atlas texture missing")?;
-                return copy_atlas_to_buffer(&self.context, staging_read, out_frame);
+                return copy_atlas_to_buffer(
+                    &self.context,
+                    staging_read,
+                    out_frame,
+                    self.is_hdr_format,
+                    &self.hdr_lut,
+                );
             }
 
             self.ensure_staging_texture(self.width, self.height)?;
@@ -483,6 +627,8 @@ impl CaptureEngine for DxgiCaptureEngine {
                             rect,
                             self.output_bounds,
                             out_frame,
+                            self.is_hdr_format,
+                            &self.hdr_lut,
                         );
                     }
                     let _ = self.duplication.ReleaseFrame();
@@ -510,11 +656,14 @@ impl CaptureEngine for DxgiCaptureEngine {
                 rect,
                 self.output_bounds,
                 out_frame,
+                self.is_hdr_format,
+                &self.hdr_lut,
             )
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 unsafe fn crop_texture_to_buffer(
     context: &ID3D11DeviceContext,
     staging: &ID3D11Texture2D,
@@ -523,6 +672,8 @@ unsafe fn crop_texture_to_buffer(
     rect: WindowRect,
     output_bounds: RECT,
     out_frame: &mut CapturedFrame,
+    is_hdr: bool,
+    lut: &[u8; 65536],
 ) -> Result<(), String> {
     let mut mapped = Default::default();
     context
@@ -545,12 +696,21 @@ unsafe fn crop_texture_to_buffer(
     out_frame.height = crop_height as i32;
     out_frame.bgra.resize(len, 0);
 
+    let src_bpp = if is_hdr { 8 } else { 4 };
     for y in 0..crop_height {
-        let src_offset = (start_y + y) * row_pitch + start_x * 4;
+        let src_offset = (start_y + y) * row_pitch + start_x * src_bpp;
         let dst_offset = y * crop_width * 4;
         let src_row = data_ptr.add(src_offset);
         let dst_row = out_frame.bgra.as_mut_ptr().add(dst_offset);
-        std::ptr::copy_nonoverlapping(src_row, dst_row, crop_width * 4);
+
+        if is_hdr {
+            super::hdr_pipeline::convert_scrgb_fp16_to_bgra8_with_lut(
+                src_row, dst_row, crop_width, lut,
+            );
+        } else {
+            // 기존 B8G8R8A8 복사
+            std::ptr::copy_nonoverlapping(src_row, dst_row, crop_width * 4);
+        }
     }
 
     context.Unmap(staging, 0);
@@ -604,35 +764,53 @@ unsafe fn copy_atlas_to_buffer(
     context: &ID3D11DeviceContext,
     staging_atlas: &ID3D11Texture2D,
     out_frame: &mut CapturedFrame,
+    is_hdr: bool,
+    lut: &[u8; 65536],
 ) -> Result<(), String> {
     let mut mapped = Default::default();
+
     context
         .Map(staging_atlas, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
         .map_err(|e| format!("Map atlas texture failed: {e}"))?;
 
     let row_pitch = mapped.RowPitch as usize;
     let data_ptr = mapped.pData as *const u8;
+
     let w = ATLAS_WIDTH as usize;
     let h = ATLAS_HEIGHT as usize;
-    let len = w * h * 4;
+
+    let row_bytes = w * 4;
+    let len = row_bytes * h;
 
     out_frame.width = ATLAS_WIDTH as i32;
     out_frame.height = ATLAS_HEIGHT as i32;
     out_frame.bgra.resize(len, 0);
 
-    let row_bytes = w * 4;
     let dst_ptr = out_frame.bgra.as_mut_ptr();
 
-    if row_pitch == row_bytes {
-        std::ptr::copy_nonoverlapping(data_ptr, dst_ptr, len);
-    } else {
+    if is_hdr {
+        // R16G16B16A16_FLOAT → BGRA8
         for y in 0..h {
             let src_row = data_ptr.add(y * row_pitch);
             let dst_row = dst_ptr.add(y * row_bytes);
-            std::ptr::copy_nonoverlapping(src_row, dst_row, row_bytes);
+
+            super::hdr_pipeline::convert_scrgb_fp16_to_bgra8_with_lut(src_row, dst_row, w, lut);
+        }
+    } else {
+        // SDR: B8G8R8A8_UNORM → BGRA8
+        if row_pitch == row_bytes {
+            std::ptr::copy_nonoverlapping(data_ptr, dst_ptr, len);
+        } else {
+            for y in 0..h {
+                let src_row = data_ptr.add(y * row_pitch);
+                let dst_row = dst_ptr.add(y * row_bytes);
+
+                std::ptr::copy_nonoverlapping(src_row, dst_row, row_bytes);
+            }
         }
     }
 
     context.Unmap(staging_atlas, 0);
+
     Ok(())
 }

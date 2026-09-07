@@ -297,6 +297,8 @@ impl DetectionWorker {
             capturer_adaptive.set_preferred_engine(pref);
             let atlas_enabled = self.settings.screen_capture().enable_gpu_atlas;
             capturer_adaptive.set_enable_gpu_atlas(atlas_enabled);
+            let white_level = self.settings.screen_capture().hdr_sdr_white_level;
+            capturer_adaptive.set_hdr_sdr_white_level(white_level);
         }
         let mut capturer: Box<dyn CaptureEngine> = Box::new(capturer_adaptive);
         let mut pipeline = self.build_pipeline();
@@ -361,6 +363,14 @@ impl DetectionWorker {
                             "[Detection] gpu atlas updated: {old_atlas} -> {new_atlas}"
                         ));
                         _capturer.set_enable_gpu_atlas(new_atlas);
+                    }
+                    let old_white_level = self.settings.screen_capture().hdr_sdr_white_level;
+                    let new_white_level = new_settings.screen_capture().hdr_sdr_white_level;
+                    if old_white_level != new_white_level {
+                        self.log(format!(
+                            "[Detection] hdr sdr white level updated: {old_white_level:?} -> {new_white_level:?}"
+                        ));
+                        _capturer.set_hdr_sdr_white_level(new_white_level);
                     }
                 }
                 self.settings = new_settings;

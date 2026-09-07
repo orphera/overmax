@@ -486,7 +486,7 @@ fn get_min_color_distance(mean: Bgr, colors: &[Bgr]) -> f32 {
 }
 
 pub fn detect_freestyle_result_colorbar_match(mean: Bgr) -> bool {
-    get_min_color_distance(mean, &FREESTYLE_RESULT_MODE_COLORS) <= 30.0f32
+    get_min_color_distance(mean, &FREESTYLE_RESULT_MODE_COLORS) <= 40.0f32
 }
 
 pub fn check_open_match_badge(frame: &CapturedFrame, rois: &RoiManager) -> Option<SceneType> {
@@ -618,7 +618,7 @@ fn run_jacket_match_gate(
     matcher: &overmax_data::JacketMatcher,
     scene: SceneType,
     is_unknown: bool,
-    gate_label: &str,
+    #[allow(unused_variables)] gate_label: &str,
 ) -> (Option<(i32, f32)>, SceneMissDiag) {
     let mut diag = SceneMissDiag::default();
     let Some(jacket_roi) = rois.get_roi_for_scene("jacket", scene) else {

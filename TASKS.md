@@ -68,6 +68,10 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [x] 실전 벤치마크 실측 검증: DXGI 캡처 지연시간 4.50ms ➔ 0.62ms(P50: 0.63ms, P95: 0.80ms)로 **-86.2% 수직 단축(7.2배 고속화)** 및 결과창 인식률 100% 달성
   - [x] **3단계 A/B/C 실측 기여도 분리 검증**: [A] main(4.50ms) ➔ [B] fullframe-db(3.17ms, -1.33ms, 34.3% 기여) ➔ [C] atlas-db(0.62ms, -2.55ms 추가, 65.7% 기여)로 분리 입증
   - [x] **리뷰어 지적사항 정밀 팩트체크**: 결과창 인식 개선(12/19 ➔ 19/19)은 캡처 지연이 아닌 커밋 `8288bf1`(숫자 1 분할 수정)의 기여이며, 초기화 스파이크 분류 노이즈 규명 완료
+- [x] **4.7 Windows HDR(scRGB) 무설정 자동 감지 & 64KB 고속 LUT 역변환 (Step 7)**
+  - [x] Win32 CCD API(`DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL`) 기반 OS SDR 화이트 레벨 무설정(Zero-Config) 1:1 자동 감지
+  - [x] $O(1)$ 64KB LUT 기반 scRGB FP16 ➔ sRGB BGRA8 0.38ms 고속 역변환 및 핫루프 락 프리 캐싱
+  - [x] 비-1080p GPU Normalizer 및 멀티 모니터 전환 시 아틀라스 스테이징 리셋 안정화 완료
 
 ---
 

@@ -4,7 +4,7 @@ use crate::capture::window_tracker::{WindowRect, WindowSnapshot};
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "windows")]
-mod windows;
+pub mod windows;
 
 #[cfg(target_os = "linux")]
 pub use linux::AdaptiveCaptureEngine;
@@ -39,4 +39,7 @@ pub trait CaptureEngine: Send + Sync {
 
     #[cfg(target_os = "windows")]
     fn set_enable_gpu_atlas(&mut self, _enable: bool) {}
+
+    #[cfg(target_os = "windows")]
+    fn set_hdr_sdr_white_level(&mut self, _level: Option<f32>) {}
 }

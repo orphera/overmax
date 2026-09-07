@@ -89,10 +89,12 @@ impl RoiManager {
             offset_x: 0,
             offset_y: 0,
             current_scene: SceneType::Unknown,
-            is_atlas: false,
+            is_atlas: width == 512 && height == 512,
             config: GlobalRoiConfig::default(),
         };
-        manager.calculate_transform();
+        if !manager.is_atlas {
+            manager.calculate_transform();
+        }
         manager
     }
 

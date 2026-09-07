@@ -467,6 +467,12 @@ pub struct ScreenCaptureSettings {
     pub content_protected: bool,
     #[serde(default = "default_enable_gpu_atlas")]
     pub enable_gpu_atlas: bool,
+    #[serde(default = "default_hdr_sdr_white_level")]
+    pub hdr_sdr_white_level: Option<f32>,
+}
+
+fn default_hdr_sdr_white_level() -> Option<f32> {
+    None
 }
 
 fn default_logo_cooldown() -> f64 {
@@ -649,6 +655,7 @@ impl Default for ScreenCaptureSettings {
             engine: default_capture_engine(),
             content_protected: default_content_protected(),
             enable_gpu_atlas: default_enable_gpu_atlas(),
+            hdr_sdr_white_level: default_hdr_sdr_white_level(),
         }
     }
 }

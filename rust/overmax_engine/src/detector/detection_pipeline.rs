@@ -591,11 +591,7 @@ fn detect_result_scene_via_edge(
 
         // 재킷 매칭이 확실히 성공한 경우에만 결과창 씬으로 반환
         if let Some(id) = song_id {
-            if is_freestyle_result
-                && detect_rect_edges(frame, colorbar_roi)
-                    .map(|edge_strength| edge_strength >= STRICT_EDGE_THRESHOLD)
-                    .unwrap_or(false)
-            {
+            if is_freestyle_result {
                 debug_println!("    [detect_result_scene_via_edge] Result screen detected via freestyle colorbar!");
                 return Some((SceneType::ResultFreestyle, id));
             }

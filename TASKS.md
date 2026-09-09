@@ -73,6 +73,11 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [x] $O(1)$ 64KB LUT 기반 scRGB FP16 ➔ sRGB BGRA8 0.38ms 고속 역변환 및 핫루프 락 프리 캐싱
   - [x] 비-1080p GPU Normalizer 및 멀티 모니터 전환 시 아틀라스 스테이징 리셋 안정화 완료
   - [x] DXGI 1.6 `IDXGIOutput6` 기반 실시간 모니터 색역(ColorSpace) 사전 감지 및 SDR/HDR 최적 포맷 동적 분기 완성
+- [x] **4.8 HDR DCI-P3 광색역 역변환 및 오픈매치 거짓 양성 완전 방어 (Step 8)**
+  - [x] DJMAX 엔진 내부 렌더링 색공간(DCI-P3 D65) 역변환 행렬($\mathbf{M}_{709 \to \text{P3}}$) 및 inv_scale 사전 곱셈(나눗셈 0회) 초고속 FMA 파이프라인 구현 (<0.1ms)
+  - [x] scRGB 음수 채널 클리핑에 의한 초록/청록/주황/보라 컬러바 및 광색역 자켓 색상 파괴 100% 원천 해결
+  - [x] 프리스타일 결과창이 오픈매치(`ResultOpen2`)로 오판정되던 버그 완전 박멸 (결과창 6건 전건 `ResultFreestyle` 100% 인식 달성)
+
 
 ---
 

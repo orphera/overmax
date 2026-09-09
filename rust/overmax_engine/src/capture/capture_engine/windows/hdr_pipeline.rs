@@ -85,14 +85,25 @@ static ACTIVE_HDR_LUT: std::sync::LazyLock<RwLock<Arc<[u8; 65536]>>> =
         RwLock::new(Arc::new(*table))
     });
 
+static ACTIVE_SDR_WHITE_LEVEL: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(5168); // 5.168 * 1000
+
+/// 현재 활성화된 SDR 화이트 레벨을 반환합니다.
+pub fn get_active_sdr_white_level() -> f32 {
+    ACTIVE_SDR_WHITE_LEVEL.load(std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0
+}
+
 /// 현재 활성화된 64KB HDR LUT를 반환합니다.
 pub fn get_active_lut() -> Arc<[u8; 65536]> {
     ACTIVE_HDR_LUT.read().unwrap().clone()
 }
 
-/// 활성화된 전역 HDR LUT를 새로운 SDR 화이트 레벨로 갱신합니다.
+/// 활성화된 전역 SDR 화이트 레벨 및 HDR LUT를 갱신합니다.
 pub fn set_active_sdr_white_level(level: f32) {
-    let table = build_lut_table(level);
+    let safe_level = if level <= 0.0 { 1.0 } else { level };
+    let val = (safe_level * 1000.0 + 0.5) as u32;
+    ACTIVE_SDR_WHITE_LEVEL.store(val, std::sync::atomic::Ordering::Relaxed);
+    let table = build_lut_table(safe_level);
     *ACTIVE_HDR_LUT.write().unwrap() = Arc::new(*table);
 }
 
@@ -204,7 +215,67 @@ pub unsafe fn convert_scrgb_fp16_to_bgra8_with_lut(
     }
 }
 
-/// R16G16B16A16_FLOAT (scRGB) 버퍼를 전역 활성 LUT를 사용하여 디텍션용 BGRA8 버퍼로 초고속 변환합니다.
+/// DCI-P3 (D65) 광색역 역변환 계수 (행 합계 = 1.0000, D65 화이트포인트 완벽 보존)
+pub const M_709_TO_P3: [[f32; 3]; 3] = [
+    [0.822475, 0.177378, 0.000000],
+    [0.033155, 0.966935, 0.000000],
+    [0.017052, 0.072371, 0.910581],
+];
+
+/// scRGB FP16 버퍼를 DCI-P3 광색역 역변환 및 sRGB OETF를 적용하여 고정밀 BGRA8로 변환합니다.
+///
+/// 게임 엔진(DJMAX RESPECT V)이 DCI-P3 (D65) 색공간에서 렌더링한 버퍼를 수학적으로 정확하게 복원하여
+/// 광색역에서 발생하는 음수 채널 클리핑과 선택/결과 화면의 색상 왜곡을 100% 방지합니다.
+///
+/// # Safety
+///
+/// `src_row`는 최소 `pixel_count * 8` 바이트, `dst_row`는 최소 `pixel_count * 4` 바이트 쓸 수 있어야 합니다.
+#[inline(always)]
+pub unsafe fn convert_scrgb_fp16_to_bgra8_p3(
+    src_row: *const u8,
+    dst_row: *mut u8,
+    pixel_count: usize,
+    scale: f32,
+) {
+    let src = src_row as *const u16;
+    let inv_scale = 1.0 / if scale <= 0.0 { 1.0 } else { scale };
+
+    // 행렬 계수에 inv_scale을 미리 곱하여 루프 내 나눗셈을 0으로 제거 (Zero Division Overhead)
+    let m00 = 0.822475 * inv_scale;
+    let m01 = 0.177378 * inv_scale;
+    let m10 = 0.033155 * inv_scale;
+    let m11 = 0.966935 * inv_scale;
+    let m20 = 0.017052 * inv_scale;
+    let m21 = 0.072371 * inv_scale;
+    let m22 = 0.910581 * inv_scale;
+
+    for x in 0..pixel_count {
+        let r_bits = std::ptr::read_unaligned(src.add(x * 4));
+        let g_bits = std::ptr::read_unaligned(src.add(x * 4 + 1));
+        let b_bits = std::ptr::read_unaligned(src.add(x * 4 + 2));
+
+        let r = f16_to_f32(r_bits);
+        let g = f16_to_f32(g_bits);
+        let b = f16_to_f32(b_bits);
+
+        // DCI-P3 역변환 행렬 곱 + 스케일링 + 클램핑
+        let r_lin = (m00 * r + m01 * g).clamp(0.0, 1.0);
+        let g_lin = (m10 * r + m11 * g).clamp(0.0, 1.0);
+        let b_lin = (m20 * r + m21 * g + m22 * b).clamp(0.0, 1.0);
+
+        let r_srgb = strict_srgb_oetf(r_lin);
+        let g_srgb = strict_srgb_oetf(g_lin);
+        let b_srgb = strict_srgb_oetf(b_lin);
+
+        let dst = dst_row.add(x * 4);
+        *dst.add(0) = (b_srgb * 255.0 + 0.5) as u8;
+        *dst.add(1) = (g_srgb * 255.0 + 0.5) as u8;
+        *dst.add(2) = (r_srgb * 255.0 + 0.5) as u8;
+        *dst.add(3) = 255;
+    }
+}
+
+/// R16G16B16A16_FLOAT (scRGB) 버퍼를 전역 활성 화이트 레벨 및 DCI-P3 변환을 사용하여 디텍션용 BGRA8 버퍼로 변환합니다.
 ///
 /// # Safety
 ///
@@ -215,8 +286,7 @@ pub unsafe fn convert_scrgb_fp16_to_bgra8(
     dst_row: *mut u8,
     pixel_count: usize,
 ) {
-    let lut = get_active_lut();
-    convert_scrgb_fp16_to_bgra8_with_lut(src_row, dst_row, pixel_count, &lut);
+    convert_scrgb_fp16_to_bgra8_p3(src_row, dst_row, pixel_count, get_active_sdr_white_level());
 }
 
 #[cfg(test)]

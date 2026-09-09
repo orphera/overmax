@@ -573,7 +573,7 @@ impl CaptureEngine for DxgiCaptureEngine {
                                     staging_write,
                                     out_frame,
                                     self.is_hdr_format,
-                                    &self.hdr_lut,
+                                    self.active_sdr_white_level,
                                 );
                             } else {
                                 // 2번째 프레임부터: 이미 지난 틱에 GPU 복사가 완료된 이전 버퍼를 맵핑 (0ms Stall!)
@@ -587,7 +587,7 @@ impl CaptureEngine for DxgiCaptureEngine {
                                     staging_read,
                                     out_frame,
                                     self.is_hdr_format,
-                                    &self.hdr_lut,
+                                    self.active_sdr_white_level,
                                 );
                             }
                         }
@@ -622,7 +622,7 @@ impl CaptureEngine for DxgiCaptureEngine {
                     staging_read,
                     out_frame,
                     self.is_hdr_format,
-                    &self.hdr_lut,
+                    self.active_sdr_white_level,
                 );
             }
 
@@ -660,7 +660,7 @@ impl CaptureEngine for DxgiCaptureEngine {
                             self.output_bounds,
                             out_frame,
                             self.is_hdr_format,
-                            &self.hdr_lut,
+                            self.active_sdr_white_level,
                         );
                     }
                     let _ = self.duplication.ReleaseFrame();
@@ -689,7 +689,7 @@ impl CaptureEngine for DxgiCaptureEngine {
                 self.output_bounds,
                 out_frame,
                 self.is_hdr_format,
-                &self.hdr_lut,
+                self.active_sdr_white_level,
             )
         }
     }
@@ -705,7 +705,7 @@ unsafe fn crop_texture_to_buffer(
     output_bounds: RECT,
     out_frame: &mut CapturedFrame,
     is_hdr: bool,
-    lut: &[u8; 65536],
+    white_level: f32,
 ) -> Result<(), String> {
     let mut mapped = Default::default();
     context
@@ -736,8 +736,11 @@ unsafe fn crop_texture_to_buffer(
         let dst_row = out_frame.bgra.as_mut_ptr().add(dst_offset);
 
         if is_hdr {
-            super::hdr_pipeline::convert_scrgb_fp16_to_bgra8_with_lut(
-                src_row, dst_row, crop_width, lut,
+            super::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3(
+                src_row,
+                dst_row,
+                crop_width,
+                white_level,
             );
         } else {
             // 기존 B8G8R8A8 복사
@@ -797,7 +800,7 @@ unsafe fn copy_atlas_to_buffer(
     staging_atlas: &ID3D11Texture2D,
     out_frame: &mut CapturedFrame,
     is_hdr: bool,
-    lut: &[u8; 65536],
+    white_level: f32,
 ) -> Result<(), String> {
     let mut mapped = Default::default();
 
@@ -821,12 +824,12 @@ unsafe fn copy_atlas_to_buffer(
     let dst_ptr = out_frame.bgra.as_mut_ptr();
 
     if is_hdr {
-        // R16G16B16A16_FLOAT → BGRA8
+        // R16G16B16A16_FLOAT → BGRA8 (DCI-P3 광색역 역변환 적용)
         for y in 0..h {
             let src_row = data_ptr.add(y * row_pitch);
             let dst_row = dst_ptr.add(y * row_bytes);
 
-            super::hdr_pipeline::convert_scrgb_fp16_to_bgra8_with_lut(src_row, dst_row, w, lut);
+            super::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3(src_row, dst_row, w, white_level);
         }
     } else {
         // SDR: B8G8R8A8_UNORM → BGRA8

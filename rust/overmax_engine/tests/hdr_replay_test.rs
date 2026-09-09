@@ -1,21 +1,46 @@
 use std::path::{Path, PathBuf};
 
+fn find_snapshot_dir() -> Option<PathBuf> {
+    let candidates = [
+        Path::new("../../scratch/hdr"),
+        Path::new("../../scratch/hdr/hdr_snapshots"),
+        Path::new("scratch/hdr"),
+        Path::new("scratch/hdr/hdr_snapshots"),
+    ];
+    candidates
+        .iter()
+        .find(|p| p.exists())
+        .map(|p| p.to_path_buf())
+}
+
+fn find_raw_file(name: &str) -> Option<PathBuf> {
+    let candidates = [
+        format!("../../scratch/hdr/{}", name),
+        format!("../../scratch/hdr/hdr_snapshots/{}", name),
+        format!("scratch/hdr/{}", name),
+        format!("scratch/hdr/hdr_snapshots/{}", name),
+    ];
+    candidates
+        .into_iter()
+        .map(PathBuf::from)
+        .find(|p| p.exists())
+}
+
 #[cfg(windows)]
 #[test]
 fn test_analyze_all_hdr_snapshots() {
-    let snapshot_dir = Path::new("../../scratch/hdr/hdr_snapshots");
-    let fallback_dir = Path::new("scratch/hdr/hdr_snapshots");
-
-    let target_dir = if snapshot_dir.exists() {
-        snapshot_dir
-    } else if fallback_dir.exists() {
-        fallback_dir
-    } else {
-        println!("[HDR Replay Test] Notice: 'scratch/hdr_snapshot' directory not found.");
-        return;
+    let target_dir = match find_snapshot_dir() {
+        Some(d) => d,
+        None => {
+            println!("[HDR Replay Test] Notice: 'scratch/hdr' directory not found.");
+            return;
+        }
     };
 
-    let entries = std::fs::read_dir(target_dir).expect("Failed to read snapshot dir");
+    let entries = match std::fs::read_dir(&target_dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
     let mut raw_files: Vec<PathBuf> = entries
         .filter_map(|e| e.ok())
         .map(|e| e.path())
@@ -129,7 +154,7 @@ fn analyze_single_snapshot(
     );
 
     // 2. 64KB LUT vs 부동소수점 수학 연산 벤치마크 및 오차 검증
-    let scale = 5.168f32;
+    let scale = 5.1095f32;
     let mut bgra_lut = vec![0u8; WIDTH * HEIGHT * 4];
     for y in 0..HEIGHT {
         let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
@@ -258,14 +283,15 @@ fn test_scale_sweep() {
     db.load().unwrap();
     let _matcher = db.matcher();
 
-    let raw_path = Path::new("../../scratch/hdr/hdr_snapshots/hdr_snapshot_1788930865.raw");
-    let fallback_raw = Path::new("scratch/hdr/hdr_snapshots/hdr_snapshot_1788930865.raw");
-    let actual_raw = if raw_path.exists() {
-        raw_path
-    } else if fallback_raw.exists() {
-        fallback_raw
-    } else {
-        return;
+    let candidates = [
+        Path::new("../../scratch/hdr/hdr_snapshot_1788930865.raw"),
+        Path::new("../../scratch/hdr/hdr_snapshots/hdr_snapshot_1788930865.raw"),
+        Path::new("scratch/hdr/hdr_snapshot_1788930865.raw"),
+        Path::new("scratch/hdr/hdr_snapshots/hdr_snapshot_1788930865.raw"),
+    ];
+    let actual_raw = match candidates.iter().find(|p| p.exists()) {
+        Some(p) => *p,
+        None => return,
     };
 
     let bytes = std::fs::read(actual_raw).unwrap();
@@ -329,16 +355,13 @@ fn test_scale_sweep() {
         );
     }
 
-    // Also test Win+Alt+PrtScn PNG jacket if exists
-    let png_path = Path::new("../../scratch/hdr/Captures/DJMAX RESPECT V 2026-09-09 14_45_30.png");
-    let fallback_png = Path::new("scratch/hdr/Captures/DJMAX RESPECT V 2026-09-09 14_45_30.png");
-    let actual_png = if png_path.exists() {
-        Some(png_path)
-    } else if fallback_png.exists() {
-        Some(fallback_png)
-    } else {
-        None
-    };
+    let png_candidates = [
+        Path::new("../../scratch/hdr/DJMAX RESPECT V 2026-09-09 14_45_30.png"),
+        Path::new("../../scratch/hdr/Captures/DJMAX RESPECT V 2026-09-09 14_45_30.png"),
+        Path::new("scratch/hdr/DJMAX RESPECT V 2026-09-09 14_45_30.png"),
+        Path::new("scratch/hdr/Captures/DJMAX RESPECT V 2026-09-09 14_45_30.png"),
+    ];
+    let actual_png = png_candidates.iter().find(|p| p.exists());
 
     if let Some(p) = actual_png {
         let img = image::open(p).unwrap().to_rgba8();
@@ -392,10 +415,16 @@ fn test_scale_sweep() {
         );
 
         println!("\n=== Top 5 candidates for OpenMatch jacket (15_05_39.png) ===");
-        let png_p = Path::new("../../scratch/hdr/Captures/DJMAX RESPECT V 2026-09-09 15_05_39.png");
-        let fallback_png =
-            Path::new("scratch/hdr/Captures/DJMAX RESPECT V 2026-09-09 15_05_39.png");
-        let actual_p = if png_p.exists() { png_p } else { fallback_png };
+        let png_p_candidates = [
+            Path::new("../../scratch/hdr/DJMAX RESPECT V 2026-09-09 15_05_39.png"),
+            Path::new("../../scratch/hdr/Captures/DJMAX RESPECT V 2026-09-09 15_05_39.png"),
+            Path::new("scratch/hdr/DJMAX RESPECT V 2026-09-09 15_05_39.png"),
+            Path::new("scratch/hdr/Captures/DJMAX RESPECT V 2026-09-09 15_05_39.png"),
+        ];
+        let actual_p = match png_p_candidates.iter().find(|p| p.exists()) {
+            Some(p) => *p,
+            None => return,
+        };
         let img = image::open(actual_p).unwrap().to_rgba8();
         let w = img.width() as usize;
         let mut raw_bytes = img.into_raw();
@@ -674,12 +703,9 @@ fn test_diagnose_unknown_snapshots() {
     let _ = std::fs::create_dir_all("scratch/unknown_jackets");
 
     for fname in unknown_files {
-        let p_str = format!("../../scratch/hdr/hdr_snapshots/{}", fname);
-        let fb_str = format!("scratch/hdr/hdr_snapshots/{}", fname);
-        let p = if Path::new(&p_str).exists() {
-            Path::new(&p_str)
-        } else {
-            Path::new(&fb_str)
+        let Some(p) = find_raw_file(fname) else {
+            println!("[HDR Replay Test] Skipping {}, file not found", fname);
+            continue;
         };
 
         let bytes = std::fs::read(p).expect("Failed to read raw file");
@@ -731,67 +757,69 @@ fn test_diagnose_unknown_snapshots() {
     }
 
     // Compare test_j_cur vs test_j_p3 for Dreamscape
-    let cur_img = image::open("../../scratch/test_j_cur.png")
-        .or_else(|_| image::open("scratch/test_j_cur.png"))
-        .unwrap()
-        .to_rgba8();
-    let p3_img = image::open("../../scratch/test_j_p3.png")
-        .or_else(|_| image::open("scratch/test_j_p3.png"))
-        .unwrap()
-        .to_rgba8();
+    let cur_res = image::open("../../scratch/test_j_cur.png")
+        .or_else(|_| image::open("scratch/test_j_cur.png"));
+    let p3_res = image::open("../../scratch/test_j_p3.png")
+        .or_else(|_| image::open("scratch/test_j_p3.png"));
 
-    let mut cur_bgra = cur_img.into_raw();
-    for px in cur_bgra.chunks_exact_mut(4) {
-        px.swap(0, 2);
+    if let (Ok(cur_img), Ok(p3_img)) = (cur_res, p3_res) {
+        let cur_img = cur_img.to_rgba8();
+        let p3_img = p3_img.to_rgba8();
+
+        let mut cur_bgra = cur_img.into_raw();
+        for px in cur_bgra.chunks_exact_mut(4) {
+            px.swap(0, 2);
+        }
+        let mut p3_bgra = p3_img.into_raw();
+        for px in p3_bgra.chunks_exact_mut(4) {
+            px.swap(0, 2);
+        }
+
+        let match_cur = matcher.match_jacket(&cur_bgra, 60, 60, 4);
+        let match_p3 = matcher.match_jacket(&p3_bgra, 60, 60, 4);
+
+        println!("\n=== DREAMSCAPE 802 JACKET RECOVERY COMPARISON ===");
+        println!(
+            "  Current method match: {:?}",
+            match_cur.map(|m| format!("ID={}, sim={:.4}", m.image_id, m.similarity))
+        );
+        println!(
+            "  DCI-P3 Gamut match:   {:?}",
+            match_p3.map(|m| format!("ID={}, sim={:.4}", m.image_id, m.similarity))
+        );
     }
-    let mut p3_bgra = p3_img.into_raw();
-    for px in p3_bgra.chunks_exact_mut(4) {
-        px.swap(0, 2);
-    }
-
-    let match_cur = matcher.match_jacket(&cur_bgra, 60, 60, 4);
-    let match_p3 = matcher.match_jacket(&p3_bgra, 60, 60, 4);
-
-    println!("\n=== DREAMSCAPE 802 JACKET RECOVERY COMPARISON ===");
-    println!(
-        "  Current method match: {:?}",
-        match_cur.map(|m| format!("ID={}, sim={:.4}", m.image_id, m.similarity))
-    );
-    println!(
-        "  DCI-P3 Gamut match:   {:?}",
-        match_p3.map(|m| format!("ID={}, sim={:.4}", m.image_id, m.similarity))
-    );
 
     // Compare Away (625) and Brain Storm (52)
-    let away_img = image::open("../../scratch/test_j_away_p3.png")
-        .or_else(|_| image::open("scratch/test_j_away_p3.png"))
-        .unwrap()
-        .to_rgba8();
-    let mut away_bgra = away_img.into_raw();
-    for px in away_bgra.chunks_exact_mut(4) {
-        px.swap(0, 2);
-    }
-    let match_away = matcher.match_jacket(&away_bgra, 60, 60, 4);
+    let away_res = image::open("../../scratch/test_j_away_p3.png")
+        .or_else(|_| image::open("scratch/test_j_away_p3.png"));
+    let bs_res = image::open("../../scratch/test_j_brainstorm_p3.png")
+        .or_else(|_| image::open("scratch/test_j_brainstorm_p3.png"));
 
-    let bs_img = image::open("../../scratch/test_j_brainstorm_p3.png")
-        .or_else(|_| image::open("scratch/test_j_brainstorm_p3.png"))
-        .unwrap()
-        .to_rgba8();
-    let mut bs_bgra = bs_img.into_raw();
-    for px in bs_bgra.chunks_exact_mut(4) {
-        px.swap(0, 2);
-    }
-    let match_bs = matcher.match_jacket(&bs_bgra, 60, 60, 4);
+    if let (Ok(away_img), Ok(bs_img)) = (away_res, bs_res) {
+        let away_img = away_img.to_rgba8();
+        let mut away_bgra = away_img.into_raw();
+        for px in away_bgra.chunks_exact_mut(4) {
+            px.swap(0, 2);
+        }
+        let match_away = matcher.match_jacket(&away_bgra, 60, 60, 4);
 
-    println!("\n=== AWAY (625) & BRAIN STORM (52) P3 RECOVERY ===");
-    println!(
-        "  Away P3 match:        {:?}",
-        match_away.map(|m| format!("ID={}, sim={:.4}", m.image_id, m.similarity))
-    );
-    println!(
-        "  Brain Storm P3 match: {:?}",
-        match_bs.map(|m| format!("ID={}, sim={:.4}", m.image_id, m.similarity))
-    );
+        let bs_img = bs_img.to_rgba8();
+        let mut bs_bgra = bs_img.into_raw();
+        for px in bs_bgra.chunks_exact_mut(4) {
+            px.swap(0, 2);
+        }
+        let match_bs = matcher.match_jacket(&bs_bgra, 60, 60, 4);
+
+        println!("\n=== AWAY (625) & BRAIN STORM (52) P3 RECOVERY ===");
+        println!(
+            "  Away P3 match:        {:?}",
+            match_away.map(|m| format!("ID={}, sim={:.4}", m.image_id, m.similarity))
+        );
+        println!(
+            "  Brain Storm P3 match: {:?}",
+            match_bs.map(|m| format!("ID={}, sim={:.4}", m.image_id, m.similarity))
+        );
+    }
 }
 
 #[test]
@@ -814,12 +842,12 @@ fn test_diagnose_result_scenes() {
     use overmax_engine::detector::roi::RoiManager;
 
     for (label, fname) in result_files {
-        let p_str = format!("../../scratch/hdr/hdr_snapshots/{}", fname);
-        let fb_str = format!("scratch/hdr/hdr_snapshots/{}", fname);
-        let p = if Path::new(&p_str).exists() {
-            Path::new(&p_str)
-        } else {
-            Path::new(&fb_str)
+        let Some(p) = find_raw_file(fname) else {
+            println!(
+                "[HDR Replay Test] Skipping {} ({}), file not found",
+                label, fname
+            );
+            continue;
         };
 
         let bytes = std::fs::read(p).expect("Failed to read raw file");
@@ -915,12 +943,9 @@ fn test_diagnose_result_scenes() {
 #[test]
 #[cfg(windows)]
 fn test_benchmark_p3_conversion_speed() {
-    let p_str = "../../scratch/hdr/hdr_snapshots/hdr_snapshot_1788930865.raw";
-    let fb_str = "scratch/hdr/hdr_snapshots/hdr_snapshot_1788930865.raw";
-    let p = if Path::new(p_str).exists() {
-        Path::new(p_str)
-    } else {
-        Path::new(fb_str)
+    let Some(p) = find_raw_file("hdr_snapshot_1788930865.raw") else {
+        println!("[HDR Replay Test] Benchmark skipped: raw file not found");
+        return;
     };
     let bytes = std::fs::read(p).expect("Failed to read raw file");
 
@@ -970,12 +995,16 @@ fn test_benchmark_p3_conversion_speed() {
 #[test]
 #[cfg(windows)]
 fn test_all_snapshots_summary() {
-    let p_alt = Path::new("../../scratch/hdr/hdr_snapshots");
-    let p_cur = Path::new("scratch/hdr/hdr_snapshots");
-    let target_dir = if p_alt.exists() { p_alt } else { p_cur };
+    let Some(target_dir) = find_snapshot_dir() else {
+        println!("[HDR Replay Test] Summary skipped: snapshot dir not found");
+        return;
+    };
 
-    let mut entries: Vec<PathBuf> = std::fs::read_dir(target_dir)
-        .expect("Failed to read snapshot dir")
+    let Ok(read_dir) = std::fs::read_dir(&target_dir) else {
+        return;
+    };
+
+    let mut entries: Vec<PathBuf> = read_dir
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.extension().and_then(|ext| ext.to_str()) == Some("raw"))
@@ -1383,25 +1412,17 @@ fn test_captures_and_snapshots_play_state() {
 fn test_export_snapshots_to_png() {
     use overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3;
 
-    let snap_dir = Path::new("../../scratch/hdr/hdr_snapshots");
-    let fallback_snap = Path::new("scratch/hdr/hdr_snapshots");
-    let actual_snap = if snap_dir.exists() {
-        snap_dir
-    } else if fallback_snap.exists() {
-        fallback_snap
-    } else {
+    let Some(actual_snap) = find_snapshot_dir() else {
         return;
     };
 
-    let out_dir = if snap_dir.exists() {
-        Path::new("../../scratch/hdr/hdr_snapshots_png")
-    } else {
-        Path::new("scratch/hdr/hdr_snapshots_png")
-    };
-    std::fs::create_dir_all(out_dir).expect("Failed to create out dir");
+    let out_dir = actual_snap.join("hdr_snapshots_png");
+    std::fs::create_dir_all(&out_dir).expect("Failed to create out dir");
 
-    let mut raw_files: Vec<PathBuf> = std::fs::read_dir(actual_snap)
-        .unwrap()
+    let Ok(read_dir) = std::fs::read_dir(&actual_snap) else {
+        return;
+    };
+    let mut raw_files: Vec<PathBuf> = read_dir
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.extension().and_then(|ext| ext.to_str()) == Some("raw"))

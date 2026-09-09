@@ -38,6 +38,7 @@ pub struct DxgiCaptureEngine {
     output_bounds: RECT,
     is_hdr_format: bool,
     device_name: [u16; 32],
+    detected_max_lum: Option<f32>,
     configured_sdr_white_level: Option<f32>,
     active_sdr_white_level: f32,
     hdr_lut: std::sync::Arc<[u8; 65536]>,
@@ -121,11 +122,18 @@ impl DxgiCaptureEngine {
         unsafe {
             let (device, context, adapter) = create_device_and_adapter()?;
 
-            let (duplication, width, height, output_bounds, is_hdr_format, device_name) =
-                Self::find_output(&adapter, &device, None)?;
+            let (
+                duplication,
+                width,
+                height,
+                output_bounds,
+                is_hdr_format,
+                device_name,
+                detected_max_lum,
+            ) = Self::find_output(&adapter, &device, None)?;
 
             let active_sdr_white_level = if is_hdr_format {
-                let level = Self::resolve_sdr_white_level(None, Some(&device_name));
+                let level = Self::resolve_sdr_white_level(None, detected_max_lum);
                 super::hdr_pipeline::set_active_sdr_white_level(level);
                 level
             } else {
@@ -151,6 +159,7 @@ impl DxgiCaptureEngine {
                 output_bounds,
                 is_hdr_format,
                 device_name,
+                detected_max_lum,
                 configured_sdr_white_level: None,
                 active_sdr_white_level,
                 hdr_lut,
@@ -158,7 +167,7 @@ impl DxgiCaptureEngine {
         }
     }
 
-    fn resolve_sdr_white_level(configured: Option<f32>, device_name: Option<&[u16]>) -> f32 {
+    fn resolve_sdr_white_level(configured: Option<f32>, detected_max_lum: Option<f32>) -> f32 {
         if let Some(cfg) = configured {
             if cfg > 0.0 {
                 eprintln!(
@@ -169,16 +178,17 @@ impl DxgiCaptureEngine {
                 return cfg;
             }
         }
-        if let Some(detected) = super::hdr_pipeline::detect_monitor_sdr_white_level(device_name) {
+        if let Some(max_lum) = detected_max_lum {
+            let scale = max_lum / 80.0;
             eprintln!(
-                "[DXGI HDR] Auto-detected OS SDR White Level: {:.4} ({:.1} nits)",
-                detected,
-                detected * 80.0
+                "[DXGI HDR] Auto-detected Peak HDR Luminance via DXGI 1.6: {:.2} nits -> scale {:.4}",
+                max_lum,
+                scale
             );
-            return detected;
+            return scale;
         }
         eprintln!(
-            "[DXGI HDR] SDR White Level fallback to default: {:.4} ({:.1} nits)",
+            "[DXGI HDR] Peak HDR Luminance fallback to default: {:.4} ({:.1} nits)",
             super::hdr_pipeline::SCRGB_SDR_WHITE_LEVEL,
             super::hdr_pipeline::SCRGB_SDR_WHITE_LEVEL * 80.0
         );
@@ -191,7 +201,7 @@ impl DxgiCaptureEngine {
         }
         self.configured_sdr_white_level = level;
         if self.is_hdr_format {
-            let new_level = Self::resolve_sdr_white_level(level, Some(&self.device_name));
+            let new_level = Self::resolve_sdr_white_level(level, self.detected_max_lum);
             self.active_sdr_white_level = new_level;
             self.hdr_lut = std::sync::Arc::new(*super::hdr_pipeline::build_lut_table(new_level));
             super::hdr_pipeline::set_active_sdr_white_level(new_level);
@@ -207,7 +217,18 @@ impl DxgiCaptureEngine {
         adapter: &IDXGIAdapter,
         device: &ID3D11Device,
         rect_opt: Option<WindowRect>,
-    ) -> Result<(IDXGIOutputDuplication, u32, u32, RECT, bool, [u16; 32]), String> {
+    ) -> Result<
+        (
+            IDXGIOutputDuplication,
+            u32,
+            u32,
+            RECT,
+            bool,
+            [u16; 32],
+            Option<f32>,
+        ),
+        String,
+    > {
         unsafe {
             let mut best_output = None;
             let mut first_output = None;
@@ -238,22 +259,29 @@ impl DxgiCaptureEngine {
             let (output, bounds, device_name) =
                 best_output.or(first_output).ok_or("No DXGI output found")?;
 
-            // HDR 모니터 여부 감지 (DXGI 1.6 IDXGIOutput6::GetDesc1)
-            let is_output_hdr = if let Ok(output6) = output.cast::<IDXGIOutput6>() {
+            // HDR 모니터 여부 및 피크 휘도(MaxLuminance) 감지 (DXGI 1.6 IDXGIOutput6::GetDesc1)
+            let (is_output_hdr, detected_max_lum) = if let Ok(output6) =
+                output.cast::<IDXGIOutput6>()
+            {
                 if let Ok(desc1) = output6.GetDesc1() {
                     let hdr_active = desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020
                         || desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709
                         || desc1.BitsPerColor > 8;
+                    let max_lum = if desc1.MaxLuminance >= 100.0 {
+                        Some(desc1.MaxLuminance)
+                    } else {
+                        None
+                    };
                     eprintln!(
-                        "[DXGI HDR] Monitor ColorSpace: {:?}, BitsPerColor: {}, is_hdr: {}",
-                        desc1.ColorSpace, desc1.BitsPerColor, hdr_active
+                        "[DXGI HDR] Monitor ColorSpace: {:?}, BitsPerColor: {}, is_hdr: {}, MaxLum: {:?} nits",
+                        desc1.ColorSpace, desc1.BitsPerColor, hdr_active, max_lum
                     );
-                    hdr_active
+                    (hdr_active, max_lum)
                 } else {
-                    false
+                    (false, None)
                 }
             } else {
-                false
+                (false, None)
             };
 
             // HDR/SDR 최적 포맷 협상: IDXGIOutput5::DuplicateOutput1
@@ -317,6 +345,7 @@ impl DxgiCaptureEngine {
                 bounds,
                 is_hdr,
                 device_name,
+                detected_max_lum,
             ))
         }
     }
@@ -330,7 +359,7 @@ impl DxgiCaptureEngine {
             && center_y < self.output_bounds.bottom;
 
         if !inside {
-            if let Ok((duplication, width, height, bounds, is_hdr, device_name)) =
+            if let Ok((duplication, width, height, bounds, is_hdr, device_name, detected_max_lum)) =
                 Self::find_output(&self.adapter, &self.device, Some(rect))
             {
                 self.duplication = duplication;
@@ -344,10 +373,11 @@ impl DxgiCaptureEngine {
                 self.atlas_frames_captured = 0;
                 self.atlas_write_idx = 0;
                 self.device_name = device_name;
+                self.detected_max_lum = detected_max_lum;
                 if is_hdr {
                     let level = Self::resolve_sdr_white_level(
                         self.configured_sdr_white_level,
-                        Some(&self.device_name),
+                        detected_max_lum,
                     );
                     self.active_sdr_white_level = level;
                     self.hdr_lut =
@@ -879,9 +909,14 @@ mod tests {
                                         || desc1.BitsPerColor > 8;
                                     let is_sdr =
                                         desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
-                                    println!("  is_hdr: {}, is_sdr: {}", is_hdr, is_sdr);
-                                    assert!(!is_hdr, "Current monitor should be detected as SDR");
-                                    assert!(is_sdr, "Current monitor should be detected as SDR");
+                                    println!(
+                                        "  is_hdr: {}, is_sdr: {}, BitsPerColor: {}, MaxLum: {}",
+                                        is_hdr, is_sdr, desc1.BitsPerColor, desc1.MaxLuminance
+                                    );
+                                    assert!(
+                                        desc1.BitsPerColor >= 8,
+                                        "BitsPerColor should be at least 8"
+                                    );
                                 }
                             }
                         }

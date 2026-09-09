@@ -325,15 +325,19 @@ mod tests {
 
     #[test]
     fn matches_digit_templates_accurately() {
-        let cv_templates = crate::detector::templates::digit::DIGIT_TEMPLATES_SCORE;
-        for t in cv_templates {
-            let res = overmax_cv::match_character(t.mask, t.width, t.height, cv_templates);
-            assert!(res.is_ok(), "Failed to call match_character: '{}'", t.char_val);
-            let matched = res.unwrap();
-            assert!(matched.is_some(), "Failed to match digit template: '{}'", t.char_val);
-            let (matched_char, score) = matched.unwrap();
-            assert_eq!(matched_char, t.char_val, "Mismatched char for template '{}'", t.char_val);
-            assert!((score - 1.0).abs() < 1e-4, "Score for perfect template should be 1.0");
+        for &template_set in &[
+            crate::detector::templates::digit::DIGIT_TEMPLATES_SCORE,
+            crate::detector::templates::digit::DIGIT_TEMPLATES_RATE,
+        ] {
+            for t in template_set {
+                let res = overmax_cv::match_character(t.mask, t.width, t.height, template_set);
+                assert!(res.is_ok(), "Failed to call match_character: '{}'", t.char_val);
+                let matched = res.unwrap();
+                assert!(matched.is_some(), "Failed to match digit template: '{}'", t.char_val);
+                let (matched_char, score) = matched.unwrap();
+                assert_eq!(matched_char, t.char_val, "Mismatched char for template '{}'", t.char_val);
+                assert!((score - 1.0).abs() < 1e-4, "Score for perfect template should be 1.0");
+            }
         }
     }
 }

@@ -470,7 +470,8 @@ pub fn binarize_by_global_contrast(
         method,
         |max, min| {
             if max > 40 && max.saturating_sub(min) > 15 {
-                let calculated = ((max as f32 * 0.80) as u8).max(max.saturating_sub(45));
+                let contrast = max.saturating_sub(min) as f32;
+                let calculated = (min as f32 + contrast * 0.65) as u8;
                 calculated.max(min + 5)
             } else {
                 180

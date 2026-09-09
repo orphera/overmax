@@ -54,10 +54,10 @@ pub fn strict_srgb_oetf(linear: f32) -> f32 {
         1.055 * linear.powf(1.0 / 2.4) - 0.055
     }
 }
-/// Windows DWM scRGB 모드에서의 SDR Reference White 기본 레벨 (1.0 = 80 nits, 5.168 = 413.44 nits).
+/// Windows DWM scRGB 모드에서의 실효 SDR Target White 기본 레벨 (1.0 = 80 nits, 4.88 = 390.4 nits).
 ///
-/// 실측 계측된 DJMAX RESPECT V 환경의 기준 화이트 레벨이며, OS API 감지 실패 시의 안전한 폴백으로 사용됩니다.
-pub const SCRGB_SDR_WHITE_LEVEL: f32 = 5.168;
+/// DisplayHDR 400 패널 피크(408.76 nits)의 95.5% 유효 백색 기준선이며, OS API 감지 실패 시의 안전한 폴백으로 사용됩니다.
+pub const SCRGB_SDR_WHITE_LEVEL: f32 = 4.88;
 
 /// 주어진 SDR 화이트 레벨(배율, 1.0 = 80 nits)에 대응하는 64KB 고속 역변환 룩업 테이블을 생성합니다.
 pub fn build_lut_table(sdr_white_level: f32) -> Box<[u8; 65536]> {

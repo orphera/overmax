@@ -179,10 +179,12 @@ impl DxgiCaptureEngine {
             }
         }
         if let Some(max_lum) = detected_max_lum {
-            let scale = max_lum / 80.0;
+            // HDR 톤매퍼의 실효 백색 기준선(Target White): 패널 피크의 ~95.5% 지점을 255로 매핑 (예: 408.76 nits -> 390.4 nits, scale ~4.88)
+            let scale = (max_lum / 80.0) * 0.955;
             eprintln!(
-                "[DXGI HDR] Auto-detected Peak HDR Luminance via DXGI 1.6: {:.2} nits -> scale {:.4}",
+                "[DXGI HDR] Auto-detected Peak HDR Luminance via DXGI 1.6: {:.2} nits (target 95.5%: {:.2} nits) -> scale {:.4}",
                 max_lum,
+                max_lum * 0.955,
                 scale
             );
             return scale;

@@ -95,21 +95,28 @@ pub fn tone_map_2stage_rational(v: f32, scale_mid: f32, v_knee: f32) -> f32 {
     }
 }
 
-/// Windows DWM scRGB 모드에서의 실효 SDR Target White 기본 레벨 (1.0 = 80 nits, 4.88 = 390.4 nits).
+/// Windows DWM scRGB 모드에서의 표준 SDR 콘텐츠 백색 레벨 (1.0 = 80 nits, 3.0 = 240 nits).
 ///
-/// DisplayHDR 400 패널 피크(408.76 nits)의 95.5% 유효 백색 기준선이며, OS API 감지 실패 시의 안전한 폴백으로 사용됩니다.
-pub const SCRGB_SDR_WHITE_LEVEL: f32 = 4.88;
+/// Windows 디스플레이 설정의 "SDR 콘텐츠 밝기" 기본 권장값(240 nits)이며,
+/// 2-Anchor 역톤매핑 파이프라인의 기준 SDR 백색점(Anchor 1)으로 사용됩니다.
+pub const DEFAULT_SDR_WHITE_LEVEL: f32 = 3.0;
+
+/// 모니터 패널 피크 휘도 기본 배율 (DisplayHDR 400급, 408.76 nits * 0.955 / 80.0 = 4.88, Anchor 2).
+pub const DEFAULT_PEAK_WHITE_LEVEL: f32 = 4.88;
+
+/// 레거시 호환성을 위한 별칭 (DisplayHDR 400 기준 피크 스케일)
+pub const SCRGB_SDR_WHITE_LEVEL: f32 = DEFAULT_PEAK_WHITE_LEVEL;
 
 /// 주어진 SDR 화이트 레벨(배율, 1.0 = 80 nits)에 대응하는 64KB 고속 역변환 룩업 테이블을 생성합니다.
 pub fn build_lut_table(sdr_white_level: f32) -> Box<[u8; 65536]> {
     let mut table = Box::new([0u8; 65536]);
     let safe_level = if sdr_white_level <= 0.0 {
-        SCRGB_SDR_WHITE_LEVEL
+        DEFAULT_SDR_WHITE_LEVEL
     } else {
         sdr_white_level
     };
-    let scale_mid = safe_level * (4.0 / 4.88);
-    let v_knee = safe_level * (2.2 / 4.88);
+    let scale_mid = safe_level * (4.0 / 3.0);
+    let v_knee = safe_level * (2.2 / 3.0);
 
     for bits in 0..=65535u16 {
         let val_f32 = f16_to_f32(bits);
@@ -125,12 +132,12 @@ pub fn build_lut_table(sdr_white_level: f32) -> Box<[u8; 65536]> {
 /// 캡처 엔진 초기화 시 감지된 모니터의 SDR 화이트 레벨로 자동 갱신됩니다.
 static ACTIVE_HDR_LUT: std::sync::LazyLock<RwLock<Arc<[u8; 65536]>>> =
     std::sync::LazyLock::new(|| {
-        let table = build_lut_table(SCRGB_SDR_WHITE_LEVEL);
+        let table = build_lut_table(DEFAULT_SDR_WHITE_LEVEL);
         RwLock::new(Arc::new(*table))
     });
 
 static ACTIVE_SDR_WHITE_LEVEL: std::sync::atomic::AtomicU32 =
-    std::sync::atomic::AtomicU32::new(5168); // 5.168 * 1000
+    std::sync::atomic::AtomicU32::new(3000); // 3.0 * 1000
 
 /// 현재 활성화된 SDR 화이트 레벨을 반환합니다.
 pub fn get_active_sdr_white_level() -> f32 {
@@ -144,7 +151,11 @@ pub fn get_active_lut() -> Arc<[u8; 65536]> {
 
 /// 활성화된 전역 SDR 화이트 레벨 및 HDR LUT를 갱신합니다.
 pub fn set_active_sdr_white_level(level: f32) {
-    let safe_level = if level <= 0.0 { 1.0 } else { level };
+    let safe_level = if level <= 0.0 {
+        DEFAULT_SDR_WHITE_LEVEL
+    } else {
+        level
+    };
     let val = (safe_level * 1000.0 + 0.5) as u32;
     ACTIVE_SDR_WHITE_LEVEL.store(val, std::sync::atomic::Ordering::Relaxed);
     let table = build_lut_table(safe_level);
@@ -280,17 +291,17 @@ pub unsafe fn convert_scrgb_fp16_to_bgra8_p3(
     src_row: *const u8,
     dst_row: *mut u8,
     pixel_count: usize,
-    scale: f32,
+    sdr_white_level: f32,
 ) {
     let src = src_row as *const u16;
-    let safe_scale = if scale <= 0.0 {
-        SCRGB_SDR_WHITE_LEVEL
+    let safe_sdr = if sdr_white_level <= 0.0 {
+        DEFAULT_SDR_WHITE_LEVEL
     } else {
-        scale
+        sdr_white_level
     };
 
-    let scale_mid = safe_scale * (4.0 / 4.88);
-    let v_knee = safe_scale * (2.2 / 4.88);
+    let scale_mid = safe_sdr * (4.0 / 3.0);
+    let v_knee = safe_sdr * (2.2 / 3.0);
 
     let oetf = &*FAST_OETF_TABLE;
 
@@ -391,7 +402,7 @@ mod tests {
 
     #[test]
     fn test_build_lut_table_consistency() {
-        let lut = build_lut_table(SCRGB_SDR_WHITE_LEVEL);
+        let lut = build_lut_table(DEFAULT_SDR_WHITE_LEVEL);
         assert_eq!(lut.len(), 65536);
 
         // 0.0 (half float 0x0000) -> sRGB 0

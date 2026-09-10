@@ -90,6 +90,11 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [x] 히스토그램 L1 정규화 분모(3072.0 ➔ 4096.0) 현실화로 조명/배경 편차에 대한 안전 완충 지대 확보
   - [x] 신규 1440p 유저 캡처 자켓 유사도 0.4656 ➔ **0.7222** (+55% 상승) 및 씬 판정(Freestyle, 4B, NM) 100% 정상화
   - [x] 기존 39개 실측 HDR 스냅샷 벤치마크: 평균 유사도 0.8689 ➔ **0.9257**, 최저 유사도 0.7890 ➔ **0.8785**로 전체 정확도 대폭 향상
+- [x] **4.11 Auto HDR 2-Anchor 일반화 파이프라인 (Step 11)**
+  - [x] 패널 피크 휘도(MaxLuminance) 단일 비례식의 로컬 과적합(DisplayHDR 1000 등 고휘도 패널에서 자켓 언더노출 찌그러짐) 원인 규명
+  - [x] Windows SDR 콘텐츠 백색(Anchor 1: Win32 CCD `detect_monitor_sdr_white_level`, 기본값 3.0)과 패널 피크 휘도(Anchor 2: DXGI 1.6 `MaxLuminance`, 기본값 4.88)를 분리하는 2-Anchor 모델 정립
+  - [x] 중간톤 선형 복원 및 무릎점을 SDR 백색 기준으로 유도($\text{scale}_{\text{mid}} = A_{\text{sdr}} \times \frac{4.0}{3.0}$, $V_{\text{knee}} = A_{\text{sdr}} \times \frac{2.2}{3.0}$)하여 임의의 피크 패널에서도 자켓 밝기 및 형태 완벽 보존
+  - [x] DXGI 캡처 엔진의 `resolve_sdr_white_level`을 Win32 CCD 우선 감지 구조로 전면 개편하고, 39개 스냅샷 100% 인식 유지 및 전체 유닛 테스트 무회귀 검증 완료
 
 
 ---

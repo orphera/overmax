@@ -154,7 +154,8 @@ fn analyze_single_snapshot(
     );
 
     // 2. 64KB LUT vs 부동소수점 수학 연산 벤치마크 및 오차 검증
-    let scale = 5.1095f32;
+    let scale =
+        overmax_engine::capture::capture_engine::windows::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL;
     let mut bgra_lut = vec![0u8; WIDTH * HEIGHT * 4];
     for y in 0..HEIGHT {
         let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
@@ -860,7 +861,10 @@ fn test_diagnose_result_scenes() {
             let dst_row = unsafe { bgra_lut.as_mut_ptr().add(y * WIDTH * 4) };
             unsafe {
                 overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3(
-                    src_row, dst_row, WIDTH, 5.168,
+                    src_row,
+                    dst_row,
+                    WIDTH,
+                    overmax_engine::capture::capture_engine::windows::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
                 );
             }
         }
@@ -953,7 +957,9 @@ fn test_benchmark_p3_conversion_speed() {
     const HEIGHT: usize = 512;
     let mut dst = vec![0u8; WIDTH * HEIGHT * 4];
 
-    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3;
+    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::{
+        convert_scrgb_fp16_to_bgra8_p3, DEFAULT_SDR_WHITE_LEVEL,
+    };
     use std::time::Instant;
 
     // Warm up
@@ -961,7 +967,7 @@ fn test_benchmark_p3_conversion_speed() {
         let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
         let dst_row = unsafe { dst.as_mut_ptr().add(y * WIDTH * 4) };
         unsafe {
-            convert_scrgb_fp16_to_bgra8_p3(src_row, dst_row, WIDTH, 5.168);
+            convert_scrgb_fp16_to_bgra8_p3(src_row, dst_row, WIDTH, DEFAULT_SDR_WHITE_LEVEL);
         }
     }
 
@@ -973,7 +979,7 @@ fn test_benchmark_p3_conversion_speed() {
             let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
             let dst_row = unsafe { dst.as_mut_ptr().add(y * WIDTH * 4) };
             unsafe {
-                convert_scrgb_fp16_to_bgra8_p3(src_row, dst_row, WIDTH, 5.168);
+                convert_scrgb_fp16_to_bgra8_p3(src_row, dst_row, WIDTH, DEFAULT_SDR_WHITE_LEVEL);
             }
         }
     }
@@ -1020,7 +1026,9 @@ fn test_all_snapshots_summary() {
     db.load().expect("Failed to load ImageIndexDb");
     let matcher = db.matcher();
 
-    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3;
+    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::{
+        convert_scrgb_fp16_to_bgra8_p3, DEFAULT_SDR_WHITE_LEVEL,
+    };
     use overmax_engine::capture::frame::CapturedFrame;
     use overmax_engine::detector::detection_pipeline::detect_static_scene;
     use overmax_engine::detector::roi::RoiManager;
@@ -1052,7 +1060,7 @@ fn test_all_snapshots_summary() {
             let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
             let dst_row = unsafe { bgra.as_mut_ptr().add(y * WIDTH * 4) };
             unsafe {
-                convert_scrgb_fp16_to_bgra8_p3(src_row, dst_row, WIDTH, 5.168);
+                convert_scrgb_fp16_to_bgra8_p3(src_row, dst_row, WIDTH, DEFAULT_SDR_WHITE_LEVEL);
             }
         }
 
@@ -1307,7 +1315,7 @@ fn test_captures_and_snapshots_play_state() {
                     src_row,
                     dst_row,
                     WIDTH,
-                    overmax_engine::capture::capture_engine::windows::hdr_pipeline::SCRGB_SDR_WHITE_LEVEL,
+                    overmax_engine::capture::capture_engine::windows::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
                 );
             }
         }
@@ -1452,7 +1460,12 @@ fn test_export_snapshots_to_png() {
             let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
             let dst_row = unsafe { rgba.as_mut_ptr().add(y * WIDTH * 4) };
             unsafe {
-                convert_scrgb_fp16_to_bgra8_p3(src_row, dst_row, WIDTH, 5.168);
+                convert_scrgb_fp16_to_bgra8_p3(
+                    src_row,
+                    dst_row,
+                    WIDTH,
+                    overmax_engine::capture::capture_engine::windows::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
+                );
             }
         }
 
@@ -1508,7 +1521,7 @@ fn test_diagnose_score_rate_anomalies() {
                     src_row,
                     dst_row,
                     WIDTH,
-                    overmax_engine::capture::capture_engine::windows::hdr_pipeline::SCRGB_SDR_WHITE_LEVEL,
+                    overmax_engine::capture::capture_engine::windows::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
                 );
             }
         }
@@ -2007,7 +2020,10 @@ fn test_benchmark_2stage_latency() {
             let dst_row = unsafe { bgra.as_mut_ptr().add(y * WIDTH * 4) };
             unsafe {
                 overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3(
-                    src_row, dst_row, WIDTH, 4.88,
+                    src_row,
+                    dst_row,
+                    WIDTH,
+                    overmax_engine::capture::capture_engine::windows::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
                 );
             }
         }

@@ -133,7 +133,7 @@ impl DxgiCaptureEngine {
             ) = Self::find_output(&adapter, &device, None)?;
 
             let active_sdr_white_level = if is_hdr_format {
-                let level = Self::resolve_sdr_white_level(None, detected_max_lum);
+                let level = Self::resolve_sdr_white_level(None, &device_name);
                 super::hdr_pipeline::set_active_sdr_white_level(level);
                 level
             } else {
@@ -167,7 +167,7 @@ impl DxgiCaptureEngine {
         }
     }
 
-    fn resolve_sdr_white_level(configured: Option<f32>, detected_max_lum: Option<f32>) -> f32 {
+    fn resolve_sdr_white_level(configured: Option<f32>, device_name: &[u16; 32]) -> f32 {
         if let Some(cfg) = configured {
             if cfg > 0.0 {
                 eprintln!(
@@ -178,23 +178,22 @@ impl DxgiCaptureEngine {
                 return cfg;
             }
         }
-        if let Some(max_lum) = detected_max_lum {
-            // HDR 톤매퍼의 실효 백색 기준선(Target White): 패널 피크의 ~95.5% 지점을 255로 매핑 (예: 408.76 nits -> 390.4 nits, scale ~4.88)
-            let scale = (max_lum / 80.0) * 0.955;
+        #[cfg(windows)]
+        if let Some(level) = super::hdr_pipeline::detect_monitor_sdr_white_level(Some(device_name))
+        {
             eprintln!(
-                "[DXGI HDR] Auto-detected Peak HDR Luminance via DXGI 1.6: {:.2} nits (target 95.5%: {:.2} nits) -> scale {:.4}",
-                max_lum,
-                max_lum * 0.955,
-                scale
+                "[DXGI HDR] Auto-detected OS SDR White Level via Win32 CCD: {:.4} ({:.1} nits)",
+                level,
+                level * 80.0
             );
-            return scale;
+            return level;
         }
         eprintln!(
-            "[DXGI HDR] Peak HDR Luminance fallback to default: {:.4} ({:.1} nits)",
-            super::hdr_pipeline::SCRGB_SDR_WHITE_LEVEL,
-            super::hdr_pipeline::SCRGB_SDR_WHITE_LEVEL * 80.0
+            "[DXGI HDR] OS SDR White Level fallback to default: {:.4} ({:.1} nits)",
+            super::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
+            super::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL * 80.0
         );
-        super::hdr_pipeline::SCRGB_SDR_WHITE_LEVEL
+        super::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL
     }
 
     pub fn set_hdr_sdr_white_level(&mut self, level: Option<f32>) {
@@ -203,7 +202,7 @@ impl DxgiCaptureEngine {
         }
         self.configured_sdr_white_level = level;
         if self.is_hdr_format {
-            let new_level = Self::resolve_sdr_white_level(level, self.detected_max_lum);
+            let new_level = Self::resolve_sdr_white_level(level, &self.device_name);
             self.active_sdr_white_level = new_level;
             self.hdr_lut = std::sync::Arc::new(*super::hdr_pipeline::build_lut_table(new_level));
             super::hdr_pipeline::set_active_sdr_white_level(new_level);
@@ -379,7 +378,7 @@ impl DxgiCaptureEngine {
                 if is_hdr {
                     let level = Self::resolve_sdr_white_level(
                         self.configured_sdr_white_level,
-                        detected_max_lum,
+                        &device_name,
                     );
                     self.active_sdr_white_level = level;
                     self.hdr_lut =

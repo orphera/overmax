@@ -1,3 +1,5 @@
+#![cfg(windows)]
+
 use std::path::{Path, PathBuf};
 
 fn find_snapshot_dir() -> Option<PathBuf> {

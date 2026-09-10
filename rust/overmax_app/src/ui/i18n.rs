@@ -1160,8 +1160,11 @@ mod tests {
     use super::*;
     use overmax_data::community::sheet_meta::{AssistMeta, GoldMeta};
 
+    static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn test_zero_cost_i18n_translation_and_locale_switch() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         set_locale(Locale::Ko);
         assert_eq!(t!("settings-title"), "설정");
         assert_eq!(t!("candidate-count", n = 3), "후보 3건");
@@ -1219,6 +1222,7 @@ mod tests {
 
     #[test]
     fn test_resolve_locale_explicit_and_auto() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         assert_eq!(resolve_locale(Some("ko")), Locale::Ko);
         assert_eq!(resolve_locale(Some("en")), Locale::En);
         assert_eq!(resolve_locale(Some("ja")), Locale::Ja);

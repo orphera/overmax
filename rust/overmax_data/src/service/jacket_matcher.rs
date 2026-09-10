@@ -253,9 +253,15 @@ impl JacketMatcher {
                     .zip(q_grid_hist.iter())
                     .map(|(&e, &q)| e.abs_diff(q) as u32)
                     .sum();
-                let hist_sim = 1.0 - (hist_diff as f32 / 3072.0).clamp(0.0, 1.0);
+                let hist_sim = 1.0 - (hist_diff as f32 / 4096.0).clamp(0.0, 1.0);
                 let hash_sim = 1.0 - (hamming_sum as f32 / total_compare_bits);
-                let similarity = 0.5 * hash_sim + 0.5 * hist_sim;
+
+                // [동적 신뢰도 결합 (Dynamic Confidence Fusion)]
+                // 해시 일치율이 높을수록(형태/구조 일치 확정) 조명/단색 배경 양자화 단층에 취약한 히스토그램 비중을 완화하여
+                // 단색 배경 로고형 자켓 및 HDR 톤매핑 후의 미세 조명 편차로 인한 False Negative를 원천 방지합니다.
+                let hash_conf = (hash_sim - 0.70).clamp(0.0, 0.25) / 0.25;
+                let w_hist = 0.50 - 0.25 * hash_conf;
+                let similarity = (1.0 - w_hist) * hash_sim + w_hist * hist_sim;
 
                 if similarity > best_sim {
                     best_sim = similarity;

@@ -69,10 +69,33 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [x] **3단계 A/B/C 실측 기여도 분리 검증**: [A] main(4.50ms) ➔ [B] fullframe-db(3.17ms, -1.33ms, 34.3% 기여) ➔ [C] atlas-db(0.62ms, -2.55ms 추가, 65.7% 기여)로 분리 입증
   - [x] **리뷰어 지적사항 정밀 팩트체크**: 결과창 인식 개선(12/19 ➔ 19/19)은 캡처 지연이 아닌 커밋 `8288bf1`(숫자 1 분할 수정)의 기여이며, 초기화 스파이크 분류 노이즈 규명 완료
 - [x] **4.7 Windows HDR(scRGB) 무설정 자동 감지 & 64KB 고속 LUT 역변환 (Step 7)**
-  - [x] Win32 CCD API(`DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL`) 기반 OS SDR 화이트 레벨 무설정(Zero-Config) 1:1 자동 감지
+  - [x] Win32 CCD API(`DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL`) 및 DXGI 1.6 `IDXGIOutput6::GetDesc1().MaxLuminance` 기반 디스플레이 피크 휘도 무설정(Zero-Config) 1:1 자동 감지
+  - [x] OS SDR 슬라이더 밝기(예: 240 nits = 3.0) 적용 시 게임 백버퍼 피크 휘도(scRGB ~5.11)와의 불일치로 인한 과노출(White Clipping) 근본 원인 규명 및 95.5% 실효 타깃 화이트(`MaxLuminance / 80.0 * 0.955`, ~4.88) 스케일 자동 결정으로 100% 해결
+  - [x] 1440p 다운샘플링 블러 시 '8'의 가운데 허리선이 잘려 '0'으로 오인식되던 문제 및 100만 점/소수점 분리 실패를 `binarize_by_global_contrast` 72% 대비 이진화로 완전 해결
   - [x] $O(1)$ 64KB LUT 기반 scRGB FP16 ➔ sRGB BGRA8 0.38ms 고속 역변환 및 핫루프 락 프리 캐싱
   - [x] 비-1080p GPU Normalizer 및 멀티 모니터 전환 시 아틀라스 스테이징 리셋 안정화 완료
   - [x] DXGI 1.6 `IDXGIOutput6` 기반 실시간 모니터 색역(ColorSpace) 사전 감지 및 SDR/HDR 최적 포맷 동적 분기 완성
+- [x] **4.8 HDR DCI-P3 광색역 역변환 및 오픈매치 거짓 양성 완전 방어 (Step 8)**
+  - [x] DJMAX 엔진 내부 렌더링 색공간(DCI-P3 D65) 역변환 행렬($\mathbf{M}_{709 \to \text{P3}}$) 및 inv_scale 사전 곱셈(나눗셈 0회) 초고속 FMA 파이프라인 구현 (<0.1ms)
+  - [x] scRGB 음수 채널 클리핑에 의한 초록/청록/주황/보라 컬러바 및 광색역 자켓 색상 파괴 100% 원천 해결
+  - [x] 프리스타일 결과창이 오픈매치(`ResultOpen2`)로 오판정되던 버그 완전 박멸 (결과창 6건 전건 `ResultFreestyle` 100% 인식 달성)
+- [x] **4.9 Auto HDR 2-Stage 점근 숄더 역톤매핑 및 자켓 매칭 100% 정상화 (Step 9)**
+  - [x] Auto HDR 이중 스케일 딜레마(고휘도 폰트 4.88 vs 중간톤 자켓 4.00) 규명 및 $C^1$ 연속 Rational Spline 점근 숄더 수식 설계
+  - [x] 39개 스냅샷 전수 실측 벤치마크: 자켓 평균 유사도 0.7564 ➔ **0.8700 (+15% 상승)** 및 0.65 미만 위험군 0건 완전 박멸
+  - [x] Score 1,000,000점 및 Rate 100.00% 고휘도 폰트 블룸 억제 및 전수 인식 100% 보존
+  - [x] 1,025-엔트리 Fast sRGB OETF 테이블(1KB L1 캐시 상주) 결합으로 픽셀 루프 내 `powf` 연산 소거 및 초고속 변환 달성
+- [x] **4.10 자켓 매칭 동적 신뢰도 결합(Dynamic Confidence Fusion) 및 단색 배경 로고 인식 정상화 (Step 10)**
+  - [x] 단색 배경 로고형 자켓(예: 메이플스토리2 'The Little Adventurer', SongID 439)의 하드 양자화(Hard Binning) 경계 결함(224 경계선 단층으로 L1 diff 폭발) 원인 규명
+  - [x] pHash/dHash/aHash 3종 지문 초고신뢰도(Hamming 합계 11, 93.12% 일치) 상황에서 형태 지문 가중치(0.50 ➔ 0.75)를 동적 강화하는 Dynamic Confidence Fusion 설계 및 적용
+  - [x] 히스토그램 L1 정규화 분모(3072.0 ➔ 4096.0) 현실화로 조명/배경 편차에 대한 안전 완충 지대 확보
+  - [x] 신규 1440p 유저 캡처 자켓 유사도 0.4656 ➔ **0.7222** (+55% 상승) 및 씬 판정(Freestyle, 4B, NM) 100% 정상화
+  - [x] 기존 39개 실측 HDR 스냅샷 벤치마크: 평균 유사도 0.8689 ➔ **0.9257**, 최저 유사도 0.7890 ➔ **0.8785**로 전체 정확도 대폭 향상
+- [x] **4.11 Auto HDR 2-Anchor 일반화 파이프라인 (Step 11)**
+  - [x] 패널 피크 휘도(MaxLuminance) 단일 비례식의 로컬 과적합(DisplayHDR 1000 등 고휘도 패널에서 자켓 언더노출 찌그러짐) 원인 규명
+  - [x] Windows SDR 콘텐츠 백색(Anchor 1: Win32 CCD `detect_monitor_sdr_white_level`, 기본값 3.0)과 패널 피크 휘도(Anchor 2: DXGI 1.6 `MaxLuminance`, 기본값 4.88)를 분리하는 2-Anchor 모델 정립
+  - [x] 중간톤 선형 복원 및 무릎점을 SDR 백색 기준으로 유도($\text{scale}_{\text{mid}} = A_{\text{sdr}} \times \frac{4.0}{3.0}$, $V_{\text{knee}} = A_{\text{sdr}} \times \frac{2.2}{3.0}$)하여 임의의 피크 패널에서도 자켓 밝기 및 형태 완벽 보존
+  - [x] DXGI 캡처 엔진의 `resolve_sdr_white_level`을 Win32 CCD 우선 감지 구조로 전면 개편하고, 39개 스냅샷 100% 인식 유지 및 전체 유닛 테스트 무회귀 검증 완료
+
 
 ---
 

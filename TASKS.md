@@ -71,7 +71,7 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
 - [x] **4.7 Windows HDR(scRGB) 무설정 자동 감지 & 64KB 고속 LUT 역변환 (Step 7)**
   - [x] Win32 CCD API(`DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL`) 및 DXGI 1.6 `IDXGIOutput6::GetDesc1().MaxLuminance` 기반 디스플레이 피크 휘도 무설정(Zero-Config) 1:1 자동 감지
   - [x] OS SDR 슬라이더 밝기(예: 240 nits = 3.0) 적용 시 게임 백버퍼 피크 휘도(scRGB ~5.11)와의 불일치로 인한 과노출(White Clipping) 근본 원인 규명 및 95.5% 실효 타깃 화이트(`MaxLuminance / 80.0 * 0.955`, ~4.88) 스케일 자동 결정으로 100% 해결
-  - [x] 1440p 다운샘플링 블러 시 '8'의 가운데 허리선이 잘려 '0'으로 오인식되던 문제를 `binarize_by_global_contrast` 65% 대비 이진화로 완전 해결
+  - [x] 1440p 다운샘플링 블러 시 '8'의 가운데 허리선이 잘려 '0'으로 오인식되던 문제 및 100만 점/소수점 분리 실패를 `binarize_by_global_contrast` 72% 대비 이진화로 완전 해결
   - [x] $O(1)$ 64KB LUT 기반 scRGB FP16 ➔ sRGB BGRA8 0.38ms 고속 역변환 및 핫루프 락 프리 캐싱
   - [x] 비-1080p GPU Normalizer 및 멀티 모니터 전환 시 아틀라스 스테이징 리셋 안정화 완료
   - [x] DXGI 1.6 `IDXGIOutput6` 기반 실시간 모니터 색역(ColorSpace) 사전 감지 및 SDR/HDR 최적 포맷 동적 분기 완성

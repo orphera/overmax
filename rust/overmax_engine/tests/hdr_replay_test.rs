@@ -1192,81 +1192,78 @@ fn test_captures_and_snapshots_play_state() {
     let cap_dir = Path::new("../../scratch/hdr/Captures");
     let fallback_cap_dir = Path::new("scratch/hdr/Captures");
     let actual_cap = if cap_dir.exists() {
-        cap_dir
+        Some(cap_dir)
     } else if fallback_cap_dir.exists() {
-        fallback_cap_dir
+        Some(fallback_cap_dir)
     } else {
-        return;
+        None
     };
 
-    let mut png_files: Vec<PathBuf> = std::fs::read_dir(actual_cap)
-        .unwrap()
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|ext| ext.to_str()) == Some("png"))
-        .collect();
-    png_files.sort();
+    if let Some(actual_cap) = actual_cap {
+        let mut png_files: Vec<PathBuf> = std::fs::read_dir(actual_cap)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|ext| ext.to_str()) == Some("png"))
+            .collect();
+        png_files.sort();
 
-    for p in &png_files {
-        let fname = p.file_name().unwrap().to_string_lossy();
-        let img = image::open(p).unwrap().to_rgba8();
-        let (w, _h) = (img.width() as usize, img.height() as usize);
-        let mut raw_bytes = img.into_raw();
-        for px in raw_bytes.chunks_exact_mut(4) {
-            px.swap(0, 2);
+        for p in &png_files {
+            let fname = p.file_name().unwrap().to_string_lossy();
+            let img = image::open(p).unwrap().to_rgba8();
+            let (w, _h) = (img.width() as usize, img.height() as usize);
+            let mut raw_bytes = img.into_raw();
+            for px in raw_bytes.chunks_exact_mut(4) {
+                px.swap(0, 2);
+            }
+
+            // Direct crop (x=710, y=533)
+            let mut j_direct_710 = Vec::with_capacity(60 * 60 * 4);
+            for row in 0..60 {
+                let start = (533 + row) * w * 4 + 710 * 4;
+                j_direct_710.extend_from_slice(&raw_bytes[start..start + 60 * 4]);
+            }
+            let m_d710 = matcher.match_jacket(&j_direct_710, 60, 60, 4);
+
+            // Client area offset (x=710+1=711, y=533+31=564)
+            let mut j_offset_710 = Vec::with_capacity(60 * 60 * 4);
+            for row in 0..60 {
+                let start = (564 + row) * w * 4 + 711 * 4;
+                j_offset_710.extend_from_slice(&raw_bytes[start..start + 60 * 4]);
+            }
+            let m_o710 = matcher.match_jacket(&j_offset_710, 60, 60, 4);
+
+            // Client area offset with x-1 (x=709+1=710, y=533+31=564)
+            let mut j_offset_709 = Vec::with_capacity(60 * 60 * 4);
+            for row in 0..60 {
+                let start = (564 + row) * w * 4 + 710 * 4;
+                j_offset_709.extend_from_slice(&raw_bytes[start..start + 60 * 4]);
+            }
+            let m_o709 = matcher.match_jacket(&j_offset_709, 60, 60, 4);
+
+            println!(
+                "{:<28} | direct(710): {:<18} | offset(710): {:<18} | offset(709): {:<18}",
+                &fname[fname.len().saturating_sub(28)..],
+                m_d710
+                    .map(|m| format!("ID={}, s={:.3}", m.image_id, m.similarity))
+                    .unwrap_or("-".into()),
+                m_o710
+                    .map(|m| format!("ID={}, s={:.3}", m.image_id, m.similarity))
+                    .unwrap_or("-".into()),
+                m_o709
+                    .map(|m| format!("ID={}, s={:.3}", m.image_id, m.similarity))
+                    .unwrap_or("-".into()),
+            );
         }
-
-        // Direct crop (x=710, y=533)
-        let mut j_direct_710 = Vec::with_capacity(60 * 60 * 4);
-        for row in 0..60 {
-            let start = (533 + row) * w * 4 + 710 * 4;
-            j_direct_710.extend_from_slice(&raw_bytes[start..start + 60 * 4]);
-        }
-        let m_d710 = matcher.match_jacket(&j_direct_710, 60, 60, 4);
-
-        // Client area offset (x=710+1=711, y=533+31=564)
-        let mut j_offset_710 = Vec::with_capacity(60 * 60 * 4);
-        for row in 0..60 {
-            let start = (564 + row) * w * 4 + 711 * 4;
-            j_offset_710.extend_from_slice(&raw_bytes[start..start + 60 * 4]);
-        }
-        let m_o710 = matcher.match_jacket(&j_offset_710, 60, 60, 4);
-
-        // Client area offset with x-1 (x=709+1=710, y=533+31=564)
-        let mut j_offset_709 = Vec::with_capacity(60 * 60 * 4);
-        for row in 0..60 {
-            let start = (564 + row) * w * 4 + 710 * 4;
-            j_offset_709.extend_from_slice(&raw_bytes[start..start + 60 * 4]);
-        }
-        let m_o709 = matcher.match_jacket(&j_offset_709, 60, 60, 4);
-
-        println!(
-            "{:<28} | direct(710): {:<18} | offset(710): {:<18} | offset(709): {:<18}",
-            &fname[fname.len().saturating_sub(28)..],
-            m_d710
-                .map(|m| format!("ID={}, s={:.3}", m.image_id, m.similarity))
-                .unwrap_or("-".into()),
-            m_o710
-                .map(|m| format!("ID={}, s={:.3}", m.image_id, m.similarity))
-                .unwrap_or("-".into()),
-            m_o709
-                .map(|m| format!("ID={}, s={:.3}", m.image_id, m.similarity))
-                .unwrap_or("-".into()),
-        );
     }
 
     // 2. hdr_snapshots/*.raw Atlas ROI: 340 (x=710) vs 339 (x=709) vs 341 (x=711)
     println!("\n===============================================================================");
     println!(" [2. HDR SNAPSHOTS RAW] Atlas Crop: 340 (x=710) vs 339 (x=709) vs 341 (x=711)");
     println!("===============================================================================");
-    let snap_dir = Path::new("../../scratch/hdr/hdr_snapshots");
-    let fallback_snap = Path::new("scratch/hdr/hdr_snapshots");
-    let actual_snap = if snap_dir.exists() {
-        snap_dir
-    } else if fallback_snap.exists() {
-        fallback_snap
-    } else {
-        return;
+    let actual_snap = match find_snapshot_dir() {
+        Some(d) => d,
+        None => return,
     };
 
     let mut raw_files: Vec<PathBuf> = std::fs::read_dir(actual_snap)
@@ -1304,9 +1301,14 @@ fn test_captures_and_snapshots_play_state() {
         let mut bgra = vec![0u8; WIDTH * HEIGHT * 4];
         for y in 0..HEIGHT {
             let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
-            let dst_row = unsafe { bgra.as_mut_ptr().add(y * WIDTH * 4) };
             unsafe {
-                convert_scrgb_fp16_to_bgra8_p3(src_row, dst_row, WIDTH, 5.168);
+                let dst_row = bgra.as_mut_ptr().add(y * WIDTH * 4);
+                convert_scrgb_fp16_to_bgra8_p3(
+                    src_row,
+                    dst_row,
+                    WIDTH,
+                    overmax_engine::capture::capture_engine::windows::hdr_pipeline::SCRGB_SDR_WHITE_LEVEL,
+                );
             }
         }
 
@@ -1471,4 +1473,140 @@ fn test_export_snapshots_to_png() {
         println!("  Saved: {}", out_file.display());
     }
     println!("Done! All {} snapshots converted to PNG.", raw_files.len());
+}
+
+#[cfg(windows)]
+#[test]
+fn test_diagnose_score_rate_anomalies() {
+    use overmax_core::SceneType;
+    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3;
+    use overmax_engine::capture::frame::CapturedFrame;
+    use overmax_engine::detector::roi::RoiManager;
+    use overmax_engine::detector::templates;
+
+    let target_files = [
+        ("1788930890", "hdr_snapshot_1788930890.raw"), // Score 1000000, Rate missing
+        ("1788956698", "hdr_snapshot_1788956698.raw"), // Rate 100.00%, Score missing
+        ("1788956734", "hdr_snapshot_1788956734.raw"), // Rate 100.00%, Score missing
+    ];
+
+    const WIDTH: usize = 512;
+    const HEIGHT: usize = 512;
+
+    for (label, fname) in target_files {
+        let Some(p) = find_raw_file(fname) else {
+            println!("File {} not found", fname);
+            continue;
+        };
+        let bytes = std::fs::read(p).unwrap();
+        let mut bgra = vec![0u8; WIDTH * HEIGHT * 4];
+        for y in 0..HEIGHT {
+            let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
+            unsafe {
+                let dst_row = bgra.as_mut_ptr().add(y * WIDTH * 4);
+                convert_scrgb_fp16_to_bgra8_p3(
+                    src_row,
+                    dst_row,
+                    WIDTH,
+                    overmax_engine::capture::capture_engine::windows::hdr_pipeline::SCRGB_SDR_WHITE_LEVEL,
+                );
+            }
+        }
+
+        let frame = CapturedFrame {
+            width: WIDTH as i32,
+            height: HEIGHT as i32,
+            bgra,
+        };
+
+        let mut rois = RoiManager::new(WIDTH as i32, HEIGHT as i32);
+        rois.set_scene(SceneType::Freestyle);
+
+        println!("\n=== DIAGNOSTIC FOR {} ({}) ===", label, fname);
+
+        // 1. Rate Diagnostic
+        if let Some(rate_roi) = rois.get_roi("rate") {
+            if let Some(img) = rate_roi.crop(&frame) {
+                let reg = img.to_image_region();
+                let b_res = overmax_cv::binarize_by_global_contrast(
+                    &reg.bgra,
+                    img.width,
+                    img.height,
+                    overmax_cv::LumaMethod::Average,
+                    255,
+                );
+                if let Ok((bin, thresh, max_y)) = b_res {
+                    let segs = overmax_cv::segment_characters(&bin, img.width, img.height);
+                    let det = templates::detect_rate(&img);
+                    println!(
+                        "  [Rate] detect_rate: {:?}, thresh: {}, max_y: {}",
+                        det, thresh, max_y
+                    );
+                    if let Ok(s) = segs {
+                        println!("  [Rate] segments count: {}, ranges: {:?}", s.len(), s);
+                        for (i, &(x1, x2)) in s.iter().enumerate() {
+                            let cw = x2 - x1;
+                            let mut cbin = vec![0u8; cw * img.height];
+                            for y in 0..img.height {
+                                for x in 0..cw {
+                                    cbin[y * cw + x] = bin[y * img.width + (x1 + x)];
+                                }
+                            }
+                            let m = overmax_cv::match_character(
+                                &cbin,
+                                cw,
+                                img.height,
+                                templates::digit::DIGIT_TEMPLATES_RATE,
+                            );
+                            println!(
+                                "    rate char #{}: [{}..{}] (w={}) -> {:?}",
+                                i, x1, x2, cw, m
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Score Diagnostic
+        if let Some(score_roi) = rois.get_roi("score") {
+            if let Some(img) = score_roi.crop(&frame) {
+                let reg = img.to_image_region();
+                let b_res = overmax_cv::binarize_by_global_contrast(
+                    &reg.bgra,
+                    img.width,
+                    img.height,
+                    overmax_cv::LumaMethod::Average,
+                    255,
+                );
+                if let Ok((bin, thresh, max_y)) = b_res {
+                    let segs = overmax_cv::segment_characters(&bin, img.width, img.height);
+                    let det = templates::detect_score(&img);
+                    println!(
+                        "  [Score] detect_score: {:?}, thresh: {}, max_y: {}",
+                        det, thresh, max_y
+                    );
+                    if let Ok(s) = segs {
+                        println!("  [Score] segments count: {}, ranges: {:?}", s.len(), s);
+                        for (i, &(x1, x2)) in s.iter().enumerate() {
+                            let cw = x2 - x1;
+                            let mut cbin = vec![0u8; cw * img.height];
+                            for y in 0..img.height {
+                                for x in 0..cw {
+                                    cbin[y * cw + x] = bin[y * img.width + (x1 + x)];
+                                }
+                            }
+                            let m = overmax_cv::match_character(
+                                &cbin,
+                                cw,
+                                img.height,
+                                templates::digit::DIGIT_TEMPLATES_SCORE,
+                            );
+                            println!("    char #{}: [{}..{}] (w={}) -> {:?}", i, x1, x2, cw, m);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

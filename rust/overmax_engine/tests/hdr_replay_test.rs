@@ -1568,45 +1568,570 @@ fn test_diagnose_score_rate_anomalies() {
             }
         }
 
-        // 2. Score Diagnostic
-        if let Some(score_roi) = rois.get_roi("score") {
-            if let Some(img) = score_roi.crop(&frame) {
-                let reg = img.to_image_region();
-                let b_res = overmax_cv::binarize_by_global_contrast(
-                    &reg.bgra,
-                    img.width,
-                    img.height,
-                    overmax_cv::LumaMethod::Average,
-                    255,
-                );
-                if let Ok((bin, thresh, max_y)) = b_res {
-                    let segs = overmax_cv::segment_characters(&bin, img.width, img.height);
-                    let det = templates::detect_score(&img);
-                    println!(
-                        "  [Score] detect_score: {:?}, thresh: {}, max_y: {}",
-                        det, thresh, max_y
+        for mode_desc in [
+            ("Linear 4.88", ToneMapMode::Linear(4.88)),
+            ("Linear 4.00", ToneMapMode::Linear(4.00)),
+            (
+                "2-Stage (4.0, 3.6)",
+                ToneMapMode::TwoStageRational {
+                    scale_mid: 4.0,
+                    v_knee: 3.6,
+                },
+            ),
+            (
+                "2-Stage (4.0, 2.5)",
+                ToneMapMode::TwoStageRational {
+                    scale_mid: 4.0,
+                    v_knee: 2.5,
+                },
+            ),
+            (
+                "2-Stage (4.0, 2.0)",
+                ToneMapMode::TwoStageRational {
+                    scale_mid: 4.0,
+                    v_knee: 2.0,
+                },
+            ),
+        ] {
+            let mut bgra = vec![0u8; WIDTH * HEIGHT * 4];
+            for y in 0..HEIGHT {
+                let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
+                let dst_row = unsafe { bgra.as_mut_ptr().add(y * WIDTH * 4) };
+                unsafe {
+                    convert_scrgb_fp16_to_bgra8_custom(src_row, dst_row, WIDTH, mode_desc.1);
+                }
+            }
+            let frame = CapturedFrame {
+                width: WIDTH as i32,
+                height: HEIGHT as i32,
+                bgra,
+            };
+            if let Some(score_roi) = rois.get_roi("score") {
+                if let Some(img) = score_roi.crop(&frame) {
+                    let reg = img.to_image_region();
+                    let b_res = overmax_cv::binarize_by_global_contrast(
+                        &reg.bgra,
+                        img.width,
+                        img.height,
+                        overmax_cv::LumaMethod::Average,
+                        255,
                     );
-                    if let Ok(s) = segs {
-                        println!("  [Score] segments count: {}, ranges: {:?}", s.len(), s);
-                        for (i, &(x1, x2)) in s.iter().enumerate() {
-                            let cw = x2 - x1;
-                            let mut cbin = vec![0u8; cw * img.height];
-                            for y in 0..img.height {
-                                for x in 0..cw {
-                                    cbin[y * cw + x] = bin[y * img.width + (x1 + x)];
-                                }
-                            }
-                            let m = overmax_cv::match_character(
-                                &cbin,
-                                cw,
-                                img.height,
-                                templates::digit::DIGIT_TEMPLATES_SCORE,
-                            );
-                            println!("    char #{}: [{}..{}] (w={}) -> {:?}", i, x1, x2, cw, m);
-                        }
+                    let det = templates::detect_score(&img);
+                    if let Ok((bin, thresh, max_y)) = b_res {
+                        let segs = overmax_cv::segment_characters(&bin, img.width, img.height);
+                        let seg_cnt = segs.as_ref().map(|s| s.len()).unwrap_or(0);
+                        let seg_chars: Vec<Option<char>> = segs
+                            .ok()
+                            .map(|s| {
+                                s.iter()
+                                    .map(|&(x1, x2)| {
+                                        let cw = x2 - x1;
+                                        let mut cbin = vec![0u8; cw * img.height];
+                                        for y in 0..img.height {
+                                            for x in 0..cw {
+                                                cbin[y * cw + x] = bin[y * img.width + (x1 + x)];
+                                            }
+                                        }
+                                        overmax_cv::image::match_character(
+                                            &cbin,
+                                            cw,
+                                            img.height,
+                                            templates::digit::DIGIT_TEMPLATES_SCORE,
+                                        )
+                                        .map(|m| m.0)
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        println!(
+                            "    [{}] Score={:?}, thresh={}, max_y={}, segs={}, chars={:?}",
+                            mode_desc.0, det, thresh, max_y, seg_cnt, seg_chars
+                        );
                     }
                 }
             }
         }
+    }
+}
+
+#[inline(always)]
+fn tone_map_2stage_rational(v: f32, scale_mid: f32, v_knee: f32) -> f32 {
+    if v <= 0.0 {
+        return 0.0;
+    }
+    let inv_scale = 1.0 / scale_mid;
+    let l_knee = (v_knee * inv_scale).clamp(0.0, 1.0);
+    if v <= v_knee {
+        (v * inv_scale).clamp(0.0, 1.0)
+    } else {
+        let delta_v = v - v_knee;
+        let m = inv_scale;
+        let rem = 1.0 - l_knee;
+        if rem <= 1e-6 {
+            1.0
+        } else {
+            let k = rem / m;
+            let shoulder = rem * (delta_v / (k + delta_v));
+            (l_knee + shoulder).clamp(0.0, 1.0)
+        }
+    }
+}
+
+unsafe fn convert_scrgb_fp16_to_bgra8_custom(
+    src_row: *const u8,
+    dst_row: *mut u8,
+    pixel_count: usize,
+    mode: ToneMapMode,
+) {
+    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::{
+        f16_to_f32, strict_srgb_oetf,
+    };
+
+    let src = src_row as *const u16;
+
+    for x in 0..pixel_count {
+        let r_bits = std::ptr::read_unaligned(src.add(x * 4));
+        let g_bits = std::ptr::read_unaligned(src.add(x * 4 + 1));
+        let b_bits = std::ptr::read_unaligned(src.add(x * 4 + 2));
+
+        let r = f16_to_f32(r_bits);
+        let g = f16_to_f32(g_bits);
+        let b = f16_to_f32(b_bits);
+
+        // DCI-P3 역변환 행렬 곱
+        let r_p3 = (0.822475 * r + 0.177378 * g).max(0.0);
+        let g_p3 = (0.033155 * r + 0.966935 * g).max(0.0);
+        let b_p3 = (0.017052 * r + 0.072371 * g + 0.910581 * b).max(0.0);
+
+        let (r_lin, g_lin, b_lin) = match mode {
+            ToneMapMode::Linear(scale) => {
+                let inv = 1.0 / scale;
+                (
+                    (r_p3 * inv).clamp(0.0, 1.0),
+                    (g_p3 * inv).clamp(0.0, 1.0),
+                    (b_p3 * inv).clamp(0.0, 1.0),
+                )
+            }
+            ToneMapMode::TwoStageRational { scale_mid, v_knee } => (
+                tone_map_2stage_rational(r_p3, scale_mid, v_knee),
+                tone_map_2stage_rational(g_p3, scale_mid, v_knee),
+                tone_map_2stage_rational(b_p3, scale_mid, v_knee),
+            ),
+        };
+
+        let r_srgb = strict_srgb_oetf(r_lin);
+        let g_srgb = strict_srgb_oetf(g_lin);
+        let b_srgb = strict_srgb_oetf(b_lin);
+
+        let dst = dst_row.add(x * 4);
+        *dst.add(0) = (b_srgb * 255.0 + 0.5) as u8;
+        *dst.add(1) = (g_srgb * 255.0 + 0.5) as u8;
+        *dst.add(2) = (r_srgb * 255.0 + 0.5) as u8;
+        *dst.add(3) = 255;
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ToneMapMode {
+    Linear(f32),
+    TwoStageRational { scale_mid: f32, v_knee: f32 },
+}
+
+#[cfg(windows)]
+#[test]
+fn test_compare_2stage_vs_linear_jackets() {
+    use overmax_engine::capture::frame::CapturedFrame;
+    use overmax_engine::detector::roi::RoiManager;
+    use overmax_engine::detector::templates;
+
+    let target_dir = match find_snapshot_dir() {
+        Some(d) => d,
+        None => return,
+    };
+
+    let entries = match std::fs::read_dir(&target_dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    let mut raw_files: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|ext| ext.to_str()) == Some("raw"))
+        .collect();
+    raw_files.sort();
+
+    if raw_files.is_empty() {
+        return;
+    }
+
+    let db_path = Path::new("../../cache/image_index.db");
+    let fallback_db_path = Path::new("cache/image_index.db");
+    let actual_db = if db_path.exists() {
+        Some(db_path)
+    } else if fallback_db_path.exists() {
+        Some(fallback_db_path)
+    } else {
+        None
+    };
+
+    let mut db = overmax_data::store::image_index::ImageIndexDb::new(
+        actual_db.expect("image_index.db required"),
+        0.50, // 0.50 이상 매칭 결과도 추적
+    );
+    let _ = db.load().expect("load db failed");
+    let matcher = db.matcher();
+
+    const WIDTH: usize = 512;
+    const HEIGHT: usize = 512;
+
+    let test_modes = [
+        ("Linear 4.88 (Current)", ToneMapMode::Linear(4.88)),
+        ("Linear 4.00 (Mid-focus)", ToneMapMode::Linear(4.00)),
+        (
+            "2-Stage (mid=4.0, knee=3.6)",
+            ToneMapMode::TwoStageRational {
+                scale_mid: 4.0,
+                v_knee: 3.6,
+            },
+        ),
+        (
+            "2-Stage (mid=4.0, knee=2.5)",
+            ToneMapMode::TwoStageRational {
+                scale_mid: 4.0,
+                v_knee: 2.5,
+            },
+        ),
+        (
+            "2-Stage (mid=4.0, knee=2.2)",
+            ToneMapMode::TwoStageRational {
+                scale_mid: 4.0,
+                v_knee: 2.2,
+            },
+        ),
+        (
+            "2-Stage (mid=4.0, knee=2.0)",
+            ToneMapMode::TwoStageRational {
+                scale_mid: 4.0,
+                v_knee: 2.0,
+            },
+        ),
+        (
+            "2-Stage (mid=3.8, knee=2.0)",
+            ToneMapMode::TwoStageRational {
+                scale_mid: 3.8,
+                v_knee: 2.0,
+            },
+        ),
+    ];
+
+    println!("\n=========================================================================================");
+    println!(
+        " [2-STAGE TONE MAPPING vs LINEAR COMPREHENSIVE BENCHMARK] Total Files: {}",
+        raw_files.len()
+    );
+    println!(
+        "========================================================================================="
+    );
+
+    struct ModeStat {
+        name: &'static str,
+        total_fs_sim: f32,
+        fs_count: usize,
+        fs_below_65: usize,
+        scene_success: usize,
+        btn_mode_success: usize,
+        score_success: usize,
+        rate_success: usize,
+    }
+
+    let mut stats: Vec<ModeStat> = test_modes
+        .iter()
+        .map(|(name, _)| ModeStat {
+            name,
+            total_fs_sim: 0.0,
+            fs_count: 0,
+            fs_below_65: 0,
+            scene_success: 0,
+            btn_mode_success: 0,
+            score_success: 0,
+            rate_success: 0,
+        })
+        .collect();
+
+    for raw_path in &raw_files {
+        let fname = raw_path.file_name().unwrap().to_string_lossy();
+        let bytes = std::fs::read(raw_path).unwrap();
+        if bytes.len() < WIDTH * HEIGHT * 8 {
+            continue;
+        }
+
+        print!("{:<28} |", fname);
+
+        for (m_idx, &(mode_name, mode)) in test_modes.iter().enumerate() {
+            let mut bgra = vec![0u8; WIDTH * HEIGHT * 4];
+            for y in 0..HEIGHT {
+                let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
+                let dst_row = unsafe { bgra.as_mut_ptr().add(y * WIDTH * 4) };
+                unsafe {
+                    convert_scrgb_fp16_to_bgra8_custom(src_row, dst_row, WIDTH, mode);
+                }
+            }
+
+            // Extract FS Jacket (340, 94, 60, 60)
+            let mut fs_jacket = Vec::with_capacity(60 * 60 * 4);
+            for row in 0..60 {
+                let start = (94 + row) * WIDTH * 4 + 340 * 4;
+                fs_jacket.extend_from_slice(&bgra[start..start + 60 * 4]);
+            }
+            let m_fs = matcher.match_jacket(&fs_jacket, 60, 60, 4);
+
+            let frame = CapturedFrame {
+                width: WIDTH as i32,
+                height: HEIGHT as i32,
+                bgra,
+            };
+            let rois = RoiManager::new(WIDTH as i32, HEIGHT as i32);
+            let scene = overmax_engine::detector::detection_pipeline::detect_static_scene(
+                &frame, &rois, &matcher,
+            );
+            if scene != overmax_core::SceneType::Unknown {
+                stats[m_idx].scene_success += 1;
+            }
+
+            let mut rois_active = rois.clone();
+            rois_active.set_scene(scene);
+            let btn_mode =
+                overmax_engine::detector::play_state::detect_button_mode(&frame, &rois_active);
+            if btn_mode.is_some() {
+                stats[m_idx].btn_mode_success += 1;
+            }
+
+            let score = rois_active.and_then_roi(&frame, "score", templates::detect_score);
+            let rate = rois_active.and_then_roi(&frame, "rate", |img| templates::detect_rate(img));
+
+            if let Some(ref m) = m_fs {
+                stats[m_idx].total_fs_sim += m.similarity;
+                stats[m_idx].fs_count += 1;
+                if m.similarity < 0.65 {
+                    stats[m_idx].fs_below_65 += 1;
+                }
+            }
+            if score.is_some() {
+                stats[m_idx].score_success += 1;
+            }
+            if rate.is_some() {
+                stats[m_idx].rate_success += 1;
+            }
+
+            let sim_str = m_fs
+                .map(|m| format!("{:.3}", m.similarity))
+                .unwrap_or_else(|| "NONE".to_string());
+            print!(
+                " {}: sim={} Sc={} R={} |",
+                &mode_name[..4],
+                sim_str,
+                if score.is_some() { "O" } else { "X" },
+                if rate.is_some() { "O" } else { "X" }
+            );
+        }
+        println!();
+    }
+
+    println!("\n=========================================================================================");
+    println!(" [SUMMARY STATISTICS]");
+    println!(
+        " {:<30} | {:<9} | {:<11} | {:<10} | {:<9} | {:<9} | {:<9}",
+        "Mode", "Avg Sim", "Sim < 0.65", "Scene Ok", "Btn Ok", "Score Ok", "Rate Ok"
+    );
+    println!(
+        "-----------------------------------------------------------------------------------------"
+    );
+    for s in stats {
+        let avg_sim = if s.fs_count > 0 {
+            s.total_fs_sim / s.fs_count as f32
+        } else {
+            0.0
+        };
+        println!(
+            " {:<30} | {:<9.4} | {:<11} | {:<10} | {:<9} | {:<9} | {:<9}",
+            s.name,
+            avg_sim,
+            s.fs_below_65,
+            s.scene_success,
+            s.btn_mode_success,
+            s.score_success,
+            s.rate_success
+        );
+    }
+    println!("=========================================================================================\n");
+}
+
+#[cfg(windows)]
+#[test]
+fn test_benchmark_2stage_latency() {
+    let raw_file = match find_raw_file("hdr_snapshot_1788956698.raw") {
+        Some(f) => f,
+        None => return,
+    };
+    let bytes = std::fs::read(raw_file).unwrap();
+    const WIDTH: usize = 512;
+    const HEIGHT: usize = 512;
+    let mut bgra = vec![0u8; WIDTH * HEIGHT * 4];
+
+    // Warm-up
+    for _ in 0..10 {
+        for y in 0..HEIGHT {
+            let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
+            let dst_row = unsafe { bgra.as_mut_ptr().add(y * WIDTH * 4) };
+            unsafe {
+                convert_scrgb_fp16_to_bgra8_custom(
+                    src_row,
+                    dst_row,
+                    WIDTH,
+                    ToneMapMode::TwoStageRational {
+                        scale_mid: 4.0,
+                        v_knee: 2.2,
+                    },
+                );
+            }
+        }
+    }
+
+    let iterations = 200;
+
+    // 1. Current Linear P3
+    let start_p3 = std::time::Instant::now();
+    for _ in 0..iterations {
+        for y in 0..HEIGHT {
+            let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
+            let dst_row = unsafe { bgra.as_mut_ptr().add(y * WIDTH * 4) };
+            unsafe {
+                overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3(
+                    src_row, dst_row, WIDTH, 4.88,
+                );
+            }
+        }
+    }
+    let p3_ms = start_p3.elapsed().as_secs_f64() * 1000.0 / iterations as f64;
+
+    // 2. 64KB LUT
+    let lut = overmax_engine::capture::capture_engine::windows::hdr_pipeline::build_lut_table(4.88);
+    let start_lut = std::time::Instant::now();
+    for _ in 0..iterations {
+        for y in 0..HEIGHT {
+            let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
+            let dst_row = unsafe { bgra.as_mut_ptr().add(y * WIDTH * 4) };
+            unsafe {
+                overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8_with_lut(
+                    src_row, dst_row, WIDTH, &lut,
+                );
+            }
+        }
+    }
+    let lut_ms = start_lut.elapsed().as_secs_f64() * 1000.0 / iterations as f64;
+
+    // 3. 2-Stage Rational Tone Mapping (Naive)
+    let start_2s = std::time::Instant::now();
+    for _ in 0..iterations {
+        for y in 0..HEIGHT {
+            let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
+            let dst_row = unsafe { bgra.as_mut_ptr().add(y * WIDTH * 4) };
+            unsafe {
+                convert_scrgb_fp16_to_bgra8_custom(
+                    src_row,
+                    dst_row,
+                    WIDTH,
+                    ToneMapMode::TwoStageRational {
+                        scale_mid: 4.0,
+                        v_knee: 2.2,
+                    },
+                );
+            }
+        }
+    }
+    let s2_ms = start_2s.elapsed().as_secs_f64() * 1000.0 / iterations as f64;
+
+    // 4. 2-Stage Rational + Fast OETF LUT (1KB)
+    let oetf_table = {
+        let mut t = [0u8; 1025];
+        for (i, item) in t.iter_mut().enumerate() {
+            let lin = i as f32 / 1024.0;
+            let srgb =
+                overmax_engine::capture::capture_engine::windows::hdr_pipeline::strict_srgb_oetf(
+                    lin,
+                );
+            *item = (srgb * 255.0 + 0.5) as u8;
+        }
+        t
+    };
+
+    let start_fast = std::time::Instant::now();
+    for _ in 0..iterations {
+        for y in 0..HEIGHT {
+            let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
+            let dst_row = unsafe { bgra.as_mut_ptr().add(y * WIDTH * 4) };
+            unsafe {
+                convert_scrgb_fp16_to_bgra8_fast(src_row, dst_row, WIDTH, &oetf_table, 4.0, 2.2);
+            }
+        }
+    }
+    let fast_ms = start_fast.elapsed().as_secs_f64() * 1000.0 / iterations as f64;
+
+    println!("\n[LATENCY BENCHMARK (512x512 Atlas)]");
+    println!(
+        "  Current Linear P3 (convert_scrgb_fp16_to_bgra8_p3): {:.4} ms",
+        p3_ms
+    );
+    println!(
+        "  64KB Fast LUT (convert_scrgb_fp16_to_bgra8_with_lut): {:.4} ms",
+        lut_ms
+    );
+    println!("  2-Stage Rational Naive (powf in loop): {:.4} ms", s2_ms);
+    println!(
+        "  2-Stage Rational Fast (1KB OETF Table): {:.4} ms",
+        fast_ms
+    );
+}
+
+#[inline(always)]
+unsafe fn convert_scrgb_fp16_to_bgra8_fast(
+    src_row: *const u8,
+    dst_row: *mut u8,
+    pixel_count: usize,
+    oetf_table: &[u8; 1025],
+    scale_mid: f32,
+    v_knee: f32,
+) {
+    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::f16_to_f32;
+
+    let src = src_row as *const u16;
+
+    for x in 0..pixel_count {
+        let r_bits = std::ptr::read_unaligned(src.add(x * 4));
+        let g_bits = std::ptr::read_unaligned(src.add(x * 4 + 1));
+        let b_bits = std::ptr::read_unaligned(src.add(x * 4 + 2));
+
+        let r = f16_to_f32(r_bits);
+        let g = f16_to_f32(g_bits);
+        let b = f16_to_f32(b_bits);
+
+        // DCI-P3 역변환 행렬 곱
+        let r_p3 = (0.822475 * r + 0.177378 * g).max(0.0);
+        let g_p3 = (0.033155 * r + 0.966935 * g).max(0.0);
+        let b_p3 = (0.017052 * r + 0.072371 * g + 0.910581 * b).max(0.0);
+
+        let r_lin = tone_map_2stage_rational(r_p3, scale_mid, v_knee);
+        let g_lin = tone_map_2stage_rational(g_p3, scale_mid, v_knee);
+        let b_lin = tone_map_2stage_rational(b_p3, scale_mid, v_knee);
+
+        let r_idx = ((r_lin * 1024.0) as usize).min(1024);
+        let g_idx = ((g_lin * 1024.0) as usize).min(1024);
+        let b_idx = ((b_lin * 1024.0) as usize).min(1024);
+
+        let dst = dst_row.add(x * 4);
+        *dst.add(0) = oetf_table[b_idx];
+        *dst.add(1) = oetf_table[g_idx];
+        *dst.add(2) = oetf_table[r_idx];
+        *dst.add(3) = 255;
     }
 }

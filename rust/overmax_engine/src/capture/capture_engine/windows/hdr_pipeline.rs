@@ -54,6 +54,47 @@ pub fn strict_srgb_oetf(linear: f32) -> f32 {
         1.055 * linear.powf(1.0 / 2.4) - 0.055
     }
 }
+
+/// 고속 sRGB OETF 변환을 위한 1,025-엔트리 룩업 테이블 (1KB L1 캐시 상주).
+///
+/// 픽셀 루프 내의 무거운 `powf(1.0 / 2.4)` 부동소수점 호출을 1클럭 테이블 조회로 대체합니다.
+pub static FAST_OETF_TABLE: std::sync::LazyLock<[u8; 1025]> = std::sync::LazyLock::new(|| {
+    let mut table = [0u8; 1025];
+    for (i, item) in table.iter_mut().enumerate() {
+        let lin = i as f32 / 1024.0;
+        let srgb = strict_srgb_oetf(lin);
+        *item = (srgb * 255.0 + 0.5) as u8;
+    }
+    table
+});
+
+/// 2-Stage Rational Spline 역톤매핑 커브.
+///
+/// - 중간 톤(V <= v_knee): 앨범 자켓과 UI 색상을 SDR 원본과 1:1로 밝고 선명하게 복원 (scale_mid 기준 선형 복원)
+/// - 고휘도 숄더(V > v_knee): C1 연속(접합점 도함수 일치)으로 1.0(255)에 부드럽게 점근하여 고휘도 폰트 블룸 억제 및 255 클램핑 방지
+#[inline(always)]
+pub fn tone_map_2stage_rational(v: f32, scale_mid: f32, v_knee: f32) -> f32 {
+    if v <= 0.0 {
+        return 0.0;
+    }
+    let inv_scale = 1.0 / scale_mid;
+    let l_knee = (v_knee * inv_scale).clamp(0.0, 1.0);
+    if v <= v_knee {
+        (v * inv_scale).clamp(0.0, 1.0)
+    } else {
+        let delta_v = v - v_knee;
+        let m = inv_scale;
+        let rem = 1.0 - l_knee;
+        if rem <= 1e-6 {
+            1.0
+        } else {
+            let k = rem / m;
+            let shoulder = rem * (delta_v / (k + delta_v));
+            (l_knee + shoulder).clamp(0.0, 1.0)
+        }
+    }
+}
+
 /// Windows DWM scRGB 모드에서의 실효 SDR Target White 기본 레벨 (1.0 = 80 nits, 4.88 = 390.4 nits).
 ///
 /// DisplayHDR 400 패널 피크(408.76 nits)의 95.5% 유효 백색 기준선이며, OS API 감지 실패 시의 안전한 폴백으로 사용됩니다.
@@ -63,13 +104,16 @@ pub const SCRGB_SDR_WHITE_LEVEL: f32 = 4.88;
 pub fn build_lut_table(sdr_white_level: f32) -> Box<[u8; 65536]> {
     let mut table = Box::new([0u8; 65536]);
     let safe_level = if sdr_white_level <= 0.0 {
-        1.0
+        SCRGB_SDR_WHITE_LEVEL
     } else {
         sdr_white_level
     };
+    let scale_mid = safe_level * (4.0 / 4.88);
+    let v_knee = safe_level * (2.2 / 4.88);
+
     for bits in 0..=65535u16 {
         let val_f32 = f16_to_f32(bits);
-        let lin = (val_f32 / safe_level).clamp(0.0, 1.0);
+        let lin = tone_map_2stage_rational(val_f32, scale_mid, v_knee);
         let srgb = strict_srgb_oetf(lin);
         table[bits as usize] = (srgb * 255.0 + 0.5) as u8;
     }
@@ -222,10 +266,11 @@ pub const M_709_TO_P3: [[f32; 3]; 3] = [
     [0.017052, 0.072371, 0.910581],
 ];
 
-/// scRGB FP16 버퍼를 DCI-P3 광색역 역변환 및 sRGB OETF를 적용하여 고정밀 BGRA8로 변환합니다.
+/// scRGB FP16 버퍼를 DCI-P3 광색역 역변환 및 2-Stage Rational Spline 역톤매핑을 적용하여 고정밀 BGRA8로 변환합니다.
 ///
 /// 게임 엔진(DJMAX RESPECT V)이 DCI-P3 (D65) 색공간에서 렌더링한 버퍼를 수학적으로 정확하게 복원하여
-/// 광색역에서 발생하는 음수 채널 클리핑과 선택/결과 화면의 색상 왜곡을 100% 방지합니다.
+/// 음수 채널 클리핑을 방지하고, 2-Stage 역톤매핑으로 중간톤 앨범 자켓 유사도(0.87+)와
+/// 고휘도 폰트(Score 1,000,000 / Rate 100.00%)를 100% 동시에 복원합니다.
 ///
 /// # Safety
 ///
@@ -238,16 +283,16 @@ pub unsafe fn convert_scrgb_fp16_to_bgra8_p3(
     scale: f32,
 ) {
     let src = src_row as *const u16;
-    let inv_scale = 1.0 / if scale <= 0.0 { 1.0 } else { scale };
+    let safe_scale = if scale <= 0.0 {
+        SCRGB_SDR_WHITE_LEVEL
+    } else {
+        scale
+    };
 
-    // 행렬 계수에 inv_scale을 미리 곱하여 루프 내 나눗셈을 0으로 제거 (Zero Division Overhead)
-    let m00 = 0.822475 * inv_scale;
-    let m01 = 0.177378 * inv_scale;
-    let m10 = 0.033155 * inv_scale;
-    let m11 = 0.966935 * inv_scale;
-    let m20 = 0.017052 * inv_scale;
-    let m21 = 0.072371 * inv_scale;
-    let m22 = 0.910581 * inv_scale;
+    let scale_mid = safe_scale * (4.0 / 4.88);
+    let v_knee = safe_scale * (2.2 / 4.88);
+
+    let oetf = &*FAST_OETF_TABLE;
 
     for x in 0..pixel_count {
         let r_bits = std::ptr::read_unaligned(src.add(x * 4));
@@ -258,19 +303,23 @@ pub unsafe fn convert_scrgb_fp16_to_bgra8_p3(
         let g = f16_to_f32(g_bits);
         let b = f16_to_f32(b_bits);
 
-        // DCI-P3 역변환 행렬 곱 + 스케일링 + 클램핑
-        let r_lin = (m00 * r + m01 * g).clamp(0.0, 1.0);
-        let g_lin = (m10 * r + m11 * g).clamp(0.0, 1.0);
-        let b_lin = (m20 * r + m21 * g + m22 * b).clamp(0.0, 1.0);
+        // DCI-P3 역변환 행렬 곱
+        let r_p3 = (0.822475 * r + 0.177378 * g).max(0.0);
+        let g_p3 = (0.033155 * r + 0.966935 * g).max(0.0);
+        let b_p3 = (0.017052 * r + 0.072371 * g + 0.910581 * b).max(0.0);
 
-        let r_srgb = strict_srgb_oetf(r_lin);
-        let g_srgb = strict_srgb_oetf(g_lin);
-        let b_srgb = strict_srgb_oetf(b_lin);
+        let r_lin = tone_map_2stage_rational(r_p3, scale_mid, v_knee);
+        let g_lin = tone_map_2stage_rational(g_p3, scale_mid, v_knee);
+        let b_lin = tone_map_2stage_rational(b_p3, scale_mid, v_knee);
+
+        let r_idx = ((r_lin * 1024.0) as usize).min(1024);
+        let g_idx = ((g_lin * 1024.0) as usize).min(1024);
+        let b_idx = ((b_lin * 1024.0) as usize).min(1024);
 
         let dst = dst_row.add(x * 4);
-        *dst.add(0) = (b_srgb * 255.0 + 0.5) as u8;
-        *dst.add(1) = (g_srgb * 255.0 + 0.5) as u8;
-        *dst.add(2) = (r_srgb * 255.0 + 0.5) as u8;
+        *dst.add(0) = oetf[b_idx];
+        *dst.add(1) = oetf[g_idx];
+        *dst.add(2) = oetf[r_idx];
         *dst.add(3) = 255;
     }
 }
@@ -294,6 +343,53 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_tone_map_2stage_rational_continuity_and_monotonicity() {
+        let scale_mid = 4.0;
+        let v_knee = 2.2;
+
+        // 1. Zero check
+        assert_eq!(tone_map_2stage_rational(0.0, scale_mid, v_knee), 0.0);
+
+        // 2. Knee continuity (C0)
+        let eps = 1e-4;
+        let left = tone_map_2stage_rational(v_knee - eps, scale_mid, v_knee);
+        let center = tone_map_2stage_rational(v_knee, scale_mid, v_knee);
+        let right = tone_map_2stage_rational(v_knee + eps, scale_mid, v_knee);
+        assert!((left - center).abs() < 1e-3);
+        assert!((right - center).abs() < 1e-3);
+
+        // 3. Monotonicity across dynamic range
+        let mut prev = 0.0f32;
+        for i in 0..1000 {
+            let v = i as f32 * 0.02; // 0.0 to 20.0
+            let curr = tone_map_2stage_rational(v, scale_mid, v_knee);
+            assert!(
+                curr >= prev,
+                "Monotonicity violated at v={}: {} < {}",
+                v,
+                curr,
+                prev
+            );
+            assert!(curr <= 1.0, "Clamping violated at v={}: {}", v, curr);
+            prev = curr;
+        }
+
+        // 4. Asymptotic convergence to 1.0
+        let extreme = tone_map_2stage_rational(100.0, scale_mid, v_knee);
+        assert!(extreme > 0.98 && extreme <= 1.0);
+    }
+
+    #[test]
+    fn test_fast_oetf_table_precision() {
+        for i in 0..=1024 {
+            let lin = i as f32 / 1024.0;
+            let exact = (strict_srgb_oetf(lin) * 255.0 + 0.5) as u8;
+            let from_lut = FAST_OETF_TABLE[i];
+            assert_eq!(exact, from_lut);
+        }
+    }
+
+    #[test]
     fn test_build_lut_table_consistency() {
         let lut = build_lut_table(SCRGB_SDR_WHITE_LEVEL);
         assert_eq!(lut.len(), 65536);
@@ -301,11 +397,11 @@ mod tests {
         // 0.0 (half float 0x0000) -> sRGB 0
         assert_eq!(lut[0], 0);
 
-        // Half float 5.1680 (0x452b) -> sRGB 255
+        // Half float 5.1680 (0x452b) -> sRGB >= 230 (highlight shoulder preserved without bloom saturation)
         let half_5168 = 0x452bu16;
         let f = f16_to_f32(half_5168);
         assert!((f - 5.168).abs() < 0.005);
-        assert_eq!(lut[half_5168 as usize], 255);
+        assert!(lut[half_5168 as usize] >= 230);
     }
 
     #[test]

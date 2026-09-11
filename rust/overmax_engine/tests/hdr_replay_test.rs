@@ -2305,10 +2305,12 @@ fn test_diagnose_user_openmatch() {
     use overmax_engine::detector::templates;
 
     let candidates = ["scratch/user_openmatch", "../../scratch/user_openmatch"];
-    let base_dir = candidates
-        .iter()
-        .find(|p| std::path::Path::new(p).exists())
-        .expect("dir");
+    let Some(base_dir) = candidates.iter().find(|p| std::path::Path::new(p).exists()) else {
+        println!(
+            "[HDR Replay Test] Notice: 'scratch/user_openmatch' directory not found, skipping."
+        );
+        return;
+    };
 
     for i in 1..=5 {
         let path = format!("{}/om_{}.png", base_dir, i);

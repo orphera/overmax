@@ -143,7 +143,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
   - **난이도 (Difficulty)**: `Difficulty` enum (`Normal`, `Hard`, `Maximum`, `SC`) 활용. 선곡창에서는 난이도 패널 ROI의 상대 밝기를 판정하고, 결과창에서는 독립적인 난이도 패널 템플릿 매칭을 수행합니다.
   - **Max Combo**: 결과창 및 선곡창의 `max_combo_badge` ROI 영역에 대해 사전에 수집된 대표 뱃지 이미지 템플릿과의 이미지 해시(pHash, dHash, ahash) 비교를 수행. 결과창의 경우 가중 해밍 거리가 20.0 이하(선곡창은 10.0 이하)인 경우에 한해 True로 판정하여, 연출 그래픽 변화나 노이즈에 의한 Jitter 및 오인식을 완벽하게 차단.
   - **Rate**: `rate` ROI 영역에 대해 `detector::templates::digit` 모듈의 Pure Rust 템플릿 매칭으로 실수값(`f32`) 판정률을 실시간 수집.
-  - **Score & Rate Cross-Validation**: 결과창 및 선곡창에서 `score` ROI 영역을 템플릿 매칭으로 추출하여 판정율을 역산(`Rate = Score / 10,000`)합니다. 두 결과(Rate 템플릿 매칭 vs. Score 역산값) 간에 불일치가 발생할 경우, 신뢰도가 매우 높은 스코어 역산 값을 우선적으로 적용하여 Rate를 책정합니다. 추가로 선곡창 자릿수 오인식에 대비해 신뢰 범위 가드(MIN_VALID_RATE인 80% ~ 100%)를 둡니다.
+  - **Score & Rate Cross-Validation & ZNCC 소프트 템플릿 매칭**: 결과창 및 선곡창에서 `score` ROI 영역을 템플릿 매칭으로 추출하여 판정율을 역산(`Rate = Score / 10,000`)합니다. 두 결과(Rate 템플릿 매칭 vs. Score 역산값) 간에 불일치가 발생할 경우, 신뢰도가 매우 높은 스코어 역산 값을 우선적으로 적용하여 Rate를 책정합니다. 추가로 선곡창 자릿수 오인식에 대비해 신뢰 범위 가드(MIN_VALID_RATE인 80% ~ 100%)를 둡니다. 특히 QHD(1440p) 및 GPU Normalizer/Atlas 환경에서 다운스케일링 안티앨리어싱으로 인한 획 유실/편향('8'이 '3'으로 오독)을 방지하기 위해 1) 글자간 틈새(Gap) 서브픽셀 복원(`x1 -= 1`) 및 2) 원본 휘도 보존형 ZNCC(Zero-mean Normalized Cross-Correlation) 소프트 템플릿 매칭을 결합하여 무결점 1-Pass 인식을 보장합니다.
 
 - **원자적 안정화**:
   - 곡 ID, 버튼 모드, 난이도, Rate, Max Combo 전체를 하나의 `PlayContext`로 묶어 관리.

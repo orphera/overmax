@@ -69,6 +69,17 @@ pub fn match_character(
     Ok(image::match_character(char_bin, char_w, char_h, templates))
 }
 
+pub fn match_character_soft(
+    char_luma: &[u8],
+    char_w: usize,
+    char_h: usize,
+    templates: &[CvTemplate],
+) -> Result<Option<(char, f32)>, error::CvError> {
+    Ok(image::match_character_soft(
+        char_luma, char_w, char_h, templates,
+    ))
+}
+
 pub fn binarize_by_global_contrast(
     data: &[u8],
     width: usize,
@@ -78,6 +89,29 @@ pub fn binarize_by_global_contrast(
 ) -> Result<(Vec<u8>, u8, u8), error::CvError> {
     image::validate_image(data, width, height, 4, "binarize_by_global_contrast")?;
     Ok(image::binarize_by_global_contrast(
+        data,
+        width,
+        height,
+        method,
+        foreground_value,
+    ))
+}
+
+pub fn binarize_by_global_contrast_with_luma(
+    data: &[u8],
+    width: usize,
+    height: usize,
+    method: LumaMethod,
+    foreground_value: u8,
+) -> Result<(Vec<u8>, u8, u8, Vec<u8>), error::CvError> {
+    image::validate_image(
+        data,
+        width,
+        height,
+        4,
+        "binarize_by_global_contrast_with_luma",
+    )?;
+    Ok(image::binarize_by_global_contrast_with_luma(
         data,
         width,
         height,

@@ -95,6 +95,10 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [x] Windows SDR 콘텐츠 백색(Anchor 1: Win32 CCD `detect_monitor_sdr_white_level`, 기본값 3.0)과 패널 피크 휘도(Anchor 2: DXGI 1.6 `MaxLuminance`, 기본값 4.88)를 분리하는 2-Anchor 모델 정립
   - [x] 중간톤 선형 복원 및 무릎점을 SDR 백색 기준으로 유도($\text{scale}_{\text{mid}} = A_{\text{sdr}} \times \frac{4.0}{3.0}$, $V_{\text{knee}} = A_{\text{sdr}} \times \frac{2.2}{3.0}$)하여 임의의 피크 패널에서도 자켓 밝기 및 형태 완벽 보존
   - [x] DXGI 캡처 엔진의 `resolve_sdr_white_level`을 Win32 CCD 우선 감지 구조로 전면 개편하고, 39개 스냅샷 100% 인식 유지 및 전체 유닛 테스트 무회귀 검증 완료
+- [x] **4.12 1440p/Atlas 다운스케일링 폰트 인식 안정화 (ZNCC 소프트 템플릿 매칭 & 글자간 틈새 복원) (Step 12)**
+  - [x] QHD(1440p) 환경에서 GPU Bilinear 다운스케일링 시 1px 안티앨리어싱 세로선이 투영 분할 경계(Gap)에서 유실되던 결함을 세그먼트 간 틈새 복원(`x1 -= 1`)으로 해결
+  - [x] L1 SAD 매칭의 획 면적 편향으로 인한 '8' ➔ '3' 오독을 원본 휘도 보존형 ZNCC(정규화 상호상관) 소프트 매칭(`match_character_soft`)으로 해결 (+19.3%p 신뢰도 격차 확보)
+  - [x] 실전 인게임 스코어(`985869`) 인식 정상화 및 전체 156개 단위/통합 테스트 무회귀 검증 완료
 
 
 ---

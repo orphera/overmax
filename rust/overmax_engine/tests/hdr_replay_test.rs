@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 
 fn find_snapshot_dir() -> Option<PathBuf> {
     let candidates = [
+        Path::new("../../scratch/hdr_snapshot"),
+        Path::new("scratch/hdr_snapshot"),
         Path::new("../../scratch/hdr"),
         Path::new("../../scratch/hdr/hdr_snapshots"),
         Path::new("scratch/hdr"),
@@ -17,6 +19,8 @@ fn find_snapshot_dir() -> Option<PathBuf> {
 
 fn find_raw_file(name: &str) -> Option<PathBuf> {
     let candidates = [
+        format!("../../scratch/hdr_snapshot/{}", name),
+        format!("scratch/hdr_snapshot/{}", name),
         format!("../../scratch/hdr/{}", name),
         format!("../../scratch/hdr/hdr_snapshots/{}", name),
         format!("scratch/hdr/{}", name),
@@ -1521,9 +1525,9 @@ fn test_diagnose_score_rate_anomalies() {
     use overmax_engine::detector::templates;
 
     let target_files = [
-        ("1788930890", "hdr_snapshot_1788930890.raw"), // Score 1000000, Rate missing
-        ("1788956698", "hdr_snapshot_1788956698.raw"), // Rate 100.00%, Score missing
-        ("1788956734", "hdr_snapshot_1788956734.raw"), // Rate 100.00%, Score missing
+        ("snapshot1", "hdr_snapshot1.raw"),
+        ("snapshot2", "hdr_snapshot2.raw"),
+        ("acidinvasion", "hdr_snapshot_fr_8b_sc_acidinvasion.raw"),
     ];
 
     const WIDTH: usize = 512;
@@ -2181,5 +2185,113 @@ unsafe fn convert_scrgb_fp16_to_bgra8_fast(
         *dst.add(1) = oetf_table[g_idx];
         *dst.add(2) = oetf_table[r_idx];
         *dst.add(3) = 255;
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn test_analyze_user_capture_9858() {
+    use overmax_core::SceneType;
+    use overmax_engine::capture::frame::CapturedFrame;
+    use overmax_engine::detector::roi::RoiManager;
+    use overmax_engine::detector::templates;
+
+    let candidates = [
+        "scratch/capture_174804.png",
+        "../../scratch/capture_174804.png",
+        "scratch/capture_175546.png",
+        "../../scratch/capture_175546.png",
+        "scratch/capture_9858.png",
+        "../../scratch/capture_9858.png",
+    ];
+    let path = match candidates.iter().find(|p| std::path::Path::new(p).exists()) {
+        Some(p) => *p,
+        None => {
+            println!("User capture not found at {:?}", candidates);
+            return;
+        }
+    };
+
+    let dynamic_img = image::open(path).expect("failed to open capture image");
+    let rgba = dynamic_img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    println!("\n=== ANALYZING USER CAPTURE 9858: {}x{} ===", w, h);
+
+    let mut bgra = vec![0u8; (w * h * 4) as usize];
+    for (i, p) in rgba.pixels().enumerate() {
+        bgra[i * 4] = p[2]; // B
+        bgra[i * 4 + 1] = p[1]; // G
+        bgra[i * 4 + 2] = p[0]; // R
+        bgra[i * 4 + 3] = p[3]; // A
+    }
+
+    let frame = CapturedFrame {
+        width: w as i32,
+        height: h as i32,
+        bgra,
+    };
+
+    let mut rois = RoiManager::new(w as i32, h as i32);
+    rois.set_scene(SceneType::Freestyle);
+
+    // 1. Rate Analysis (Native Resolution)
+    if let Some(rate_roi) = rois.get_roi("rate") {
+        if let Some(img) = rate_roi.crop(&frame) {
+            let det = templates::detect_rate(&img);
+            assert_eq!(det, Some(98.58), "Native Rate must be 98.58%");
+        }
+    }
+
+    // 2. Score Analysis (Native Resolution)
+    if let Some(score_roi) = rois.get_roi("score") {
+        if let Some(img) = score_roi.crop(&frame) {
+            let det = templates::detect_score(&img);
+            assert_eq!(det, Some(985869), "Native Score must be 985869");
+        }
+    }
+
+    // 3. 1080p Normalized Analysis (Simulation of D3d11Normalizer DXGI pipeline)
+    let resized_1080p = image::imageops::resize(
+        &dynamic_img,
+        1920,
+        1080,
+        image::imageops::FilterType::Triangle,
+    );
+    let mut bgra_1080p = vec![0u8; 1920 * 1080 * 4];
+    for (i, p) in resized_1080p.pixels().enumerate() {
+        bgra_1080p[i * 4] = p[2]; // B
+        bgra_1080p[i * 4 + 1] = p[1]; // G
+        bgra_1080p[i * 4 + 2] = p[0]; // R
+        bgra_1080p[i * 4 + 3] = p[3]; // A
+    }
+    let frame_1080p = CapturedFrame {
+        width: 1920,
+        height: 1080,
+        bgra: bgra_1080p,
+    };
+    let mut rois_1080p = RoiManager::new(1920, 1080);
+    rois_1080p.set_scene(SceneType::Freestyle);
+
+    if let Some(score_roi) = rois_1080p.get_roi("score") {
+        if let Some(img) = score_roi.crop(&frame_1080p) {
+            let det = templates::detect_score(&img);
+            assert_eq!(det, Some(985869), "1080p Normalized Score must be 985869");
+        }
+    }
+
+    // 4. Virtual Atlas (512x512) Pipeline Analysis (Exact match for enable_gpu_atlas: true)
+    let atlas_frame = overmax_engine::detector::atlas_layout::build_virtual_atlas(&frame_1080p);
+    let mut rois_atlas = RoiManager::new(512, 512);
+    rois_atlas.set_scene(SceneType::Freestyle);
+
+    if let Some(score_roi) = rois_atlas.get_roi("score") {
+        if let Some(img) = score_roi.crop(&atlas_frame) {
+            let det = templates::detect_score(&img);
+            assert_eq!(
+                det,
+                Some(985869),
+                "Virtual Atlas pipeline must correctly recognize 985869"
+            );
+        }
     }
 }

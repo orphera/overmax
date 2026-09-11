@@ -21,7 +21,7 @@ pub fn detect_score(score: &ImageView) -> Option<u32> {
     }
 
     let region = score.to_image_region();
-    let (binary, _, _) = overmax_cv::binarize_by_global_contrast(
+    let (binary, _, _, luma) = overmax_cv::binarize_by_global_contrast_with_luma(
         &region.bgra,
         w,
         h,
@@ -36,25 +36,31 @@ pub fn detect_score(score: &ImageView) -> Option<u32> {
     }
 
     let mut score_val = 0u32;
-    let mut char_bin = Vec::with_capacity(32 * h);
+    let mut char_luma = Vec::with_capacity(32 * h);
 
-    for &(x1, x2) in &segments {
+    for (idx, &(raw_x1, raw_x2)) in segments.iter().enumerate() {
+        // 이전 글자와의 간격(Gap)에서 버려진 좌측 안티앨리어싱 획 픽셀을 복원하여 다음 글자로 포함
+        // (예: 7..18 / 20..31 사이의 19번 픽셀을 char #1로 가져와 19..31로 확장)
+        let prev_end = if idx > 0 { segments[idx - 1].1 } else { 0 };
+        let x1 = if raw_x1 > prev_end { raw_x1 - 1 } else { raw_x1 };
+        let x2 = raw_x2;
         let char_w = x2 - x1;
         let char_h = h;
-        char_bin.resize(char_w * char_h, 0);
+        char_luma.resize(char_w * char_h, 0);
         for y in 0..char_h {
             for x in 0..char_w {
-                char_bin[y * char_w + x] = binary[y * w + (x1 + x)];
+                char_luma[y * char_w + x] = luma[y * w + (x1 + x)];
             }
         }
 
-        let matched = overmax_cv::match_character(
-            &char_bin,
+        let matched = overmax_cv::match_character_soft(
+            &char_luma,
             char_w,
             char_h,
             super::digit::DIGIT_TEMPLATES_SCORE,
         )
         .ok()??;
+
         let digit = matched.0.to_digit(10)?;
         score_val = score_val * 10 + digit;
     }
@@ -187,7 +193,7 @@ fn match_digits_template(
     let h = img.height;
 
     let region = img.to_image_region();
-    let (binary, threshold, max_y) = overmax_cv::binarize_by_global_contrast(
+    let (binary, threshold, max_y, luma) = overmax_cv::binarize_by_global_contrast_with_luma(
         &region.bgra,
         w,
         h,
@@ -199,19 +205,22 @@ fn match_digits_template(
     let segments = overmax_cv::segment_characters(&binary, w, h).map_err(|e| e.to_string())?;
 
     let mut matched_str = String::with_capacity(segments.len());
-    let mut char_bin = Vec::with_capacity(32 * h);
-    for &(x1, x2) in &segments {
+    let mut char_luma = Vec::with_capacity(32 * h);
+    for (idx, &(raw_x1, raw_x2)) in segments.iter().enumerate() {
+        let prev_end = if idx > 0 { segments[idx - 1].1 } else { 0 };
+        let x1 = if raw_x1 > prev_end { raw_x1 - 1 } else { raw_x1 };
+        let x2 = raw_x2;
         let char_w = x2 - x1;
         let char_h = h;
-        char_bin.resize(char_w * char_h, 0);
+        char_luma.resize(char_w * char_h, 0);
         for y in 0..char_h {
             for x in 0..char_w {
-                char_bin[y * char_w + x] = binary[y * w + (x1 + x)];
+                char_luma[y * char_w + x] = luma[y * w + (x1 + x)];
             }
         }
 
         if let Ok(Some((ch, _score))) =
-            overmax_cv::match_character(&char_bin, char_w, char_h, cv_templates)
+            overmax_cv::match_character_soft(&char_luma, char_w, char_h, cv_templates)
         {
             if ch.is_ascii_digit() || ch == '.' || ch == '%' {
                 matched_str.push(ch);

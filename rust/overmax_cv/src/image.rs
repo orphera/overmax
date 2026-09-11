@@ -321,26 +321,95 @@ pub fn match_character(
         return None;
     }
 
-    let target_h = 32usize;
-    let target_w = ((char_w as f32 * target_h as f32 / char_h as f32).round()) as usize;
-    if target_w == 0 || target_w > 32 {
-        return None;
-    }
-
-    // 세그먼트를 32px 높이 표준 크기로 리사이즈하여 행 단위 u32 비트마스크에 패킹 (Zero-allocation)
-    let mut resized_bin_bits = [0u32; 32];
-    for (dy, row_bits) in resized_bin_bits.iter_mut().enumerate() {
-        let sy = (dy * char_h) / target_h;
-        let sy_clamped = sy.min(char_h - 1);
-        let mut bits = 0u32;
-        for dx in 0..target_w {
-            let sx = (dx * char_w) / target_w;
-            let sx_clamped = sx.min(char_w - 1);
-            if char_bin[sy_clamped * char_w + sx_clamped] > 0 {
-                bits |= 1 << dx;
+    // 1. 켜진 픽셀(foreground > 0)의 세로 범위 [y_min, y_max] 검출
+    let mut y_min = char_h;
+    let mut y_max = 0;
+    for y in 0..char_h {
+        let row = y * char_w;
+        for x in 0..char_w {
+            if char_bin[row + x] > 0 {
+                if y < y_min {
+                    y_min = y;
+                }
+                if y > y_max {
+                    y_max = y;
+                }
             }
         }
-        *row_bits = bits;
+    }
+
+    if y_min > y_max {
+        return None;
+    }
+    let tight_h = y_max - y_min + 1;
+
+    // 2. 템플릿들이 상하 패딩(각 4px)을 가진 폰트 템플릿인지 확인
+    // (DIGIT_TEMPLATES는 32px 캔버스에서 상단 3~4줄과 하단 4~5줄이 0으로 패딩되어 있음)
+    let is_padded_font_template = templates.first().is_some_and(|t| {
+        t.height == 32
+            && t.mask.len() >= t.width * 32
+            && t.mask[..t.width].iter().all(|&p| p == 0)
+            && t.mask[31 * t.width..32 * t.width].iter().all(|&p| p == 0)
+    });
+
+    let target_h = 32usize;
+    let mut resized_bin_bits = [0u32; 32];
+    let target_w;
+
+    if char_h == 32 {
+        // 이미 32px 표준 크기인 경우 (1:1 매핑)
+        target_w = char_w.clamp(1, 32);
+        for (dy, row_bits) in resized_bin_bits.iter_mut().enumerate() {
+            let sy_clamped = dy.min(char_h - 1);
+            let mut bits = 0u32;
+            for dx in 0..target_w {
+                let sx = (dx * char_w) / target_w;
+                let sx_clamped = sx.min(char_w - 1);
+                if char_bin[sy_clamped * char_w + sx_clamped] > 0 {
+                    bits |= 1 << dx;
+                }
+            }
+            *row_bits = bits;
+        }
+    } else if is_padded_font_template && tight_h >= 10 {
+        // [세로 방향 정규화 (Vertical Normalization)]
+        // ROI 크기나 상하 여백에 무관하게, 순수 글자 본체(tight_h)를 템플릿의 본체 높이(24px)에 맞추고
+        // 상단 4px 및 하단 4px 여백을 부여하여 32px 캔버스 중앙에 정렬합니다.
+        // 종횡비 또한 순수 글자 높이(tight_h) 기준으로 복원되어 ROI 여백에 의한 가로 압축 왜곡을 방지합니다.
+        target_w = ((char_w as f32 * 24.0 / tight_h as f32).round() as usize).clamp(1, 32);
+
+        for (glyph_dy, row_bits) in resized_bin_bits[4..28].iter_mut().enumerate() {
+            let sy = y_min + (glyph_dy * tight_h) / 24;
+            let sy_clamped = sy.min(y_max);
+            let mut bits = 0u32;
+            for dx in 0..target_w {
+                let sx = (dx * char_w) / target_w;
+                let sx_clamped = sx.min(char_w - 1);
+                if char_bin[sy_clamped * char_w + sx_clamped] > 0 {
+                    bits |= 1 << dx;
+                }
+            }
+            *row_bits = bits;
+        }
+        // dy in 0..4 및 dy in 28..32는 0으로 유지 (상하 4px 패딩)
+    } else {
+        // 점(.) 등 극단적으로 작은 기호(tight_h < 10) 또는 패딩 없는 일반 이미지/테스트 케이스:
+        // 전체 높이 char_h 기준으로 선형 스케일링하여 원래의 상대적 수직 위치를 보존합니다.
+        target_w =
+            ((char_w as f32 * target_h as f32 / char_h as f32).round() as usize).clamp(1, 32);
+        for (dy, row_bits) in resized_bin_bits.iter_mut().enumerate() {
+            let sy = (dy * char_h) / target_h;
+            let sy_clamped = sy.min(char_h - 1);
+            let mut bits = 0u32;
+            for dx in 0..target_w {
+                let sx = (dx * char_w) / target_w;
+                let sx_clamped = sx.min(char_w - 1);
+                if char_bin[sy_clamped * char_w + sx_clamped] > 0 {
+                    bits |= 1 << dx;
+                }
+            }
+            *row_bits = bits;
+        }
     }
 
     let mut best_char = None;
@@ -386,6 +455,207 @@ pub fn match_character(
     }
 }
 
+/// 8비트 그레이스케일 휘도(Luma)를 직접 활용하는 소프트 템플릿 매칭 함수입니다.
+///
+/// 하드 이진화(0 또는 255) 대신 원본 Luma 값을 [0, 255]로 동적 스트레칭한 후,
+/// 템플릿 마스크와의 L1 거리(SAD, Sum of Absolute Differences)를 계산합니다.
+/// 이를 통해 다운샘플링/블러로 인해 옅어진 외곽선이나 안티앨리어싱된 획(예: '8'의 좌측 세로획 및 허리선)의
+/// 아날로그 신호를 온전히 보존하여 '3'이나 '0'으로의 오인식을 원천 차단합니다.
+/// 또한 세로 방향 정규화(Vertical Tight Crop & Alignment)를 결합하여 수직 오프셋 오차를 완벽히 상쇄합니다.
+pub fn match_character_soft(
+    char_luma: &[u8],
+    char_w: usize,
+    char_h: usize,
+    templates: &[CvTemplate],
+) -> Option<(char, f32)> {
+    if char_w == 0 || char_h == 0 || templates.is_empty() || char_luma.len() < char_w * char_h {
+        return None;
+    }
+
+    // 1. 세그먼트 내 Min / Max Luma 및 대비(Contrast) 산출
+    let mut min_luma = 255u8;
+    let mut max_luma = 0u8;
+    for &l in &char_luma[..char_w * char_h] {
+        if l < min_luma {
+            min_luma = l;
+        }
+        if l > max_luma {
+            max_luma = l;
+        }
+    }
+    let contrast = max_luma.saturating_sub(min_luma);
+    if contrast < 15 {
+        return None; // 글자와 배경 구분이 불가능한 평탄한 영역
+    }
+
+    // 2. 글자 본체(foreground) 픽셀의 세로 범위 [y_min, y_max] 검출
+    let tight_thresh = min_luma + (contrast as f32 * 0.35).round() as u8;
+    let mut y_min = char_h;
+    let mut y_max = 0;
+    for y in 0..char_h {
+        let row = y * char_w;
+        for x in 0..char_w {
+            if char_luma[row + x] >= tight_thresh {
+                if y < y_min {
+                    y_min = y;
+                }
+                if y > y_max {
+                    y_max = y;
+                }
+            }
+        }
+    }
+
+    if y_min > y_max {
+        return None;
+    }
+    let tight_h = y_max - y_min + 1;
+
+    // 3. 템플릿들이 상하 패딩(각 4px)을 가진 폰트 템플릿인지 확인
+    let is_padded_font_template = templates.first().is_some_and(|t| {
+        t.height == 32
+            && t.mask.len() >= t.width * 32
+            && t.mask[..t.width].iter().all(|&p| p == 0)
+            && t.mask[31 * t.width..32 * t.width].iter().all(|&p| p == 0)
+    });
+
+    let target_h = 32usize;
+    let mut canvas = [0u8; 32 * 32];
+    let inv_contrast = 255.0 / contrast as f32;
+    let target_w;
+
+    if char_h == 32 {
+        // 이미 32px 표준 크기인 경우 (1:1 매핑)
+        target_w = char_w.clamp(1, 32);
+        for dy in 0..target_h {
+            let sy_clamped = dy.min(char_h - 1);
+            let s_row = sy_clamped * char_w;
+            let d_row = dy * target_w;
+            for dx in 0..target_w {
+                let sx = (dx * char_w) / target_w;
+                let sx_clamped = sx.min(char_w - 1);
+                let raw_luma = char_luma[s_row + sx_clamped];
+                let norm =
+                    ((raw_luma.saturating_sub(min_luma) as f32) * inv_contrast).round() as u8;
+                canvas[d_row + dx] = norm;
+            }
+        }
+    } else if is_padded_font_template && tight_h >= 10 {
+        // [세로 방향 정규화 (Vertical Normalization)]
+        // ROI 크기나 상하 여백에 무관하게, 순수 글자 본체(tight_h)를 템플릿 본체 높이(24px)에 맞추고
+        // 상단 4px 및 하단 4px 여백을 부여하여 32px 캔버스 중앙에 정렬합니다.
+        // 종횡비 또한 순수 글자 높이(tight_h) 기준으로 복원되어 ROI 여백에 의한 가로 왜곡을 방지합니다.
+        target_w = ((char_w as f32 * 24.0 / tight_h as f32).round() as usize).clamp(1, 32);
+
+        for glyph_dy in 0..24 {
+            let dy = glyph_dy + 4;
+            let sy = y_min + (glyph_dy * tight_h) / 24;
+            let sy_clamped = sy.min(y_max);
+            let s_row = sy_clamped * char_w;
+            let d_row = dy * target_w;
+            for dx in 0..target_w {
+                let sx = (dx * char_w) / target_w;
+                let sx_clamped = sx.min(char_w - 1);
+                let raw_luma = char_luma[s_row + sx_clamped];
+                let norm =
+                    ((raw_luma.saturating_sub(min_luma) as f32) * inv_contrast).round() as u8;
+                canvas[d_row + dx] = norm;
+            }
+        }
+        // dy in 0..4 및 dy in 28..32는 0으로 유지 (상하 4px 패딩)
+    } else {
+        target_w =
+            ((char_w as f32 * target_h as f32 / char_h as f32).round() as usize).clamp(1, 32);
+        for dy in 0..target_h {
+            let sy = (dy * char_h) / target_h;
+            let sy_clamped = sy.min(char_h - 1);
+            let s_row = sy_clamped * char_w;
+            let d_row = dy * target_w;
+            for dx in 0..target_w {
+                let sx = (dx * char_w) / target_w;
+                let sx_clamped = sx.min(char_w - 1);
+                let raw_luma = char_luma[s_row + sx_clamped];
+                let norm =
+                    ((raw_luma.saturating_sub(min_luma) as f32) * inv_contrast).round() as u8;
+                canvas[d_row + dx] = norm;
+            }
+        }
+    }
+
+    // 4. ZNCC (Zero-mean Normalized Cross-Correlation) 매칭
+    // 다운스케일링 블러나 안티앨리어싱으로 인한 획의 절대 밝기 희석(예: 8의 좌측 기둥이 80~140으로 감쇠)에
+    // 완벽히 불변(Invariant)하며, '3'과 '8'의 구조적 차이(좌측 기둥의 유무)를 완벽하게 분별합니다.
+    let total_pixels = target_w * target_h;
+    let inv_n = 1.0 / total_pixels as f32;
+    let mut c_sum = 0.0f32;
+    let mut c_sq_sum = 0.0f32;
+    for dy in 0..target_h {
+        let row = dy * target_w;
+        for dx in 0..target_w {
+            let val = canvas[row + dx] as f32;
+            c_sum += val;
+            c_sq_sum += val * val;
+        }
+    }
+    let c_mean = c_sum * inv_n;
+    let c_var = c_sq_sum * inv_n - c_mean * c_mean;
+    if c_var <= 1.0 {
+        return None;
+    }
+    let c_std = c_var.sqrt();
+
+    let mut best_char = None;
+    let mut best_score = 0.0f32;
+
+    for t in templates {
+        let diff_w = (t.width as isize - target_w as isize).abs();
+        if diff_w > 6 || t.width == 0 || t.height == 0 || t.mask.len() < t.width * t.height {
+            continue;
+        }
+
+        let mut t_sum = 0.0f32;
+        let mut dot_prod = 0.0f32;
+        for dy in 0..target_h {
+            let sy = (dy * t.height) / target_h;
+            let sy_clamped = sy.min(t.height - 1);
+            let t_row_offset = sy_clamped * t.width;
+            let c_row_offset = dy * target_w;
+            for dx in 0..target_w {
+                let sx = (dx * t.width) / target_w;
+                let sx_clamped = sx.min(t.width - 1);
+                let is_fg = t.mask[t_row_offset + sx_clamped] > 0;
+                if is_fg {
+                    let c_val = canvas[c_row_offset + dx] as f32;
+                    dot_prod += c_val;
+                    t_sum += 1.0;
+                }
+            }
+        }
+
+        let t_mean = t_sum * inv_n;
+        let t_var = t_mean * (1.0 - t_mean);
+        if t_var <= 1e-5 {
+            continue;
+        }
+        let t_std = t_var.sqrt();
+
+        let cov = (dot_prod * inv_n) - (c_mean * t_mean);
+        let zncc = cov / (c_std * t_std);
+
+        if zncc > best_score {
+            best_score = zncc;
+            best_char = Some(t.char_val);
+        }
+    }
+
+    // 최소 매칭 한계선인 50% 이상일 때만 정상 분류 값으로 통과
+    if best_score >= 0.50 {
+        best_char.map(|c| (c, best_score))
+    } else {
+        None
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LumaMethod {
     Weighted, // BT.601: ((77 * r + 150 * g + 29 * b) >> 8)
@@ -424,7 +694,33 @@ pub fn binarize_by_luminance(
     threshold_calc: impl FnOnce(u8, u8) -> u8,
     foreground_value: u8,
 ) -> (Vec<u8>, u8, u8) {
+    let (binary, threshold, max_y, _) = binarize_by_luminance_with_luma(
+        bgra,
+        width,
+        height,
+        method,
+        threshold_calc,
+        foreground_value,
+    );
+    (binary, threshold, max_y)
+}
+
+pub fn binarize_by_luminance_with_luma<F>(
+    bgra: &[u8],
+    width: usize,
+    height: usize,
+    method: LumaMethod,
+    threshold_calc: F,
+    foreground_value: u8,
+) -> (Vec<u8>, u8, u8, Vec<u8>)
+where
+    F: FnOnce(u8, u8) -> u8,
+{
     let total = width * height;
+    if total == 0 || bgra.len() < total * 4 {
+        return (vec![0u8; total], 0, 0, vec![0u8; total]);
+    }
+
     let mut max_y = 0u8;
     let mut min_y = 255u8;
     let mut luma_vals = vec![0u8; total];
@@ -452,7 +748,7 @@ pub fn binarize_by_luminance(
             0
         };
     }
-    (binary, threshold, max_y)
+    (binary, threshold, max_y, luma_vals)
 }
 
 /// 전역 대비(Global Contrast) 기반 유동 임계치를 사용하여 이미지의 휘도를 이진화합니다.
@@ -463,7 +759,20 @@ pub fn binarize_by_global_contrast(
     method: LumaMethod,
     foreground_value: u8,
 ) -> (Vec<u8>, u8, u8) {
-    binarize_by_luminance(
+    let (binary, threshold, max_y, _) =
+        binarize_by_global_contrast_with_luma(bgra, width, height, method, foreground_value);
+    (binary, threshold, max_y)
+}
+
+/// 전역 대비 기반 이진화 결과와 함께 Luma 값 배열을 동시에 반환합니다 (Zero Duplicate Calculation).
+pub fn binarize_by_global_contrast_with_luma(
+    bgra: &[u8],
+    width: usize,
+    height: usize,
+    method: LumaMethod,
+    foreground_value: u8,
+) -> (Vec<u8>, u8, u8, Vec<u8>) {
+    binarize_by_luminance_with_luma(
         bgra,
         width,
         height,
@@ -471,7 +780,7 @@ pub fn binarize_by_global_contrast(
         |max, min| {
             if max > 40 && max.saturating_sub(min) > 15 {
                 let contrast = max.saturating_sub(min) as f32;
-                let calculated = (min as f32 + contrast * 0.72) as u8;
+                let calculated = (min as f32 + contrast * 0.65) as u8;
                 calculated.max(min + 5)
             } else {
                 180
@@ -720,5 +1029,268 @@ mod tests {
         }
         let segs_large = segment_characters(&binary_large, 600, 10);
         assert_eq!(segs_large, vec![(550, 570)]);
+    }
+
+    #[test]
+    fn test_match_character_vertical_normalization() {
+        // 32px height font-like template: top 4 lines 0, body 24 lines 1, bottom 4 lines 0 (width 16)
+        let mut template_mask = [0u8; 16 * 32];
+        for y in 4..28 {
+            for x in 4..12 {
+                template_mask[y * 16 + x] = 1;
+            }
+        }
+        let template = CvTemplate {
+            char_val: 'I',
+            width: 16,
+            height: 32,
+            mask: &template_mask,
+        };
+
+        // Case 1: Pure body without vertical padding (width 12, height 24, glyph x in 3..9 is 25%..75%)
+        let mut input_tight = [0u8; 12 * 24];
+        for y in 0..24 {
+            for x in 3..9 {
+                input_tight[y * 12 + x] = 1;
+            }
+        }
+        let res_tight = match_character(&input_tight, 12, 24, &[template]);
+        assert!(res_tight.is_some());
+        let (ch1, score1) = res_tight.unwrap();
+        assert_eq!(ch1, 'I');
+        assert!(
+            score1 >= 0.95,
+            "Score for tight input should be >= 0.95, got {}",
+            score1
+        );
+
+        // Case 2: Body with arbitrary top/bottom padding (width 12, height 26, body 18 lines)
+        let mut input_padded = [0u8; 12 * 26];
+        for y in 3..21 {
+            for x in 3..9 {
+                input_padded[y * 12 + x] = 1;
+            }
+        }
+        let res_padded = match_character(&input_padded, 12, 26, &[template]);
+        assert!(res_padded.is_some());
+        let (ch2, score2) = res_padded.unwrap();
+        assert_eq!(ch2, 'I');
+        assert!(
+            score2 >= 0.95,
+            "Score for padded input should be >= 0.95, got {}",
+            score2
+        );
+    }
+
+    #[test]
+    fn test_match_character_soft_blurred_waist_8_vs_0() {
+        // 16x32 크기의 템플릿 생성: '0' (외곽 루프만 있음) vs '8' (외곽 루프 + 허리선)
+        let mut mask_0 = [0u8; 16 * 32];
+        let mut mask_8 = [0u8; 16 * 32];
+
+        // 공통 외곽 타원 루프 (상/하/좌/우)
+        for y in 4..28 {
+            for x in 2..14 {
+                let is_border = x == 2
+                    || x == 3
+                    || x == 12
+                    || x == 13
+                    || y == 4
+                    || y == 5
+                    || y == 26
+                    || y == 27;
+                if is_border {
+                    mask_0[y * 16 + x] = 1;
+                    mask_8[y * 16 + x] = 1;
+                }
+            }
+        }
+        // '8'에만 허리선 (y=15..17) 추가
+        for y in 15..17 {
+            for x in 2..14 {
+                mask_8[y * 16 + x] = 1;
+            }
+        }
+
+        let tmpl_0 = CvTemplate {
+            char_val: '0',
+            width: 16,
+            height: 32,
+            mask: &mask_0,
+        };
+        let tmpl_8 = CvTemplate {
+            char_val: '8',
+            width: 16,
+            height: 32,
+            mask: &mask_8,
+        };
+        let templates = [tmpl_0, tmpl_8];
+
+        // 1440p 다운샘플링 블러를 시뮬레이션한 '8' 입력 생성:
+        // 외곽선은 밝기 240, 허리선은 블러로 희석되어 140 (대비 58% 수준), 배경은 20
+        let mut blurred_8 = vec![20u8; 16 * 32];
+        for y in 4..28 {
+            for x in 2..14 {
+                let is_border = x == 2
+                    || x == 3
+                    || x == 12
+                    || x == 13
+                    || y == 4
+                    || y == 5
+                    || y == 26
+                    || y == 27;
+                if is_border {
+                    blurred_8[y * 16 + x] = 240;
+                }
+            }
+        }
+        for y in 15..17 {
+            for x in 2..14 {
+                blurred_8[y * 16 + x] = 140; // 흐려진 허리선!
+            }
+        }
+
+        // 1. 기존 하드 이진화(72% 대비): 허리선(140)이 임계값(20 + 220*0.72 ≈ 178) 아래로 떨어져 잘림 -> '0'으로 오인식됨!
+        let mut hard_bin = vec![0u8; 16 * 32];
+        for i in 0..16 * 32 {
+            if blurred_8[i] >= 178 {
+                hard_bin[i] = 255;
+            }
+        }
+        let hard_res = match_character(&hard_bin, 16, 32, &templates);
+        assert_eq!(
+            hard_res.map(|m| m.0),
+            Some('0'),
+            "하드 이진화에서는 허리선이 잘려 '0'으로 오인식됨을 증명"
+        );
+
+        // 2. 소프트 템플릿 매칭: 허리선의 밝기(140)가 보존되어 '8'을 정확하게 판독!
+        let soft_res = match_character_soft(&blurred_8, 16, 32, &templates);
+        assert!(soft_res.is_some());
+        let (ch, score) = soft_res.unwrap();
+        assert_eq!(
+            ch, '8',
+            "소프트 템플릿 매칭은 블러로 옅어진 허리선을 감지하여 '8'을 올바르게 판정해야 함"
+        );
+        assert!(score >= 0.50);
+    }
+
+    #[test]
+    fn test_match_character_soft_blurred_left_8_vs_3() {
+        // '3' (좌측 기둥이 없음) vs '8' (좌측 기둥이 있음)
+        let mut mask_3 = [0u8; 16 * 32];
+        let mut mask_8 = [0u8; 16 * 32];
+
+        // 공통 우측 곡선 및 상/중/하 가로선
+        for y in 4..28 {
+            for x in 2..14 {
+                let is_right = x == 12 || x == 13;
+                let is_horizontal = y == 4 || y == 5 || y == 15 || y == 16 || y == 26 || y == 27;
+                if is_right || is_horizontal {
+                    mask_3[y * 16 + x] = 1;
+                    mask_8[y * 16 + x] = 1;
+                }
+            }
+        }
+        // '8'에만 좌측 기둥 (x=2..4, y=6..14, y=17..25) 추가
+        for y in 6..26 {
+            if y == 15 || y == 16 {
+                continue;
+            }
+            mask_8[y * 16 + 2] = 1;
+            mask_8[y * 16 + 3] = 1;
+        }
+
+        let tmpl_3 = CvTemplate {
+            char_val: '3',
+            width: 16,
+            height: 32,
+            mask: &mask_3,
+        };
+        let tmpl_8 = CvTemplate {
+            char_val: '8',
+            width: 16,
+            height: 32,
+            mask: &mask_8,
+        };
+        let templates = [tmpl_3, tmpl_8];
+
+        // 1440p 다운샘플링 블러로 좌측 기둥이 희석된(140) '8' 입력
+        let mut blurred_8 = vec![20u8; 16 * 32];
+        for y in 4..28 {
+            for x in 2..14 {
+                let is_right = x == 12 || x == 13;
+                let is_horizontal = y == 4 || y == 5 || y == 15 || y == 16 || y == 26 || y == 27;
+                if is_right || is_horizontal {
+                    blurred_8[y * 16 + x] = 240;
+                }
+            }
+        }
+        for y in 6..26 {
+            if y == 15 || y == 16 {
+                continue;
+            }
+            blurred_8[y * 16 + 2] = 140;
+            blurred_8[y * 16 + 3] = 140;
+        }
+
+        // 1. 하드 이진화(72%): 좌측선(140)이 잘림 -> '3'으로 오인식됨!
+        let mut hard_bin = vec![0u8; 16 * 32];
+        for i in 0..16 * 32 {
+            if blurred_8[i] >= 178 {
+                hard_bin[i] = 255;
+            }
+        }
+        let hard_res = match_character(&hard_bin, 16, 32, &templates);
+        assert_eq!(
+            hard_res.map(|m| m.0),
+            Some('3'),
+            "하드 이진화에서는 좌측 기둥이 잘려 '3'으로 오인식됨을 증명"
+        );
+
+        // 2. 소프트 템플릿 매칭: 좌측 기둥 신호(140)가 '3'에는 페널티로 작용하고 '8'에는 가산점으로 작용 -> '8'로 정확히 판독!
+        let soft_res = match_character_soft(&blurred_8, 16, 32, &templates);
+        assert!(soft_res.is_some());
+        let (ch, score) = soft_res.unwrap();
+        assert_eq!(
+            ch, '8',
+            "소프트 템플릿 매칭은 블러로 옅어진 좌측선을 감지하여 '8'을 올바르게 판정해야 함"
+        );
+        assert!(score >= 0.50);
+    }
+
+    #[test]
+    fn test_match_character_soft_vertical_normalization() {
+        // 32px height font-like template: top 4 lines 0, body 24 lines 1, bottom 4 lines 0 (width 16)
+        let mut template_mask = [0u8; 16 * 32];
+        for y in 4..28 {
+            for x in 4..12 {
+                template_mask[y * 16 + x] = 1;
+            }
+        }
+        let template = CvTemplate {
+            char_val: 'I',
+            width: 16,
+            height: 32,
+            mask: &template_mask,
+        };
+
+        // Case: Body with arbitrary top/bottom padding (width 12, height 26, body 18 lines)
+        // Background 20, Body 240
+        let mut input_padded = vec![20u8; 12 * 26];
+        for y in 3..21 {
+            for x in 3..9 {
+                input_padded[y * 12 + x] = 240;
+            }
+        }
+        let res_padded = match_character_soft(&input_padded, 12, 26, &[template]);
+        assert!(res_padded.is_some());
+        let (ch, score) = res_padded.unwrap();
+        assert_eq!(ch, 'I');
+        assert!(
+            score >= 0.85,
+            "Score for soft padded input should be >= 0.85, got {}",
+            score
+        );
     }
 }

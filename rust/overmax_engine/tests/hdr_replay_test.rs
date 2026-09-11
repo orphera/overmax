@@ -2295,3 +2295,98 @@ fn test_analyze_user_capture_9858() {
         }
     }
 }
+
+#[cfg(windows)]
+#[test]
+fn test_diagnose_user_openmatch() {
+    use overmax_core::SceneType;
+    use overmax_engine::capture::frame::CapturedFrame;
+    use overmax_engine::detector::roi::RoiManager;
+    use overmax_engine::detector::templates;
+
+    let candidates = ["scratch/user_openmatch", "../../scratch/user_openmatch"];
+    let base_dir = candidates
+        .iter()
+        .find(|p| std::path::Path::new(p).exists())
+        .expect("dir");
+
+    for i in 1..=5 {
+        let path = format!("{}/om_{}.png", base_dir, i);
+        let Ok(dynamic_img) = image::open(&path) else {
+            continue;
+        };
+        let rgba = dynamic_img.to_rgba8();
+        let (w, h) = rgba.dimensions();
+        println!("\n=======================================================");
+        println!(">>> DIAGNOSING OM_{}.png ({}x{}) <<<", i, w, h);
+        println!("=======================================================");
+
+        // 1080p Normalization (simulate D3d11Normalizer)
+        let resized_1080p = image::imageops::resize(
+            &dynamic_img,
+            1920,
+            1080,
+            image::imageops::FilterType::Triangle,
+        );
+        let mut bgra_1080p = vec![0u8; 1920 * 1080 * 4];
+        for (idx, p) in resized_1080p.pixels().enumerate() {
+            bgra_1080p[idx * 4] = p[2];
+            bgra_1080p[idx * 4 + 1] = p[1];
+            bgra_1080p[idx * 4 + 2] = p[0];
+            bgra_1080p[idx * 4 + 3] = p[3];
+        }
+        let frame_1080p = CapturedFrame {
+            width: 1920,
+            height: 1080,
+            bgra: bgra_1080p,
+        };
+
+        // Virtual Atlas (512x512)
+        let atlas_frame = overmax_engine::detector::atlas_layout::build_virtual_atlas(&frame_1080p);
+        let mut rois_atlas = RoiManager::new(512, 512);
+        rois_atlas.set_scene(SceneType::OpenMatch);
+
+        // 1. Score
+        let det_score = rois_atlas.and_then_roi(&atlas_frame, "score", templates::detect_score);
+        println!("  [SCORE (Atlas)] => {:?}", det_score);
+
+        // 2. Rate
+        let det_rate =
+            rois_atlas.and_then_roi(&atlas_frame, "rate", |img| templates::detect_rate(img));
+        println!("  [RATE (Atlas)] => {:?}", det_rate);
+
+        // 3. Max Combo Badge
+        let is_mc =
+            overmax_engine::detector::play_state::detect_max_combo(&atlas_frame, &rois_atlas);
+        println!("  [BADGE (Atlas)] => is_mc={}", is_mc);
+
+        match i {
+            1 => {
+                assert_eq!(det_score, Some(1000000));
+                assert_eq!(det_rate, Some(100.0));
+                assert!(is_mc);
+            }
+            2 => {
+                assert_eq!(det_score, Some(999421));
+                assert_eq!(det_rate, Some(99.94));
+                assert!(is_mc);
+            }
+            3 => {
+                assert_eq!(det_score, Some(1000000));
+                assert_eq!(det_rate, Some(100.0));
+                assert!(is_mc);
+            }
+            4 => {
+                assert_eq!(det_score, Some(999558));
+                assert_eq!(det_rate, Some(99.95));
+                assert!(is_mc);
+            }
+            5 => {
+                assert_eq!(det_score, Some(993462));
+                assert_eq!(det_rate, Some(99.34));
+                assert!(is_mc);
+            }
+            _ => {}
+        }
+    }
+}

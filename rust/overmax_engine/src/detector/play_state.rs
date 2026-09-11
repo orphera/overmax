@@ -202,17 +202,29 @@ impl PlayStateDetector {
                     checksums.is_none() || checksums != self.rate_cache.last_checksum;
 
                 if inputs_changed {
-                    let detected_rate = if let Some(score_val) =
-                        rois.and_then_roi(frame, "score", templates::detect_score)
-                    {
-                        let calc_rate = (score_val as f32 / 10000.0 * 100.0).floor() / 100.0;
-                        if (0.0..=100.0).contains(&calc_rate) {
-                            Some(calc_rate)
-                        } else {
-                            None
+                    let detected_score = rois.and_then_roi(frame, "score", templates::detect_score);
+                    let direct_rate =
+                        rois.and_then_roi(frame, "rate", |img| templates::detect_rate(img));
+
+                    let detected_rate = match (detected_score, direct_rate) {
+                        (Some(score_val), Some(rate_val)) => {
+                            let calc_rate = (score_val as f32 / 10000.0 * 100.0).floor() / 100.0;
+                            if (calc_rate - rate_val).abs() <= 0.02 {
+                                Some(calc_rate)
+                            } else {
+                                debug_println!(
+                                    "    [detect result] score/rate conflict: score_val={} (calc={:.2}%) vs rate={:.2}%. Prioritizing direct rate.",
+                                    score_val, calc_rate, rate_val
+                                );
+                                Some(rate_val)
+                            }
                         }
-                    } else {
-                        rois.and_then_roi(frame, "rate", |img| templates::detect_rate(img))
+                        (Some(score_val), None) => {
+                            let calc_rate = (score_val as f32 / 10000.0 * 100.0).floor() / 100.0;
+                            (0.0..=100.0).contains(&calc_rate).then_some(calc_rate)
+                        }
+                        (None, Some(rate_val)) => Some(rate_val),
+                        (None, None) => None,
                     };
 
                     if let Some(r) = detected_rate {
@@ -235,29 +247,43 @@ impl PlayStateDetector {
         } else {
             self.result_rate_window.clear();
             let record = self.rate_cache.get_or_detect(checksums, now, || {
-                if let Some(score_val) = rois.and_then_roi(frame, "score", templates::detect_score)
-                {
-                    let calc_rate = (score_val as f32 / 10000.0 * 100.0).floor() / 100.0;
-                    if is_song_select && (MIN_VALID_RATE..=100.0).contains(&calc_rate) {
+                let detected_score = rois.and_then_roi(frame, "score", templates::detect_score);
+                let direct_rate =
+                    rois.and_then_roi(frame, "rate", |img| templates::detect_rate(img));
+
+                let final_rate = match (detected_score, direct_rate) {
+                    (Some(score_val), Some(rate_val)) => {
+                        let calc_rate = (score_val as f32 / 10000.0 * 100.0).floor() / 100.0;
+                        if (calc_rate - rate_val).abs() <= 0.02 {
+                            Some(calc_rate)
+                        } else {
+                            debug_println!(
+                                "    [detect] score/rate conflict: score_val={} (calc={:.2}%) vs rate={:.2}%. Prioritizing direct rate.",
+                                score_val, calc_rate, rate_val
+                            );
+                            Some(rate_val)
+                        }
+                    }
+                    (Some(score_val), None) => {
+                        let calc_rate = (score_val as f32 / 10000.0 * 100.0).floor() / 100.0;
+                        (MIN_VALID_RATE..=100.0).contains(&calc_rate).then_some(calc_rate)
+                    }
+                    (None, Some(rate_val)) => Some(rate_val),
+                    (None, None) => None,
+                };
+
+                if let Some(rate) = final_rate {
+                    if is_song_select && (MIN_VALID_RATE..=100.0).contains(&rate) {
                         debug_println!(
-                            "    [detect] score run. score={}, rate={:.2}%",
-                            score_val,
-                            calc_rate
+                            "    [detect] rate detected. rate={:.2}%",
+                            rate
                         );
                         let is_max_combo = detect_max_combo(frame, rois);
                         return Some(PatternRecord::Played {
-                            rate: calc_rate,
+                            rate,
                             is_max_combo,
                         });
                     }
-                } else if let Some(rate_res) =
-                    rois.and_then_roi(frame, "rate", |img| templates::detect_rate(img))
-                {
-                    let is_max_combo = detect_max_combo(frame, rois);
-                    return Some(PatternRecord::Played {
-                        rate: rate_res,
-                        is_max_combo,
-                    });
                 }
                 Some(PatternRecord::Unplayed)
             });
@@ -657,6 +683,9 @@ fn calculate_hash_score(
     0.5 * p_dist + 0.3 * d_dist + 0.2 * a_dist
 }
 
+// 뱃지 해시 매칭 허용 임계치 (빈 배경 평균 거리는 29~35이며, 1px 보간 오차 시 12~14점이 발생하므로 20.0으로 통일)
+const BADGE_MATCH_THRESHOLD: f32 = 20.0;
+
 pub fn detect_max_combo(frame: &CapturedFrame, rois: &RoiManager) -> bool {
     let hashes = rois.and_then_roi(frame, "max_combo_badge", |img| img.compute_hashes(4).ok());
 
@@ -679,7 +708,7 @@ pub fn detect_max_combo(frame: &CapturedFrame, rois: &RoiManager) -> bool {
         TEMPLATE_SELECT_MC_DHASH,
         TEMPLATE_SELECT_MC_AHASH,
     );
-    score_perfect <= 10.0 || score_mc <= 10.0
+    score_perfect <= BADGE_MATCH_THRESHOLD || score_mc <= BADGE_MATCH_THRESHOLD
 }
 
 pub fn detect_max_combo_result(frame: &CapturedFrame, rois: &RoiManager) -> bool {
@@ -704,7 +733,7 @@ pub fn detect_max_combo_result(frame: &CapturedFrame, rois: &RoiManager) -> bool
         TEMPLATE_RESULT_MC_DHASH,
         TEMPLATE_RESULT_MC_AHASH,
     );
-    score_perfect <= 20.0 || score_mc <= 20.0
+    score_perfect <= BADGE_MATCH_THRESHOLD || score_mc <= BADGE_MATCH_THRESHOLD
 }
 
 #[cfg(test)]

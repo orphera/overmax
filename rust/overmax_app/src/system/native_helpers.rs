@@ -31,3 +31,32 @@ pub fn button_num(mode: &str) -> i32 {
         .map(|m| m.button_count())
         .unwrap_or(4)
 }
+
+/// 시스템 파일 탐색기로 지정된 디렉터리를 엽니다.
+pub fn open_folder(path: &std::path::Path) -> std::io::Result<()> {
+    if !path.exists() {
+        let _ = std::fs::create_dir_all(path);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer").arg(path).spawn()?;
+        Ok(())
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open").arg(path).spawn()?;
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(path).spawn()?;
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+    {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "Unsupported platform",
+        ))
+    }
+}

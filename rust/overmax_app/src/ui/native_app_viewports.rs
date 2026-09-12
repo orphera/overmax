@@ -199,6 +199,7 @@ impl NativeApp {
 
         let settings_ctx = settings_ui::SettingsUiContext {
             root: self.root.clone(),
+            paths: paths.clone(),
             current_steam_id: self
                 .sync_state
                 .steam_id

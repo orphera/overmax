@@ -18,6 +18,7 @@ use std::sync::{Arc, Mutex};
 
 pub struct SettingsUiContext {
     pub root: Arc<std::path::PathBuf>,
+    pub paths: Arc<overmax_data::AppPaths>,
     pub current_steam_id: String,
     pub sync_open: Arc<AtomicBool>,
     pub debug_open: Arc<AtomicBool>,
@@ -496,6 +497,9 @@ fn advanced_tab(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContext) {
     section_card(ui, crate::t!("settings-ipc-section"), |ui| {
         ipc_section(ui, draft, ctx);
     });
+    section_card(ui, crate::t!("settings-storage-section"), |ui| {
+        storage_section(ui, ctx);
+    });
     section_card(ui, crate::t!("settings-diagnostics"), |ui| {
         debug_section(ui, draft, ctx);
     });
@@ -533,6 +537,51 @@ fn advanced_tab(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContext) {
             });
         });
     }
+}
+
+fn storage_section(ui: &mut egui::Ui, ctx: &SettingsUiContext) {
+    let mode_text = if ctx.paths.is_portable() {
+        crate::t!("settings-storage-mode-portable")
+    } else {
+        crate::t!("settings-storage-mode-installed")
+    };
+
+    setting_row(
+        ui,
+        crate::t!("settings-storage-mode"),
+        crate::t!("settings-storage-mode-hint"),
+        |ui| {
+            ui.label(
+                RichText::new(mode_text)
+                    .color(DialogTheme::TEXT_PRIMARY)
+                    .size(DialogTheme::FONT_BODY)
+                    .strong(),
+            );
+        },
+    );
+
+    ui.add_space(DialogTheme::GAP_MD);
+
+    let data_dir = ctx.paths.data_dir();
+    let mut data_dir_str = data_dir.to_string_lossy().to_string();
+
+    field_row(
+        ui,
+        crate::t!("settings-storage-folder"),
+        crate::t!("settings-storage-folder-hint"),
+        |ui| {
+            let (_, clicked) = text_input_with_button(
+                ui,
+                &mut data_dir_str,
+                "",
+                crate::t!("settings-storage-open-folder"),
+                true,
+            );
+            if clicked {
+                let _ = crate::system::native_helpers::open_folder(data_dir);
+            }
+        },
+    );
 }
 
 fn debug_section(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContext) {

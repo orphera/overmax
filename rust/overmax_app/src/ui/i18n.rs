@@ -460,6 +460,62 @@ macro_rules! t {
             Ja => "参照"
         )
     };
+    ("settings-storage-section") => {
+        $crate::t_select!(
+            Ko => "저장소 및 데이터",
+            En => "Storage & Data",
+            Ja => "ストレージとデータ"
+        )
+    };
+    ("settings-storage-mode") => {
+        $crate::t_select!(
+            Ko => "실행 모드",
+            En => "Runtime Mode",
+            Ja => "実行モード"
+        )
+    };
+    ("settings-storage-mode-hint") => {
+        $crate::t_select!(
+            Ko => "현재 데이터가 저장되는 방식입니다.",
+            En => "Current data storage mode.",
+            Ja => "現在のデータ保存方式です。"
+        )
+    };
+    ("settings-storage-mode-portable") => {
+        $crate::t_select!(
+            Ko => "포터블 모드",
+            En => "Portable Mode",
+            Ja => "ポータブルモード"
+        )
+    };
+    ("settings-storage-mode-installed") => {
+        $crate::t_select!(
+            Ko => "MSIX / 설치 모드",
+            En => "MSIX / Installed Mode",
+            Ja => "MSIX / インストールモード"
+        )
+    };
+    ("settings-storage-folder") => {
+        $crate::t_select!(
+            Ko => "데이터 폴더",
+            En => "Data Folder",
+            Ja => "データフォルダー"
+        )
+    };
+    ("settings-storage-folder-hint") => {
+        $crate::t_select!(
+            Ko => "설정(settings.user.json) 및 기록(record.db)이 저장되는 경로입니다.",
+            En => "Path where settings (settings.user.json) and history (record.db) are stored.",
+            Ja => "設定(settings.user.json)および記録(record.db)が保存される場所です。"
+        )
+    };
+    ("settings-storage-open-folder") => {
+        $crate::t_select!(
+            Ko => "폴더 열기",
+            En => "Open Folder",
+            Ja => "フォルダーを開く"
+        )
+    };
     ("settings-update-section") => {
         $crate::t_select!(
             Ko => "업데이트 설정",

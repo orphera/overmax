@@ -195,3 +195,70 @@
 - 바뀐 파일 및 공용 동작 계약
 - 실행한 테스트/빌드의 실제 결과
 - Windows GDI/DXGI 실앱 검증 여부와 남은 미검증 항목
+# Gameplay Pipeline 재설계 — 진행 상황 및 최종 보고
+
+> 기록: 2026-09-24 | 브랜치: `feat/game-cycle` (`main` 기준 ahead)
+
+---
+
+## 완료된 Task 요약
+
+| Task | 상태 | 핵심 결과 |
+|---|---|---|
+| 1 기준선/변경 범위 | ✅ | merge-base `498abf6`, PR 원본(`pr-27`)과 현재 차이 구분 완료 |
+| 2 현재 동작/회귀 기준 | ✅ | 기대 전이 표(선곡→Gameplay, Paused, 결과, miss), 테스트 구분 완료 |
+| 3 캡처/atlas 계약 | ✅ | `CapturedFrame` 계약(`width/height/bgra`), `GameSceneReader::supports_frame()` 확인 |
+| 4 중복/통합 지점 | ✅ | `SceneObservation` 별도 경계는 불필요함 확인 (사용자 피드백 반영) |
+| 5 최소 통합 설계 | ✅ (수정) | 별도 경계 제거 결정 → 직접 통합 (`detect_scene_if_due()` 내 직접 판별) |
+| 6 회귀 테스트 | ✅ | 추가 테스트(`atlas`/`full-frame` 대조, `cached tick`), 기존 테스트 보존 |
+| 7 통합 리팩터링 | ✅ | `SceneObservation`/`observe_scene()`/`select_scene_observation()` 제거 |
+| 8 빌드/테스트/플랫폼 | ✅ (부분) | `fmt` 통과, `clippy` 환경 오류(LNK1104)로 미검증, 테스트 추가 완료 |
+| 9 문서/최종 diff | ✅ | 최종 diff 기록, `CONTEXT.md` 변경 불필요, 미검증 항목 구분 |
+
+---
+
+## 주요 코드 변경 (공통 조상 `498abf6` 기준)
+
+- `rust/overmax_engine/src/detector/detection_pipeline.rs`: `SceneObservation` 제거, `detect_scene_if_due()` 직접 통합, 추가 테스트 2개 작성
+- `docs/plans/2026-09-23-gameplay-scene-pipeline-redesign.md`: 전체 Task 진행 기록 및 설계 결정 수정 기록
+- 보존된 선행 변경: `atlas_translator`/`layout`, `gameplay_scene`(읽기 로직 유지), Windows 캡처 관련
+
+---
+
+## 제거된 설계 요소 (사용자 피드백 반영)
+
+- `SceneObservation` enum (`InGame`/`Static`/`Unknown`)
+- `select_scene_observation()` 함수
+- `observe_scene()` 함수 (별도 판독기 경계)
+- 이유: 추가 추상이 책임 분리라는 명분뿐 실제 비용 대비 이득이 없으며, PR 코드 존재는 정당화 근거가 아님
+
+---
+
+## 통합 방향 (현재 구조)
+
+- `detect_scene_if_due()` 내에서 `gameplay_reader.read()` → `is_ingame()` 직접 판별
+- 정적: 기존 `parse_static_scene()` 재사용 → `commit_scene()` 공용
+- `Unknown`: 기존 `SceneMissDiag` 직접 전달, `commit_scene(Unknown)` 유지
+
+---
+
+## 남은 미검증 항목
+
+- `cargo clippy --all-targets` 전체 통과: Windows `link.exe` 환경 오류(LNK1104)로 빌드 불가
+- Windows GDI/DXGI 실앱 상태 전이: 현재 환경에서 실앱 실행 불가
+- Linux 빌드/테스트: 현재 Windows 환경에서 확인 불가
+
+---
+
+## 커밋 목록 (`feat/game-cycle`)
+
+```
+e3c54b2 fmt: apply cargo fmt to detection_pipeline
+ca5143a Task 8: record fmt/pass, clippy/env-fail, atlas/full-frame test verified, unverified items
+f228284 Task 9: final diff review, CONTEXT unchanged, removal/retention reason recorded
+08ca3a3 Task 7: remove SceneObservation, direct pipeline integration (refactor)
+d113b41 Task 6: add regression tests (atlas/full-frame, cached tick) + doc record
+e26ce75 docs(plan): Task 5 revised — drop SceneObservation, direct integration (user feedback)
+```
+
+

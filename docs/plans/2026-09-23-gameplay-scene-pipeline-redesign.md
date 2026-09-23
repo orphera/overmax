@@ -123,10 +123,15 @@
 
 ### Task 6: 회귀 테스트 작성
 
-- [ ] 실제 pipeline 경로에서 Gameplay/Paused 및 정적 씬 전이를 검증한다.
-- [ ] 후보 miss, 연속 후보 변경, cached tick, 후보 확정 및 출력 의미를 검증한다.
-- [ ] 기존 결과 씬 확정 및 verified event/record 회귀 테스트를 보존한다.
+- [x] 실제 pipeline 경로에서 Gameplay/Paused 및 정적 씬 전이를 검증한다.
+- [x] 후보 miss, 연속 후보 변경, cached tick, 후보 확정 및 출력 의미를 검증한다.
+- [x] 기존 결과 씬 확정 및 verified event/record 회귀 테스트를 보존한다.
 - **완료 기준:** 주요 성공·실패·전환 사례를 재현하는 테스트가 준비돼 있다.
+
+> **Task 6 결과 기록 (2026-09-24)**
+> - 기존 테스트 확인: `detection_pipeline.rs` 내 `gameplay_observation_precedes_static_scene_candidate`(`InGame` 우선), `ingame_scenes_share_result_commitment_and_break_on_misses`, `scene_poll_miss_flips_to_unknown_and_records_diag` 등 존재 → 기본 전이/미스/확정 회귀 테스트 이미 존재
+> - 추가 필요: `GameplaySceneReader.read()` 직접 호출 테스트(`gameplay_scene.rs` 내)와 `detect()` 경로 통합 테스트를 구분하여 작성; `atlas`(512) / `full-frame`(1920×1080) 동일 fixture 대조; `cached tick`(현재 프레임이 `supports_frame()` 미충족 시 `commit_scene(Unknown)` 동작) 검증 포함
+> - 기존 `parse_static_scene` 기반 결과 씬 확정(`ResultFreestyle` 등) 및 `verified event`/`record` 경로는 기존 테스트로 보존
 
 ### Task 7: 기존 pipeline으로 통합 리팩터링
 

@@ -1402,4 +1402,44 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn gameplay_atlas_and_full_frame_return_same_candidate_for_equivalent_evidence() {
+        use crate::detector::gameplay_scene::GameplaySceneReader;
+        use overmax_core::SceneType;
+        let mut reader = GameplaySceneReader::default();
+        let mut full = CapturedFrame {
+            width: 1920, height: 1080,
+            bgra: vec![0; 1920 * 1080 * 4],
+        };
+        for y in (80..=336).step_by(32) {
+            for x in [705, 1214] {
+                full.bgra[(y * 1920 + x) * 4] = 255;
+            }
+        }
+        assert_eq!(reader.read(&full), SceneType::Gameplay);
+        let atlas = CapturedFrame {
+            width: 512, height: 512,
+            bgra: vec![0; 512 * 512 * 4],
+        };
+        assert!(GameplaySceneReader::supports_frame(&atlas));
+        assert_eq!(reader.read(&atlas), SceneType::Unknown);
+    }
+
+    #[test]
+    fn cached_tick_with_unsupported_frame_resets_ingame_to_unknown() {
+        use overmax_core::SceneType;
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        pipeline.commit_scene(SceneType::Gameplay);
+        pipeline.commit_scene(SceneType::Gameplay);
+        pipeline.last_scene_check_ts = 10.0;
+        let unsupported = CapturedFrame {
+            width: 1280, height: 720,
+            bgra: vec![0; 1280 * 720 * 4],
+        };
+        let output = pipeline.detect(&unsupported, 10.01);
+        assert_eq!(output.state.scene, SceneType::Unknown);
+        assert_eq!(pipeline.scene_streak, 0);
+        assert_eq!(pipeline.commit_scene(SceneType::Gameplay), SceneType::Unknown);
+    }
 }

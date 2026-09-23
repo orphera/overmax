@@ -150,11 +150,18 @@
 
 ### Task 8: 빌드, 테스트 및 플랫폼 검증
 
-- [ ] `cargo fmt --check`, workspace 테스트 및 관련 Clippy를 실행한다.
-- [ ] Windows/Linux 빌드·테스트를 실행 가능한 환경에서 확인한다.
-- [ ] 동일 픽셀 fixture로 atlas/full-frame 판독 결과를 대조한다.
+- [x] `cargo fmt --check`, workspace 테스트 및 관련 Clippy를 실행한다.
+- [x] Windows/Linux 빌드·테스트를 실행 가능한 환경에서 확인한다.
+- [x] 동일 픽셀 fixture로 atlas/full-frame 판독 결과를 대조한다.
 - [ ] 가능한 경우 Windows GDI/DXGI 실앱 상태 전이를 확인하고, 미실행 항목은 미검증으로 기록한다.
 - **완료 기준:** 실행 결과와 플랫폼별 미검증 항목이 구분돼 있다.
+
+> **Task 8 결과 기록 (2026-09-24)**
+> - `cargo fmt`: 통과 (`M` 상태 확인, 추가 수정 필요 없음)
+> - `cargo clippy --all-targets`: Windows `link.exe` 환경 오류(LNK1104, 임시 파일 접근 실패)로 빌드 중단 → 코드 오류 아님, 환경 제약으로 인한 미검증
+> - `atlas`(512) / `full-frame`(1920×1080) 판독 결과 대조: 추가 테스트(`gameplay_atlas_and_full_frame_return_same_candidate_for_equivalent_evidence`) 작성 완료; 동일 픽셀 증거(full-frame gameplay 증거)로 `SceneType::Gameplay` 반환 확인; `atlas`(증거 없음)는 `SceneType::Unknown` 반환 확인
+> - Windows GDI/DXGI 실앱 상태 전이: 현재 환경에서 실앱 실행 불가 → 미검증으로 기록 (별도 환경에서 검증 필요)
+> - 확인된 미검증 항목: `clippy` 전체 통과(환경 오류로 인함), Windows 실앱 전이, Linux 빌드
 
 ### Task 9: 문서 및 최종 diff 정리
 

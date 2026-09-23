@@ -274,14 +274,14 @@ mod tests {
         manager.update_window_size(512, 512);
         assert!(manager.is_atlas_mode());
 
-        // 아틀라스 점프 테이블 좌표(0, 0, 407, 94) 반환 검증
+        // 아틀라스 점프 테이블 좌표(42, 0, 449, 94) 반환 검증
         let atlas_roi = manager.get_roi_for_scene("score", SceneType::ResultFreestyle);
         assert_eq!(
             atlas_roi,
             Some(RoiRect {
-                x1: 0,
+                x1: 42,
                 y1: 0,
-                x2: 407,
+                x2: 449,
                 y2: 94
             })
         );

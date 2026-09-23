@@ -20,7 +20,7 @@ pub struct AtlasSlot {
     pub atlas_rect: RawRoiRect,
 }
 
-/// 컴파일 타임에 2D MaxRects 알고리즘으로 100% 무손실 배치된 43개 정적 슬롯 테이블 (Zero Heap Allocation)
+/// 컴파일 타임에 2D MaxRects 알고리즘으로 100% 무손실 배치된 47개 정적 슬롯 테이블 (Zero Heap Allocation)
 pub const ATLAS_SLOTS: [AtlasSlot; 47] = [
     AtlasSlot {
         scene: SceneType::Freestyle,

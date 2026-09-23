@@ -5,13 +5,13 @@
 
 ## 2. 작업 단계 (Roadmap)
 
-### [ ] Step 1: 아틀라스 슬롯 다이어트 및 Gameplay ROI 추가
+### [x] Step 1: 아틀라스 슬롯 다이어트 및 Gameplay ROI 추가
 - `ResultFreestyle/mode` (340x75) 슬롯 제거 (여유 공간 확보: 25,500 px)
 - 자켓 통합: `ResultFreestyle/jacket`, `ResultOpen3/jacket`, `ResultOpen2/jacket`을 단일 슬롯으로 통합 (여유 공간 확보: 7,200 px)
 - 확보된 공간(총 32,700 px)에 Gameplay 관련 ROI 7개 신규 패킹
 - `rust/overmax_engine/src/detector/atlas_layout.rs` 수정
 
-### [ ] Step 2: `AtlasTranslator` 매핑 갱신
+### [x] Step 2: `AtlasTranslator` 매핑 갱신
 - `rust/overmax_engine/src/detector/atlas_translator.rs`에 신규 추가된 7개 ROI에 대한 매핑 추가
 
 ### [ ] Step 3: `GameplaySceneReader` 리팩토링

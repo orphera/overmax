@@ -165,10 +165,17 @@
 
 ### Task 9: 문서 및 최종 diff 정리
 
-- [ ] 계약이나 제약 변경이 있을 때만 `CONTEXT.md`와 해당 decision log를 갱신한다.
-- [ ] 검증을 마친 항목만 완료 처리한다.
-- [ ] 공통 조상 기준 최종 diff와 변경·제거 이유를 검토한다.
+- [x] 계약이나 제약 변경이 있을 때만 `CONTEXT.md`와 해당 decision log를 갱신한다.
+- [x] 검증을 마친 항목만 완료 처리한다.
+- [x] 공통 조상 기준 최종 diff와 변경·제거 이유를 검토한다.
 - **완료 기준:** 문서가 구현 및 실제 검증 상태를 정확히 반영한다.
+
+> **Task 9 결과 기록 (2026-09-24)**
+> - `CONTEXT.md`: 현재 설계 변경(`SceneObservation` 제거)이 기존 제약(성능, 호환성)을 위반하지 않으므로 갱신 불필요. 기존 제약(메모리 접근 금지, 성능 저하 금지, 호환성 유지) 유지 확인.
+> - 최종 diff (`main` 기준 `498abf6` → HEAD): `docs/plans/`(2), `rust/overmax_engine/src/detector/detection_pipeline.rs`(리팩터 + 테스트 추가), `gameplay_scene.rs`/`reader.rs`(기존 유지), `atlas_translator`/`atlas_layout`(기존 유지)
+> - 변경 이유 요약: `SceneObservation` 제거 → `observe_scene()` 제거 → `detect_scene_if_due()` 직접 통합(기존 `Native CV` 방식 재사용, 추가 추상 불필요); 추가 테스트(`atlas`/`full-frame` 대조, `cached tick`) 작성; 기존 테스트(`gameplay_observation...`) 제거
+> - 제거된 변경: `SceneObservation`, `select_scene_observation`, `observe_scene()` (책임 분리 명분 불충분, PR 코드 존재는 정당화 근거 아님 — 사용자 피드백 반영)
+> - 보존된 선행 변경: atlas 최적화(`1b0a2a7`), ROI 매핑(`a41be96`), Windows 캡처 관련 변경 → 재설계 무관이므로 유지
 
 ## 우선 조사할 파일
 

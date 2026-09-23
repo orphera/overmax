@@ -50,10 +50,8 @@ impl NativeApp {
             }
 
             // ── IPC 이벤트 발행 (관찰자 — 파이프라인/DB 경로 무변경) ──
-            // 안정화된 상태만 스냅샷 캐시에 반영 (불변 조건 1번의 확장)
-            if output.state.is_stable {
-                crate::system::ipc_server::update_latest_state(output.state.clone());
-            }
+            // Publish current scene status; the IPC cache retains only stable song context.
+            crate::system::ipc_server::update_latest_state(output.state.clone());
             self.publish_ipc_events(&output.state);
 
             if let Some(event) = output.event {

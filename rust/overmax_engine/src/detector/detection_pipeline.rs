@@ -1,6 +1,7 @@
 use crate::capture::frame::CapturedFrame;
 use crate::capture::frame_utils::{make_thumbnail, mean_abs_diff, thumbnail_changed};
 use crate::capture::window_tracker::WindowSnapshot;
+use crate::detector::gameplay_scene::GameplaySceneReader;
 use crate::detector::hysteresis::HysteresisBuffer;
 use crate::detector::play_state::PlayStateDetector;
 use crate::detector::roi::RoiManager;
@@ -89,14 +90,15 @@ pub struct DetectionPipeline {
     rois: RoiManager,
     hysteresis: HysteresisBuffer,
     play_state: PlayStateDetector,
+    gameplay_reader: GameplaySceneReader,
     current_song_id: Option<i32>,
     last_scene_check_ts: f64,
     last_static_scene: SceneType,
     last_jacket_ts: f64,
     last_jacket_match_ts: f64,
     last_jacket_thumb: Option<Vec<u8>>,
-    result_scene_streak: u32,
-    last_detected_result_scene: SceneType,
+    scene_streak: u32,
+    pending_scene: SceneType,
     unknown_since: Option<f64>,
     last_top_jacket_similarity: Option<f32>,
 }
@@ -111,14 +113,15 @@ impl DetectionPipeline {
             rois: RoiManager::new(1920, 1080),
             hysteresis: HysteresisBuffer::new(4, 0.5, 2, 0.25, 2),
             play_state: PlayStateDetector::new(5),
+            gameplay_reader: GameplaySceneReader::default(),
             current_song_id: None,
             last_scene_check_ts: 0.0,
             last_static_scene: SceneType::Unknown,
             last_jacket_ts: 0.0,
             last_jacket_match_ts: 0.0,
             last_jacket_thumb: None,
-            result_scene_streak: 0,
-            last_detected_result_scene: SceneType::Unknown,
+            scene_streak: 0,
+            pending_scene: SceneType::Unknown,
             unknown_since: None,
             last_top_jacket_similarity: None,
         }
@@ -132,8 +135,8 @@ impl DetectionPipeline {
         self.last_jacket_ts = 0.0;
         self.last_jacket_match_ts = 0.0;
         self.last_jacket_thumb = None;
-        self.result_scene_streak = 0;
-        self.last_detected_result_scene = SceneType::Unknown;
+        self.scene_streak = 0;
+        self.pending_scene = SceneType::Unknown;
         self.unknown_since = None;
         self.hysteresis.reset();
         self.play_state.reset();
@@ -142,6 +145,21 @@ impl DetectionPipeline {
     }
 
     pub fn detect(&mut self, frame: &CapturedFrame, now: f64) -> DetectionOutput {
+        let expected_bytes = usize::try_from(frame.width)
+            .ok()
+            .zip(usize::try_from(frame.height).ok())
+            .and_then(|(w, h)| w.checked_mul(h)?.checked_mul(4));
+        if expected_bytes != Some(frame.bgra.len()) || frame.width <= 0 || frame.height <= 0 {
+            self.reset();
+            return self.process_frame_shared(frame, false, now);
+        }
+        // A backend/format change may arrive on a cached tick. In-game history
+        // cannot outlive the availability of its evidence, even before polling.
+        if (self.last_static_scene.is_ingame() || self.pending_scene.is_ingame())
+            && !GameplaySceneReader::supports_frame(frame)
+        {
+            self.commit_scene(SceneType::Unknown);
+        }
         self.rois.update_window_size(frame.width, frame.height);
 
         let scene_start = Instant::now();
@@ -164,7 +182,7 @@ impl DetectionPipeline {
     ) -> DetectionOutput {
         self.rois.update_window_size(frame.width, frame.height);
 
-        let scene_detected = scene != SceneType::Unknown && scene != SceneType::Online;
+        let scene_detected = scene.is_record_scene();
         if scene_detected {
             self.rois.set_scene(scene);
         }
@@ -176,8 +194,7 @@ impl DetectionPipeline {
     pub fn process_frame_cached(&mut self, frame: &CapturedFrame, now: f64) -> DetectionOutput {
         self.rois.update_window_size(frame.width, frame.height);
 
-        let scene_detected = self.last_static_scene != SceneType::Unknown
-            && self.last_static_scene != SceneType::Online;
+        let scene_detected = self.last_static_scene.is_record_scene();
         self.process_frame_shared(frame, scene_detected, now)
     }
 
@@ -201,7 +218,7 @@ impl DetectionPipeline {
         let sleep_hint = self.compute_sleep_hint(acquiring, now);
 
         let view = SceneFrameView {
-            scene_detected,
+            scene_detected: scene_detected || self.last_static_scene.is_ingame(),
             is_song_select: self.hysteresis.is_active || self.last_static_scene.is_result(),
             is_result: self.last_static_scene.is_result(),
             is_leaving: !self.last_static_scene.is_result() && self.hysteresis.is_leaving,
@@ -212,7 +229,14 @@ impl DetectionPipeline {
             self.reset_on_screen_exit();
             return self.output(
                 &view,
-                GameSessionState::detecting(),
+                GameSessionState {
+                    scene: if self.last_static_scene.is_ingame() {
+                        self.last_static_scene
+                    } else {
+                        SceneType::Unknown
+                    },
+                    ..GameSessionState::detecting()
+                },
                 JacketMatchStatus::NotSongSelect,
                 None,
                 sleep_hint,
@@ -264,12 +288,11 @@ impl DetectionPipeline {
     }
 
     fn detect_scene_if_due(&mut self, frame: &CapturedFrame, now: f64) -> Option<SceneType> {
-        // 씬이 Unknown인 경우(진입 대기): 빠른 인식을 위해 0.3초 주기로 감시
-        // 씬이 이미 확정된 경우(유지 중): CPU 소모 최소화를 위해 2.0초 주기로 완화 (이탈은 픽셀 매칭으로 즉시 처리되므로 반응성 무관)
+        // 탐색 초기에는 0.3초, 장기 탐색/인게임은 1.5초, 안정된 기록 씬은 2초.
         // 참고: unknown_since 타임라인은 process_frame_shared 가 단일 소유자로 갱신한다.
-        let acquiring = self.last_static_scene == SceneType::Unknown || !self.hysteresis.is_active;
+        let acquiring = !self.last_static_scene.is_record_scene() || !self.hysteresis.is_active;
 
-        let cooldown = if acquiring {
+        let cooldown: f64 = if acquiring {
             let unknown_duration = now - self.unknown_since.unwrap_or(now);
             if unknown_duration < 3.0 {
                 0.3
@@ -280,11 +303,19 @@ impl DetectionPipeline {
             2.0
         };
 
+        // Confirm a new in-game candidate on the next relaxed capture without
+        // increasing the sustained polling rate or counting cached ticks.
+        let cooldown = if self.pending_scene.is_ingame() && self.scene_streak == 1 {
+            cooldown.min(1.0)
+        } else {
+            cooldown
+        };
+
         if now - self.last_scene_check_ts < cooldown {
             return None;
         }
 
-        let is_unknown = self.last_static_scene == SceneType::Unknown;
+        let is_unknown = !self.last_static_scene.is_record_scene();
         let (parse_res, miss_diag) =
             parse_static_scene(frame, &self.rois, &self.jacket_matcher, is_unknown);
         let Some((scene, matched_song_id)) = parse_res else {
@@ -294,9 +325,10 @@ impl DetectionPipeline {
             let thumb_diff = self.screen_static_thumb_diff(frame);
             self.stats.record_scene_miss(thumb_diff, miss_diag);
 
-            self.last_static_scene = SceneType::Unknown;
+            let candidate = self.gameplay_reader.read(frame);
+            let scene = self.commit_scene(candidate);
             self.last_scene_check_ts = now;
-            return Some(SceneType::Unknown);
+            return Some(scene);
         };
 
         if let Some(song_id) = matched_song_id {
@@ -315,11 +347,11 @@ impl DetectionPipeline {
             scene
         );
 
-        if scene != SceneType::Unknown && scene != SceneType::Online {
+        if scene.is_record_scene() {
             self.rois.set_scene(scene);
         }
 
-        let final_scene = self.commit_result_scene(scene);
+        let final_scene = self.commit_scene(scene);
         self.last_scene_check_ts = now;
         Some(final_scene)
     }
@@ -332,27 +364,32 @@ impl DetectionPipeline {
         Some(mean_abs_diff(&current, previous))
     }
 
-    fn commit_result_scene(&mut self, candidate: SceneType) -> SceneType {
-        let is_detected_result = candidate.is_result();
-
-        if is_detected_result {
-            if candidate == self.last_detected_result_scene {
-                self.result_scene_streak += 1;
+    /// Results and in-game scenes share the existing two-inspection commitment.
+    /// A miss breaks the streak; cached ticks never call this method.
+    fn commit_scene(&mut self, candidate: SceneType) -> SceneType {
+        if candidate.is_result() || candidate.is_ingame() {
+            if candidate == self.pending_scene {
+                self.scene_streak = self.scene_streak.saturating_add(1).min(2);
             } else {
-                self.last_detected_result_scene = candidate;
-                self.result_scene_streak = 1;
+                self.pending_scene = candidate;
+                self.scene_streak = 1;
             }
-
-            // 1프레임 대기 후, 2프레임차에 최종 검증 수행
-            if self.result_scene_streak >= 2 {
+            if candidate.is_ingame() {
+                // Positive non-record evidence must close stale selection state
+                // even while the new scene is awaiting its second inspection.
+                self.hysteresis.reset();
+                self.last_static_scene = SceneType::Unknown;
+            } else if self.last_static_scene.is_ingame() {
+                self.last_static_scene = SceneType::Unknown;
+            }
+            if self.scene_streak >= 2 {
                 self.last_static_scene = candidate;
             }
         } else {
-            self.result_scene_streak = 0;
-            self.last_detected_result_scene = SceneType::Unknown;
+            self.scene_streak = 0;
+            self.pending_scene = SceneType::Unknown;
             self.last_static_scene = candidate;
         }
-
         self.last_static_scene
     }
 
@@ -857,6 +894,193 @@ mod tests {
     use super::{DetectionPipeline, JacketMatchStatus, SleepHint};
     use crate::capture::frame::CapturedFrame;
     use overmax_data::ImageIndexDb;
+
+    #[test]
+    fn ingame_scenes_share_result_commitment_and_break_on_misses() {
+        use overmax_core::SceneType;
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        assert_eq!(
+            pipeline.commit_scene(SceneType::Gameplay),
+            SceneType::Unknown
+        );
+        assert_eq!(
+            pipeline.commit_scene(SceneType::Gameplay),
+            SceneType::Gameplay
+        );
+        assert_eq!(pipeline.commit_scene(SceneType::Paused), SceneType::Unknown);
+        assert_eq!(
+            pipeline.commit_scene(SceneType::Unknown),
+            SceneType::Unknown
+        );
+        assert_eq!(pipeline.commit_scene(SceneType::Paused), SceneType::Unknown);
+        assert_eq!(pipeline.commit_scene(SceneType::Paused), SceneType::Paused);
+        pipeline.reset();
+        assert_eq!(pipeline.commit_scene(SceneType::Paused), SceneType::Unknown);
+    }
+
+    #[test]
+    fn atlas_switch_invalidates_ingame_history_even_on_cached_tick() {
+        use overmax_core::SceneType;
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        pipeline.commit_scene(SceneType::Gameplay);
+        pipeline.commit_scene(SceneType::Gameplay);
+        pipeline.last_scene_check_ts = 10.0;
+        let atlas = CapturedFrame {
+            width: 512,
+            height: 512,
+            bgra: vec![0; 512 * 512 * 4],
+        };
+        let output = pipeline.detect(&atlas, 10.01);
+        assert_eq!(output.state.scene, SceneType::Unknown);
+        assert_eq!(pipeline.scene_streak, 0);
+        assert_eq!(
+            pipeline.commit_scene(SceneType::Gameplay),
+            SceneType::Unknown
+        );
+    }
+
+    #[test]
+    fn incomplete_capture_clears_scene_before_any_pixel_reader_runs() {
+        use overmax_core::SceneType;
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        pipeline.commit_scene(SceneType::Gameplay);
+        pipeline.commit_scene(SceneType::Gameplay);
+        let frame = CapturedFrame {
+            width: 1920,
+            height: 1080,
+            bgra: vec![0; 16],
+        };
+        let output = pipeline.detect(&frame, 100.0);
+        assert_eq!(output.state.scene, SceneType::Unknown);
+        assert_eq!(output.event, None);
+        assert_eq!(pipeline.scene_streak, 0);
+    }
+
+    #[test]
+    fn ingame_candidate_closes_record_path_before_scene_is_confirmed() {
+        use overmax_core::SceneType;
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let frame = blank_frame();
+        pipeline.last_static_scene = SceneType::ResultFreestyle;
+        pipeline.rois.set_scene(SceneType::ResultFreestyle);
+        pipeline.hysteresis.update(true);
+        pipeline.hysteresis.update(true);
+        pipeline.current_song_id = Some(42);
+        let scene = pipeline.commit_scene(SceneType::Gameplay);
+        let first = pipeline.process_frame_with_scene(&frame, scene, 10.0);
+        assert_eq!(first.state.scene, SceneType::Unknown);
+        assert!(!first.is_song_select);
+        assert!(!first.is_result);
+        assert_eq!(first.current_song_id, None);
+        assert_eq!(first.event, None);
+        assert_eq!(first.jacket_status, JacketMatchStatus::NotSongSelect);
+
+        // Cached ticks cannot confirm the pending candidate.
+        let cached = pipeline.process_frame_cached(&frame, 10.1);
+        assert_eq!(cached.state.scene, SceneType::Unknown);
+        assert_eq!(pipeline.scene_streak, 1);
+        let scene = pipeline.commit_scene(SceneType::Gameplay);
+        let confirmed = pipeline.process_frame_with_scene(&frame, scene, 11.5);
+        assert_eq!(confirmed.state.scene, SceneType::Gameplay);
+        assert!(confirmed.scene_detected);
+        assert!(!confirmed.is_song_select);
+        assert!(!confirmed.state.is_stable);
+        assert_eq!(confirmed.state.context, None);
+        assert_eq!(confirmed.event, None);
+        // Preserve relaxed capture scheduling during sustained play.
+        assert_eq!(
+            pipeline.process_frame_cached(&frame, 14.0).sleep_hint,
+            SleepHint::Relaxed
+        );
+        let scene = pipeline.commit_scene(SceneType::Freestyle);
+        pipeline.process_frame_with_scene(&frame, scene, 15.0);
+        let recovered = pipeline.process_frame_with_scene(&frame, scene, 15.3);
+        assert!(recovered.is_song_select);
+    }
+
+    #[test]
+    fn ingame_confirmation_uses_next_capture_then_restores_relaxed_polling() {
+        use overmax_core::SceneType;
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut gameplay = blank_frame();
+        for y in (80..=336).step_by(32) {
+            for x in [705, 1214] {
+                gameplay.bgra[(y * 1920 + x) * 4] = 255;
+            }
+        }
+        let mut paused = blank_frame();
+        let title = crate::detector::templates::gameplay_scene::PAUSE_TITLE[0];
+        for (i, &gray) in title.iter().enumerate() {
+            let offset = ((177 + i / 148) * 1920 + 731 + i % 148) * 4;
+            paused.bgra[offset..offset + 3].fill(gray);
+        }
+        pipeline.unknown_since = Some(0.0);
+        for (frame, start, expected) in [
+            (&gameplay, 10.0, SceneType::Gameplay),
+            (&paused, 14.0, SceneType::Paused),
+            (&gameplay, 18.0, SceneType::Gameplay),
+        ] {
+            let first = pipeline.detect(frame, start);
+            assert_eq!(first.state.scene, SceneType::Unknown);
+            assert_eq!(first.sleep_hint, SleepHint::Relaxed);
+            assert_eq!(first.state.context, None);
+            assert_eq!(first.event, None);
+
+            let cached = pipeline.detect(frame, start + 0.99);
+            assert_eq!(cached.state.scene, SceneType::Unknown);
+            assert_eq!(pipeline.scene_streak, 1);
+            assert_eq!(pipeline.last_scene_check_ts, start);
+
+            let confirmed = pipeline.detect(frame, start + 1.0);
+            assert_eq!(confirmed.state.scene, expected);
+            assert_eq!(confirmed.sleep_hint, SleepHint::Relaxed);
+            assert!(!confirmed.is_song_select);
+            assert!(!confirmed.state.is_stable);
+            assert_eq!(confirmed.state.context, None);
+            assert_eq!(confirmed.event, None);
+
+            assert_eq!(pipeline.detect(frame, start + 2.0).state.scene, expected);
+            assert_eq!(pipeline.last_scene_check_ts, start + 1.0);
+            assert_eq!(pipeline.detect(frame, start + 2.5).state.scene, expected);
+            assert_eq!(pipeline.last_scene_check_ts, start + 2.5);
+        }
+    }
+
+    #[test]
+    fn failed_confirmation_clears_candidate_and_result_timing_stays_unchanged() {
+        use overmax_core::SceneType;
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let frame = blank_frame();
+        pipeline.unknown_since = Some(0.0);
+        pipeline.commit_scene(SceneType::Gameplay);
+        pipeline.last_scene_check_ts = 10.0;
+        assert_eq!(
+            pipeline.detect(&frame, 11.0).state.scene,
+            SceneType::Unknown
+        );
+        assert_eq!(pipeline.scene_streak, 0);
+        assert_eq!(pipeline.pending_scene, SceneType::Unknown);
+        pipeline.detect(&frame, 12.0);
+        assert_eq!(pipeline.last_scene_check_ts, 11.0);
+        pipeline.detect(&frame, 12.5);
+        assert_eq!(pipeline.last_scene_check_ts, 12.5);
+
+        pipeline.commit_scene(SceneType::ResultFreestyle);
+        pipeline.detect(&frame, 13.5);
+        assert_eq!(pipeline.last_scene_check_ts, 12.5);
+        assert_eq!(pipeline.scene_streak, 1);
+        pipeline.detect(&frame, 14.0);
+        assert_eq!(pipeline.last_scene_check_ts, 14.0);
+        assert_eq!(pipeline.scene_streak, 0);
+
+        pipeline.reset();
+        pipeline.unknown_since = Some(20.0);
+        pipeline.commit_scene(SceneType::Gameplay);
+        pipeline.last_scene_check_ts = 20.0;
+        pipeline.detect(&frame, 20.31);
+        assert_eq!(pipeline.last_scene_check_ts, 20.31);
+        assert_eq!(pipeline.scene_streak, 0);
+    }
 
     #[test]
     fn scene_poll_miss_flips_to_unknown_and_records_diag() {

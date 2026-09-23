@@ -54,12 +54,16 @@ Overmax 실행 시 포트 대역(30100~30199) 중 사용 가능한 포트에 자
 | 이벤트 명 (`type`) | 발생 시점 | 주요 `payload` 필드 |
 | :--- | :--- | :--- |
 | **`state_snapshot`** | 클라이언트 최초 접속 즉시 1회 전송 | `scene`, `stable`, `fullscreen`, `context: { song_id, mode, diff, rate, is_max_combo }` |
-| **`scene_detected`** | 인게임 씬 변경 확정 시 | `scene: "SongSelect" \| "InGame" \| "Result" \| ...` |
+| **`scene_detected`** | 감지 씬 변경 시 | `scene: "Freestyle" \| "Gameplay" \| "Paused" \| "Unknown" \| "ResultFreestyle" \| ...` |
 | **`song_detected`** | 선곡 화면에서 곡/난이도 인식 시 | `song_id`, `mode`, `diff`, `rate`, `is_max_combo`, `title`, `floor_name` |
 | **`play_verified`** | 결과 화면에서 실제 완주 판정 확정 시 | `song_id`, `mode`, `diff`, `rate`, `is_max_combo`, `is_pb`, `title`, `floor_name` |
 | **`context_updated`** | 실시간 플레이 컨텍스트 갱신 시 | `context: { ... }` |
 
 > 💡 **Keep-Alive Heartbeat**: 15초 동안 이벤트가 없으면 소켓 연결 유지를 위해 `: ping\n\n` 주석 프레임이 자동 전송됩니다.
+
+`state_snapshot`과 `get_current_context`는 같은 IPC 캐시를 사용합니다. 첫 감지 출력 이후 `scene`, `stable`, `fullscreen`은 최신 감지 상태를 반영하고, `context`는 마지막 안정 곡 정보를 보존합니다. 안정 곡 정보가 아직 없으면 `context`는 `null`입니다.
+
+예를 들어 선곡 확정 후 Gameplay에 진입하면 중간 접속한 클라이언트도 `scene="Gameplay"`, `stable=false`를 받습니다. 함께 전달되는 이전 `context`는 현재 플레이 곡이 확정됐다는 뜻이 아닙니다. 곡이 미확정인 동안 context를 교체하지 않으며 새 안정 출력이 오면 갱신합니다. Unknown 전환이나 포커스 상실 시에도 현재 상태와 보존된 context를 구분해야 합니다.
 
 ---
 
@@ -78,7 +82,7 @@ Overmax 실행 시 포트 대역(30100~30199) 중 사용 가능한 포트에 자
 * **응답**: `{"jsonrpc": "2.0", "id": 1, "result": {"methods": [...], "protocol": "overmax-ipc/1"}}`
 
 #### 2) `get_current_context`
-* **설명**: 현재 씬 및 선택된 곡의 실시간 세션 스냅샷 조회
+* **설명**: 최신 감지 씬 상태와 마지막 안정 곡 context 조회. `stable=false`에서는 context가 이전 씬의 값일 수 있음
 * **요청**: `{"jsonrpc": "2.0", "id": 2, "method": "get_current_context"}`
 * **응답**:
   ```json
@@ -86,7 +90,7 @@ Overmax 실행 시 포트 대역(30100~30199) 중 사용 가능한 포트에 자
     "jsonrpc": "2.0",
     "id": 2,
     "result": {
-      "scene": "SongSelect",
+      "scene": "Freestyle",
       "stable": true,
       "fullscreen": true,
       "context": {

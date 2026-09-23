@@ -145,6 +145,17 @@ fn ipc_sse_stream_and_rpc_end_to_end() {
         Some(port as u64)
     );
 
+    // Starting the app during gameplay must expose a scene without inventing a song.
+    update_latest_state(GameSessionState {
+        scene: SceneType::Gameplay,
+        is_fullscreen: true,
+        ..GameSessionState::detecting()
+    });
+    assert_snapshot_over_sse_and_rpc(
+        port,
+        json!({"scene":"Gameplay", "stable":false, "fullscreen":true, "context":null}),
+    );
+
     // ── 안정화 상태 등록 → 이후 접속의 state_snapshot 원천이 됨 ──
     update_latest_state(stable_state(1234));
 
@@ -246,6 +257,50 @@ fn ipc_sse_stream_and_rpc_end_to_end() {
 
     drop(reader);
     drop(stream);
+
+    // New clients connect after the scene transition, with no scene_detected
+    // event to replay. Both snapshot endpoints must return the current scene
+    // while retaining only the last stable song context.
+    let last_context = first["payload"]["context"].clone();
+    for (scene, fullscreen) in [
+        (SceneType::Gameplay, true),
+        (SceneType::Paused, true),
+        (SceneType::Unknown, false),
+        (SceneType::Freestyle, false),
+    ] {
+        let mut state = GameSessionState {
+            scene,
+            is_fullscreen: fullscreen,
+            ..GameSessionState::detecting()
+        };
+        if scene == SceneType::Freestyle {
+            // An unverified selection must not replace the cached song.
+            state.context = stable_state(9999).context;
+        }
+        update_latest_state(state);
+        assert_snapshot_over_sse_and_rpc(
+            port,
+            json!({
+                "scene":format!("{scene:?}"), "stable":false,
+                "fullscreen":fullscreen, "context":last_context,
+            }),
+        );
+    }
+
+    // A newly stable result replaces all song fields and the current status.
+    let mut result = stable_state(4321);
+    result.scene = SceneType::ResultFreestyle;
+    result.context.as_mut().unwrap().mode = overmax_core::Mode::B8;
+    result.context.as_mut().unwrap().rate = 99.5;
+    update_latest_state(result);
+    assert_snapshot_over_sse_and_rpc(
+        port,
+        json!({
+            "scene":"ResultFreestyle", "stable":true, "fullscreen":false,
+            "context":{"song_id":4321, "mode":"8B", "diff":"SC", "rate":99.5, "is_max_combo":false},
+        }),
+    );
+    update_latest_state(stable_state(1234));
 
     // ── Host 검증 가드: 외부 호칭은 403 ──
     let mut evil = TcpStream::connect(("127.0.0.1", port)).expect("connect evil");
@@ -406,6 +461,17 @@ fn ipc_sse_stream_and_rpc_end_to_end() {
 
     // ── 종료 처리: shutdown 플래그 설정이 오류 없이 완료되는지 확인 ──
     handle.shutdown();
+}
+
+/// Connect after an update, without relying on a live scene event, then compare RPC.
+fn assert_snapshot_over_sse_and_rpc(port: u16, expected: Value) {
+    let stream = http_get_events(port, "127.0.0.1").expect("connect after scene transition");
+    let mut reader = BufReader::new(stream);
+    let snapshot = read_until_data(&mut reader).expect("initial state_snapshot missing");
+    assert_eq!(snapshot["type"], "state_snapshot");
+    assert_eq!(snapshot["payload"], expected);
+    let response = post_rpc(port, 100, "get_current_context", json!([]));
+    assert_eq!(response["result"], expected);
 }
 
 /// POST /rpc 헬퍼 — 요청 전송 후 JSON 응답 본문을 반환한다.

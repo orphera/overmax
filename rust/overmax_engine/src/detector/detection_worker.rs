@@ -207,6 +207,8 @@ struct DetectionWorker {
     last_scene_type: overmax_core::SceneType,
     frame_buffer: CapturedFrame,
     window_scheduler: WindowQueryScheduler,
+    #[cfg(target_os = "windows")]
+    cached_window_id: Option<u64>,
     #[cfg(target_os = "linux")]
     window_snapshot: Option<WindowSnapshot>,
     #[cfg(target_os = "linux")]
@@ -215,7 +217,6 @@ struct DetectionWorker {
     focus_policy: LinuxFocusPolicy,
     #[allow(dead_code)]
     presentation_observation: SharedPresentationObservation,
-    #[cfg(target_os = "linux")]
     capture_failure_active: bool,
 }
 
@@ -264,6 +265,8 @@ impl DetectionWorker {
                 bgra: Vec::new(),
             },
             window_scheduler: WindowQueryScheduler::new(true),
+            #[cfg(target_os = "windows")]
+            cached_window_id: None,
             #[cfg(target_os = "linux")]
             window_snapshot: None,
             #[cfg(target_os = "linux")]
@@ -271,7 +274,6 @@ impl DetectionWorker {
             #[cfg(target_os = "linux")]
             focus_policy: LinuxFocusPolicy::new(),
             presentation_observation,
-            #[cfg(target_os = "linux")]
             capture_failure_active: false,
         }
     }
@@ -406,7 +408,22 @@ impl DetectionWorker {
         pipeline: &mut DetectionPipeline,
     ) {
         let (rect, foreground) = if self.window_scheduler.should_query() {
-            let r = tracker.game_rect();
+            let target = tracker.game_target();
+            let id = target.map(|(id, _)| id);
+            let r = target.map(|(_, rect)| rect);
+            let resized = self
+                .window_scheduler
+                .cached_rect
+                .zip(r)
+                .is_some_and(|(old, new)| (old.width, old.height) != (new.width, new.height));
+            if self.cached_window_id != id || resized {
+                pipeline.reset();
+                if self.was_found {
+                    self.send_detection_output(self.detecting_output(r, None, None));
+                    self.request_repaint();
+                }
+            }
+            self.cached_window_id = id;
             let f = tracker.is_foreground();
             self.window_scheduler.update(r, f);
             (r, f)
@@ -418,9 +435,14 @@ impl DetectionWorker {
         };
 
         let Some(rect) = rect else {
+            pipeline.reset();
             self.on_window_missing();
             return;
         };
+        if !foreground && self.is_foreground {
+            pipeline.reset();
+            self.send_detection_output(self.detecting_output(Some(rect), None, None));
+        }
         if !self.on_window_found(rect, foreground) {
             return;
         }
@@ -435,6 +457,7 @@ impl DetectionWorker {
 
         match cap_res {
             Ok(_) => {
+                self.capture_failure_active = false;
                 #[cfg(any(debug_assertions, feature = "telemetry"))]
                 if let Some(telemetry) = &self.runtime_telemetry {
                     telemetry.record_capture_success(cap_elapsed);
@@ -468,15 +491,20 @@ impl DetectionWorker {
                 }
             }
             Err(e) => {
+                pipeline.reset();
                 #[cfg(any(debug_assertions, feature = "telemetry"))]
                 if let Some(telemetry) = &self.runtime_telemetry {
                     telemetry.record_capture_failure();
                 }
                 self.log_detection_throttled(format!("[Detection] capture failed: {e}"));
-                if capturer.error_action() == CaptureErrorAction::Stop {
-                    self.send_detection_output(self.detecting_output(Some(rect), None, Some(e)));
+                if !self.capture_failure_active
+                    || capturer.error_action() == CaptureErrorAction::Stop
+                {
+                    let fatal = (capturer.error_action() == CaptureErrorAction::Stop).then_some(e);
+                    self.send_detection_output(self.detecting_output(Some(rect), None, fatal));
                     self.request_repaint();
                 }
+                self.capture_failure_active = true;
             }
         }
     }

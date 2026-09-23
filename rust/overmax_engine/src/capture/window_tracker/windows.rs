@@ -15,6 +15,12 @@ impl WindowTracker {
         self.find_hwnd().and_then(client_rect_for_hwnd)
     }
 
+    /// Identity and geometry from the same lookup, for detection history invalidation.
+    pub fn game_target(&self) -> Option<(u64, WindowRect)> {
+        let hwnd = self.find_hwnd()?;
+        Some((hwnd as usize as u64, client_rect_for_hwnd(hwnd)?))
+    }
+
     pub fn is_foreground(&self) -> bool {
         let Some(hwnd) = self.find_hwnd() else {
             return false;

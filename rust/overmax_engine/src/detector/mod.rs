@@ -2,6 +2,7 @@ pub mod atlas_layout;
 pub mod atlas_translator;
 pub mod detection_pipeline;
 pub mod detection_worker;
+pub mod gameplay_scene;
 pub mod hysteresis;
 pub mod play_state;
 pub mod roi;

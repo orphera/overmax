@@ -1462,7 +1462,8 @@ fn is_hidden(snapshot: &LinuxOverlaySnapshot) -> bool {
         && snapshot.window_snapshot.is_some_and(|window| {
             !window.foreground
                 || (!snapshot.always_visible
-                    && snapshot.state.scene == overmax_core::SceneType::Unknown)
+                    && (snapshot.state.scene == overmax_core::SceneType::Unknown
+                        || snapshot.state.scene.is_ingame()))
         })
 }
 
@@ -2173,6 +2174,14 @@ mod tests {
         background.state.scene = SceneType::Freestyle;
         assert_eq!(panel_size(Some(&background)), (360, 406));
         assert_eq!(retained_panel_size((420, 240), &background), (360, 406));
+        for scene in [SceneType::Gameplay, SceneType::Paused] {
+            background.state.scene = scene;
+            assert!(super::is_hidden(&background));
+            background.always_visible = true;
+            assert!(!super::is_hidden(&background));
+            background.always_visible = false;
+        }
+        background.state.scene = SceneType::Freestyle;
         background.window_snapshot.as_mut().unwrap().fullscreen = false;
         background.snap = "bottom_right".to_string();
         background.position = Some((25, 35));

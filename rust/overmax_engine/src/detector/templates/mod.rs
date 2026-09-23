@@ -1,4 +1,5 @@
 pub mod colors;
+pub(crate) mod gameplay_scene;
 #[rustfmt::skip]
 pub mod digit;
 

@@ -7,7 +7,7 @@ use crate::system::transport::{
     format_sse_frame as transport_format_sse, now_ms, spawn_loopback_service, LoopbackServerConfig,
     TransportHandle,
 };
-use overmax_core::GameSessionState;
+use overmax_core::{GameSessionState, PlayContext, SceneType};
 use overmax_data::{RecordManager, VArchiveDB};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -295,7 +295,7 @@ fn dispatch_rpc(body: &str, cmd_tx: &Sender<IpcCommand>, data: &IpcDataSources) 
         "get_recent_plays" => {
             let mode = arg(0)
                 .and_then(|v| v.as_str().and_then(overmax_core::Mode::from_str))
-                .or_else(|| latest_snapshot().and_then(|s| s.context.map(|c| c.mode)));
+                .or_else(|| latest_snapshot().and_then(|s| s.last_stable_context.map(|c| c.mode)));
             let limit = arg(1)
                 .and_then(|v| v.as_u64())
                 .map(|n| n.clamp(1, 100) as usize)
@@ -342,20 +342,40 @@ fn dispatch_rpc(body: &str, cmd_tx: &Sender<IpcCommand>, data: &IpcDataSources) 
 // State & Recommendation Snapshot Caches
 // ─────────────────────────────────────────────────────────────────────────────
 
-static LATEST_STATE: Mutex<Option<GameSessionState>> = Mutex::new(None);
+/// Scene status is current; retained song context may belong to an earlier scene.
+/// Keep this IPC projection separate from the pipeline's verified session state.
+#[derive(Clone)]
+struct IpcSnapshot {
+    scene: SceneType,
+    is_stable: bool,
+    is_fullscreen: bool,
+    last_stable_context: Option<PlayContext>,
+}
+
+static LATEST_STATE: Mutex<Option<IpcSnapshot>> = Mutex::new(None);
 
 pub fn update_latest_state(state: GameSessionState) {
     if let Ok(mut slot) = LATEST_STATE.try_lock() {
-        *slot = Some(state);
+        let last_stable_context = if state.is_stable {
+            state.context
+        } else {
+            slot.as_mut().and_then(|s| s.last_stable_context.take())
+        };
+        *slot = Some(IpcSnapshot {
+            scene: state.scene,
+            is_stable: state.is_stable,
+            is_fullscreen: state.is_fullscreen,
+            last_stable_context,
+        });
     }
 }
 
-fn latest_snapshot() -> Option<GameSessionState> {
+fn latest_snapshot() -> Option<IpcSnapshot> {
     LATEST_STATE.lock().ok().and_then(|s| s.clone())
 }
 
-fn snapshot_json(state: &GameSessionState) -> Value {
-    let context = state.context.as_ref().map(|ctx| {
+fn snapshot_json(state: &IpcSnapshot) -> Value {
+    let context = state.last_stable_context.as_ref().map(|ctx| {
         json!({
             "song_id": ctx.song_id,
             "mode": ctx.mode.as_str(),

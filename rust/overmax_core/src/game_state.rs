@@ -172,9 +172,20 @@ pub enum SceneType {
     ResultFreestyle,
     ResultOpen3,
     ResultOpen2,
+    Gameplay,
+    Paused,
 }
 
 impl SceneType {
+    /// Scenes that may run song/record recognition and show the normal overlay.
+    pub fn is_record_scene(&self) -> bool {
+        matches!(self, Self::Freestyle | Self::OpenMatch | Self::LadderMatch) || self.is_result()
+    }
+
+    pub fn is_ingame(&self) -> bool {
+        matches!(self, Self::Gameplay | Self::Paused)
+    }
+
     #[inline]
     pub fn is_result(&self) -> bool {
         matches!(

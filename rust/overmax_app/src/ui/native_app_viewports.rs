@@ -97,7 +97,9 @@ impl NativeApp {
         let cap_settings = settings_merged.screen_capture();
 
         let overlay_on = game_found
-            && (ovs.always_visible || self.session.scene != overmax_core::SceneType::Unknown)
+            && (ovs.always_visible
+                || (self.session.scene != overmax_core::SceneType::Unknown
+                    && !self.session.scene.is_ingame()))
             && self.overlay_visible_override.unwrap_or(true);
 
         #[cfg(target_os = "windows")]
@@ -520,7 +522,9 @@ impl NativeApp {
         let game_rect_val = *overmax_core::lock_or_recover(&self.game_rect);
         let game_found = game_rect_val.is_some();
         let overlay_on = game_found
-            && (ovs.always_visible || self.session.scene != overmax_core::SceneType::Unknown)
+            && (ovs.always_visible
+                || (self.session.scene != overmax_core::SceneType::Unknown
+                    && !self.session.scene.is_ingame()))
             && self.overlay_visible_override.unwrap_or(true);
 
         let overlay_on_changed = self.state_tracker.prev_overlay_on.update(overlay_on);

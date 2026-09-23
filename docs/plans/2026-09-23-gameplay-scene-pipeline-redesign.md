@@ -98,10 +98,15 @@
 
 ### Task 4: 기존 구조와의 중복 및 통합 지점 검토
 
-- [ ] PR 추가 코드와 기존 helper/state/contract의 책임 중복 여부를 확인한다.
-- [ ] `parse_static_scene`, `SceneType` 분류, scene commitment/hysteresis, ROI/atlas 변환, worker reset, 공용 출력 경로의 재사용 가능성을 확인한다.
-- [ ] `SceneObservation`/`observe_scene()`이 흐름을 단순화하는지 검토하고, 그렇지 않으면 제거 대상으로 둔다.
+- [x] PR 추가 코드와 기존 helper/state/contract의 책임 중복 여부를 확인한다.
+- [x] `parse_static_scene`, `SceneType` 분류, scene commitment/hysteresis, ROI/atlas 변환, worker reset, 공용 출력 경로의 재사용 가능성을 확인한다.
+- [x] `SceneObservation`/`observe_scene()`이 흐름을 단순화하는지 검토하고, 그렇지 않으면 제거 대상으로 둔다.
 - **완료 기준:** 기존 경로로 통합할 부분과 도메인상 고유한 픽셀 판독 책임이 구분된다.
+
+> **Task 4 결과 기록 (2026-09-24)**
+> - 중복 확인: `GameplaySceneReader.read()`는 순수 픽셀 판독기(후보만 반환) → 기존 `parse_static_scene`, `hysteresis`, `commit_scene()`, `RoiManager`는 재사용 중; 중복 helper 추가 없음
+> - 통합 지점: `observe_scene()`에서 Gameplay 우선(`is_ingame()`) → 정적 parser → `select_scene_observation()` → 공용 `commit_scene()` 흐름 유지; `SceneObservation`은 현재 `InGame` 우선으로 단순화되지만 별도 분기 제거 시 `Unknown` 진단(`SceneMissDiag`)과 `Static`(`matched_song_id`) 전달이 복잡해짐 → 현재는 유지하되 단순화 여부는 정확도/비용 근거로 추후 결정 대상
+> - 도메인 고유 책임: `GameplaySceneReader`의 픽셀 판독(512 atlas / 1920 full-frame)과 `SceneType::is_ingame()` 판단만 고유; 나머지(history, cooldown, commit, 출력)은 기존 pipeline 소유
 
 ### Task 5: 최소 통합 설계 결정
 

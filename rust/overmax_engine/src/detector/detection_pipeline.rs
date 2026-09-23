@@ -69,33 +69,6 @@ pub struct SceneMissDiag {
     pub top_similarity: Option<f32>,
 }
 
-#[derive(Clone, Copy, Debug)]
-enum SceneObservation {
-    InGame(SceneType),
-    Static {
-        scene: SceneType,
-        matched_song_id: Option<i32>,
-    },
-    Unknown(SceneMissDiag),
-}
-
-fn select_scene_observation(
-    gameplay_scene: SceneType,
-    static_scene: Option<(SceneType, Option<i32>)>,
-    miss_diag: SceneMissDiag,
-) -> SceneObservation {
-    if gameplay_scene.is_ingame() {
-        SceneObservation::InGame(gameplay_scene)
-    } else if let Some((scene, matched_song_id)) = static_scene {
-        SceneObservation::Static {
-            scene,
-            matched_song_id,
-        }
-    } else {
-        SceneObservation::Unknown(miss_diag)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum JacketMatchStatus {
     NotSongSelect,
@@ -342,64 +315,44 @@ impl DetectionPipeline {
             return None;
         }
 
-        let observation = self.observe_scene(frame);
-        let final_scene = match observation {
-            SceneObservation::InGame(scene) => {
-                debug_println!(
-                    "    [detect_scene_if_due] now={}, ingame_scene={:?}",
-                    now,
-                    scene
-                );
-                self.commit_scene(scene)
-            }
-            SceneObservation::Static {
-                scene,
-                matched_song_id,
-            } => {
+        let gameplay_scene = self.gameplay_reader.read(frame);
+        let is_ingame = gameplay_scene.is_ingame();
+        let final_scene: SceneType;
+        if is_ingame {
+            debug_println!(
+                "    [detect_scene_if_due] now={}, ingame_scene={:?}",
+                now, gameplay_scene
+            );
+            final_scene = self.commit_scene(gameplay_scene);
+        } else {
+            let is_unknown = !self.last_scene.is_record_scene();
+            let (static_scene, miss_diag) =
+                parse_static_scene(frame, &self.rois, &self.jacket_matcher, is_unknown);
+            if let Some((scene, matched_song_id)) = static_scene {
                 if let Some(song_id) = matched_song_id {
                     self.current_song_id = Some(song_id);
                     self.last_jacket_match_ts = now;
-
-                    // process_frame_shared 에서 중복 매칭이 돌지 않도록 썸네일 캐시 갱신
                     if let Some(thumb) = self.rois.and_then_roi(frame, "jacket", make_thumbnail) {
                         self.last_jacket_thumb = Some(thumb);
                     }
                 }
-
                 debug_println!(
                     "    [detect_scene_if_due] now={}, static_scene={:?}",
-                    now,
-                    scene
+                    now, scene
                 );
-
                 if scene.is_record_scene() {
                     self.rois.set_scene(scene);
                 }
-                self.commit_scene(scene)
-            }
-            SceneObservation::Unknown(miss_diag) => {
+                final_scene = self.commit_scene(scene);
+            } else {
                 debug_println!("    [detect_scene_if_due] scene miss! now={}", now);
-
-                // 미스 진단 기록: 참조 썸네일 대비 픽셀 차이 + 거절 단계(centroid/band/유사도)
                 let thumb_diff = self.screen_static_thumb_diff(frame);
                 self.stats.record_scene_miss(thumb_diff, miss_diag);
-                self.commit_scene(SceneType::Unknown)
+                final_scene = self.commit_scene(SceneType::Unknown);
             }
         };
         self.last_scene_check_ts = now;
         Some(final_scene)
-    }
-
-    fn observe_scene(&mut self, frame: &CapturedFrame) -> SceneObservation {
-        let gameplay_scene = self.gameplay_reader.read(frame);
-        if gameplay_scene.is_ingame() {
-            return SceneObservation::InGame(gameplay_scene);
-        }
-
-        let is_unknown = !self.last_scene.is_record_scene();
-        let (static_scene, miss_diag) =
-            parse_static_scene(frame, &self.rois, &self.jacket_matcher, is_unknown);
-        select_scene_observation(gameplay_scene, static_scene, miss_diag)
     }
 
     /// 현재 프레임의 자켓 ROI 썸네일과 마지막 저장 썸네일의 평균 픽셀 차이.
@@ -938,25 +891,11 @@ fn check_category_band_solid(
 #[cfg(test)]
 mod tests {
     use super::{
-        select_scene_observation, DetectionPipeline, JacketMatchStatus, SceneMissDiag,
-        SceneObservation, SleepHint,
+        DetectionPipeline, JacketMatchStatus, SceneMissDiag,
+        SleepHint,
     };
     use crate::capture::frame::CapturedFrame;
     use overmax_data::ImageIndexDb;
-
-    #[test]
-    fn gameplay_observation_precedes_static_scene_candidate() {
-        let observation = select_scene_observation(
-            overmax_core::SceneType::Paused,
-            Some((overmax_core::SceneType::Freestyle, Some(42))),
-            SceneMissDiag::default(),
-        );
-
-        assert!(matches!(
-            observation,
-            SceneObservation::InGame(overmax_core::SceneType::Paused)
-        ));
-    }
 
     #[test]
     fn ingame_scenes_share_result_commitment_and_break_on_misses() {

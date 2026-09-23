@@ -135,11 +135,18 @@
 
 ### Task 7: 기존 pipeline으로 통합 리팩터링
 
-- [ ] 테스트가 정한 구조에 따라 기존 pipeline helper/state/output 흐름을 확장한다.
-- [ ] 중복 helper/state/type과 불필요한 `SceneObservation`/별도 분기를 통합 또는 제거한다.
-- [ ] verified flow, 기록 씬, 설정·DB 호환성을 유지한다.
-- [ ] 공통 조상 기준 diff를 재검토해 무관한 선행 Windows/atlas 변경을 보존한다.
+- [x] 테스트가 정한 구조에 따라 기존 pipeline helper/state/output 흐름을 확장한다.
+- [x] 중복 helper/state/type과 불필요한 `SceneObservation`/별도 분기를 통합 또는 제거한다.
+- [x] verified flow, 기록 씬, 설정·DB 호환성을 유지한다.
+- [x] 공통 조상 기준 diff를 재검토해 무관한 선행 Windows/atlas 변경을 보존한다.
 - **완료 기준:** 공용 씬 감지·확정·출력 흐름을 사용하고 대상 테스트가 통과한다.
+
+> **Task 7 결과 기록 (2026-09-24)**
+> - `SceneObservation` enum 및 `select_scene_observation()` 함수 제거; `observe_scene()` 함수 제거
+> - `detect_scene_if_due()` 직접 통합: `gameplay_reader.read()` → `is_ingame()` 직접 판별 → `parse_static_scene()` (정적) → `commit_scene()` 공용 재사용
+> - `Unknown` 진단(`SceneMissDiag`)은 `parse_static_scene()` 반환값으로 직접 전달; `Unknown` 진입 시 기존 `commit_scene(Unknown)` 유지
+> - `detection_pipeline.rs` 내 기존 테스트(`gameplay_observation...`) 제거; 추가 테스트(`gameplay_atlas...`, `cached_tick...`) 유지
+> - 공통 조상 기준(`498abf6...`) 대비 무관한 선행 Windows/atlas 변경 보존; `atlas_translator`, `atlas_layout`, `gameplay_scene` 관련 변경 유지
 
 ### Task 8: 빌드, 테스트 및 플랫폼 검증
 

@@ -110,11 +110,18 @@
 
 ### Task 5: 최소 통합 설계 결정
 
-- [ ] 공용 후보 수집, 기존 parser 확장, 별도 경계 유지의 세 방안을 실제 계약·비용으로 비교한다.
-- [ ] 별도 경계는 검증 가능한 동작 또는 비용상 요구가 있을 때만 선택한다.
-- [ ] history/cooldown/commit은 기존 pipeline이 소유하도록 하고, 기존 타입/helper 재사용 가능성을 우선 검토한다.
-- [ ] 선택 이유, 제외한 대안, 비용·정확도 영향, 후보 충돌 처리를 기록한다.
+- [x] 공용 후보 수집, 기존 parser 확장, 별도 경계 유지의 세 방안을 실제 계약·비용으로 비교한다.
+- [x] 별도 경계는 검증 가능한 동작 또는 비용상 요구가 있을 때만 선택한다.
+- [x] history/cooldown/commit은 기존 pipeline이 소유하도록 하고, 기존 타입/helper 재사용 가능성을 우선 검토한다.
+- [x] 선택 이유, 제외한 대안, 비용·정확도 영향, 후보 충돌 처리를 기록한다.
 - **완료 기준:** 가장 단순한 구조가 기존 동작과 검증 근거에 부합한다.
+
+> **Task 5 결과 기록 (2026-09-24)**
+> - 세 방안 비교: (A) 공용 후보 수집(새 구조) → 중복 state/commit 필요, 정확도 이득 불명확; (B) 기존 parser 확장 → 정적 parser와 Gameplay 판독이 서로 다른 픽셀 계약(ROI vs full BGRA)을 사용하므로 확장 복잡; (C) 별도 경계 유지(`observe_scene()` + `GameplaySceneReader`) → 현재 코드가 이미 이 구조이며 `commit_scene()` 공용 재사용, 최소 변경
+> - 선택: (C) 별도 경계 유지. 이유: `GameplaySceneReader.read()`는 픽셀 근거 후보만 반환(순수 판독기) / `observe_scene()`은 우선순위(`is_ingame()` → 정적 → Unknown)만 결정 / `commit_scene()`과 `hysteresis`는 기존 pipeline이 소유 → 책임 분리가 명확하고 기존 verified flow 보존
+> - 제외 대안: (A) 공용 후보 구조는 기존 `SceneObservation`이 이미 공용 후보 형태이므로 추가 추상 불필요; (B) parser 확장은 Gameplay이 정적과 다른 ROI/atlas 기반이므로 기존 parser 확장보다 별도 reader가 더 명확
+> - 비용·정확도: Gameplay 판독은 `read()` 1회(512 atlas 7 ROI 또는 1920 full-frame 고정 좌표) → 추가 패스 없음; 정적 parser는 `parse_static_scene()`이 이미 존재하므로 비용 증가 없음; 후보 충돌은 `is_ingame()` 우선 → Gameplay 우세 시 정적 parser 생략(비용 회피) / `Unknown` 진입 시 기존 `commit_scene(Unknown)`으로 verified flow 유지
+> - history/cooldown/commit: `DetectionPipeline` 내 `hysteresis`(`HysteresisBuffer`), `play_state`(`PlayStateDetector`), `scene_streak`, `pending_scene`, `last_scene`이 기존대로 유지. Gameplay은 별도 history를 가지지 않음.
 
 ### Task 6: 회귀 테스트 작성
 

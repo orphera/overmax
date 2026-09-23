@@ -44,6 +44,13 @@ impl Default for GlobalRoiConfig {
                 "btn_mode" => (80, 130, 5, 5),
                 "max_combo_badge" => (409, 585, 36, 36),
                 "diff_panel" => (98, 488, 110, 28),
+                "gp_center_left" => (702, 80, 7, 257),
+                "gp_center_right" => (1211, 80, 7, 257),
+                "gp_left_left" => (102, 80, 7, 257),
+                "gp_left_right" => (611, 80, 7, 257),
+                "gp_right_left" => (1342, 80, 7, 257),
+                "gp_right_right" => (1851, 80, 7, 257),
+                "pause_title" => (731, 177, 148, 28),
             },
             SceneType::OpenMatch => {
                 "jacket" => (664, 533, 60, 60),

@@ -1,8 +1,20 @@
 //! Pixel-only Gameplay/Paused candidate reader. Scene history belongs to the pipeline.
 use crate::capture::frame::CapturedFrame;
+use crate::capture::frame_utils::ImageView;
+use crate::detector::atlas_translator::AtlasTranslator;
 use crate::detector::roi::RoiRect;
 use overmax_core::SceneType;
 mod reader;
+
+const ATLAS_ROI_NAMES: [&str; 7] = [
+    "gp_center_left",
+    "gp_center_right",
+    "gp_left_left",
+    "gp_left_right",
+    "gp_right_left",
+    "gp_right_right",
+    "pause_title",
+];
 
 pub struct GameplaySceneReader {
     pixels: reader::PixelReader,
@@ -18,14 +30,46 @@ impl Default for GameplaySceneReader {
 
 impl GameplaySceneReader {
     pub(crate) fn supports_frame(frame: &CapturedFrame) -> bool {
-        (frame.width, frame.height) == (1920, 1080) && frame.bgra.len() == 1920 * 1080 * 4
+        let expected_bytes = usize::try_from(frame.width)
+            .ok()
+            .zip(usize::try_from(frame.height).ok())
+            .and_then(|(width, height)| width.checked_mul(height)?.checked_mul(4));
+        expected_bytes == Some(frame.bgra.len())
+            && matches!((frame.width, frame.height), (512, 512) | (1920, 1080))
     }
 
-    /// WIP: full, lossless 1080p only. The current DXGI atlas lacks these ROIs.
+    /// Reads gameplay evidence from the atlas, with a legacy full-frame fallback.
     pub fn read(&mut self, frame: &CapturedFrame) -> SceneType {
         if !Self::supports_frame(frame) {
             return SceneType::Unknown;
         }
+        if (frame.width, frame.height) == (512, 512) {
+            return self.read_atlas(frame);
+        }
+        self.read_legacy(frame)
+    }
+
+    fn read_atlas(&mut self, frame: &CapturedFrame) -> SceneType {
+        let crops = Self::atlas_crops(frame);
+        let Some(crops) = crops else {
+            return SceneType::Unknown;
+        };
+        self.pixels.read(&crops)
+    }
+
+    fn atlas_crops<'a>(frame: &'a CapturedFrame) -> Option<[ImageView<'a>; 7]> {
+        Some([
+            AtlasTranslator::crop_roi(frame, ATLAS_ROI_NAMES[0], SceneType::Freestyle)?,
+            AtlasTranslator::crop_roi(frame, ATLAS_ROI_NAMES[1], SceneType::Freestyle)?,
+            AtlasTranslator::crop_roi(frame, ATLAS_ROI_NAMES[2], SceneType::Freestyle)?,
+            AtlasTranslator::crop_roi(frame, ATLAS_ROI_NAMES[3], SceneType::Freestyle)?,
+            AtlasTranslator::crop_roi(frame, ATLAS_ROI_NAMES[4], SceneType::Freestyle)?,
+            AtlasTranslator::crop_roi(frame, ATLAS_ROI_NAMES[5], SceneType::Freestyle)?,
+            AtlasTranslator::crop_roi(frame, ATLAS_ROI_NAMES[6], SceneType::Freestyle)?,
+        ])
+    }
+
+    fn read_legacy(&mut self, frame: &CapturedFrame) -> SceneType {
         let crops = RECTS.map(|(x, y, width, height)| {
             RoiRect {
                 x1: x,
@@ -56,6 +100,7 @@ const RECTS: [(i32, i32, i32, i32); 7] = [
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::detector::atlas_layout::build_virtual_atlas;
     use crate::detector::templates::gameplay_scene as templates;
 
     fn frame() -> CapturedFrame {
@@ -88,6 +133,17 @@ mod tests {
             let pixel = ((y + row as i32 * 32) * 1920 + x + width - 1) as usize * 4;
             frame.bgra[pixel + 2] = contrast;
         }
+    }
+
+    #[test]
+    fn reads_gameplay_from_a_virtual_atlas_frame() {
+        let mut source = frame();
+        stripe(&mut source, 0, 9, 30);
+        stripe(&mut source, 1, 9, 30);
+        let atlas = build_virtual_atlas(&source);
+
+        let mut reader = GameplaySceneReader::default();
+        assert_eq!(reader.read(&atlas), SceneType::Gameplay);
     }
 
     #[test]

@@ -919,18 +919,18 @@ mod tests {
     }
 
     #[test]
-    fn atlas_switch_invalidates_ingame_history_even_on_cached_tick() {
+    fn unsupported_format_switch_invalidates_ingame_history_even_on_cached_tick() {
         use overmax_core::SceneType;
         let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
         pipeline.commit_scene(SceneType::Gameplay);
         pipeline.commit_scene(SceneType::Gameplay);
         pipeline.last_scene_check_ts = 10.0;
-        let atlas = CapturedFrame {
-            width: 512,
-            height: 512,
-            bgra: vec![0; 512 * 512 * 4],
+        let unsupported = CapturedFrame {
+            width: 1280,
+            height: 720,
+            bgra: vec![0; 1280 * 720 * 4],
         };
-        let output = pipeline.detect(&atlas, 10.01);
+        let output = pipeline.detect(&unsupported, 10.01);
         assert_eq!(output.state.scene, SceneType::Unknown);
         assert_eq!(pipeline.scene_streak, 0);
         assert_eq!(

@@ -14,9 +14,9 @@
 ### [x] Step 2: `AtlasTranslator` 매핑 갱신
 - `rust/overmax_engine/src/detector/atlas_translator.rs`에 신규 추가된 7개 ROI에 대한 매핑 추가
 
-### [ ] Step 3: `GameplaySceneReader` 리팩토링
+### [x] Step 3: `GameplaySceneReader` 리팩토링
 - `rust/overmax_engine/src/detector/gameplay_scene.rs`에서 1080p 프레임 의존성을 제거
-- 아틀라스 기반의 `ImageView` 호출 방식으로 전환
+- 아틀라스 기반의 `ImageView` 호출 방식으로 전환 (GPU 아틀라스 우선, 레거시 1080p 폴백 유지)
 
 ### [ ] Step 4: 캡처 파이프라인 연동 검증
 - DXGI 캡처 엔진의 `copy_slots_to_atlas` 로직에 신규 7개 ROI 복사 로직 추가

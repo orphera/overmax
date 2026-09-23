@@ -72,10 +72,15 @@
 
 ### Task 2: 현재 동작과 회귀 기준 고정
 
-- [ ] 주요 전이에 대한 기대 입력/출력 표를 만든다: 선곡→Gameplay, Gameplay→Paused→Gameplay, Gameplay→결과, 결과→선곡, Gameplay 판독 miss, atlas/full-frame 전환, 창/포커스/캡처 reset.
-- [ ] 내부 함수를 직접 호출하는 테스트와 실제 `detect()` 경로를 타는 테스트를 구분한다.
-- [ ] 기존 parser/확정/기록 경로와 Gameplay 동작을 검증할 최소 회귀 테스트 목록을 확정한다.
+- [x] 주요 전이에 대한 기대 입력/출력 표를 만든다: 선곡→Gameplay, Gameplay→Paused→Gameplay, Gameplay→결과, 결과→선곡, Gameplay 판독 miss, atlas/full-frame 전환, 창/포커스/캡처 reset.
+- [x] 내부 함수를 직접 호출하는 테스트와 실제 `detect()` 경로를 타는 테스트를 구분한다.
+- [x] 기존 parser/확정/기록 경로와 Gameplay 동작을 검증할 최소 회귀 테스트 목록을 확정한다.
 - **완료 기준:** 주요 상태 전이의 기대값과 이를 검증할 테스트가 연결돼 있다.
+
+> **Task 2 결과 기록 (2026-09-24)**
+> - 기대 전이: 선곡→Gameplay (`is_ingame()` true, `InGame` 우선 적용 → 정적 parser 생략), Gameplay→Paused/Gameplay (`GameplaySceneReader.read()`만 후보 반환, history/cooldown/commit은 pipeline 소유), Gameplay→결과(`Unknown`→기존 `is_record_scene()` 경계 유지 → Gameplay 신호가 기록 처리로 유입 안 됨), atlas(512)↔full-frame(1920×1080) (`supports_frame()` 계약 확인, 크기만으로 종류 추측 불가 → 기존 타입/호출 경로 확인 완료)
+> - 테스트 구분: 내부 직접 호출(`GameplaySceneReader.read`, `parse_static_scene`) vs 실제 `detect()` 경로 타는 통합 테스트
+> - 회귀 테스트 목록: `detection_pipeline` 기존 parser/확정/기록 경로 + `gameplay_scene` 판독 miss/전이 + atlas/full-frame 동일 fixture 대조
 
 ### Task 3: 캡처 및 atlas 계약 추적
 

@@ -84,11 +84,17 @@
 
 ### Task 3: 캡처 및 atlas 계약 추적
 
-- [ ] `CapturedFrame` 생성 지점과 Windows GDI/DXGI worker 분기를 추적한다.
-- [ ] Gameplay ROI의 atlas 슬롯 생성·복사·translator 경로가 런타임까지 연결되는지 확인한다.
-- [ ] Linux 및 full-frame 경로에서 reader 입력의 좌표·크기·stride 계약을 확인한다.
-- [ ] 프레임 종류를 기존 타입/호출 계약으로 안전하게 구분할 수 있는지 확인한다.
+- [x] `CapturedFrame` 생성 지점과 Windows GDI/DXGI worker 분기를 추적한다.
+- [x] Gameplay ROI의 atlas 슬롯 생성·복사·translator 경로가 런타임까지 연결되는지 확인한다.
+- [x] Linux 및 full-frame 경로에서 reader 입력의 좌표·크기·stride 계약을 확인한다.
+- [x] 프레임 종류를 기존 타입/호출 계약으로 안전하게 구분할 수 있는지 확인한다.
 - **완료 기준:** 지원 프레임별 호출 흐름을 코드 위치와 테스트로 설명하고, 미확인 영역을 가정으로 메우지 않는다.
+
+> **Task 3 결과 기록 (2026-09-24)**
+> - `CapturedFrame`(`width`, `height`, `bgra`) 생성: `capture/frame.rs`; Windows GDI/DXGI 분기: `capture_engine/windows/dxgi.rs` (atlas staging texture) / GDI 경로 (full-frame 1920×1080)
+> - Gameplay ROI atlas 경로: `atlas_translator::AtlasTranslator::crop_roi()` → `gameplay_scene.rs:atlas_crops()` (512 atlas, 7개 ROI: `gp_center_left/right`, `gp_left_left/right`, `gp_right_left/right`, `pause_title`) → `reader::read_atlas()`; `read_legacy()`는 1920×1080 full-frame 고정 좌표(`RECTS`)
+> - 프레임 종류 구분: `GameplaySceneReader::supports_frame()`가 `(512,512)` | `(1920,1080)` 과 `bgra.len()` 일치로 판별 → 기존 타입/호출 경로로 안전하게 구분 가능 (크기만으로는 불충분 → `supports_frame()` 계약 사용)
+> - 미확인 영역: Linux GDI 경로는 현재 코드 확인 완료되었으나 실앱 런타임 연결은 별도 환경에서 검증 필요 → 가정으로 메우지 않고 기록함
 
 ### Task 4: 기존 구조와의 중복 및 통합 지점 검토
 

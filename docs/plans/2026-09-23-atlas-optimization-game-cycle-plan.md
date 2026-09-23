@@ -18,6 +18,11 @@
 - `rust/overmax_engine/src/detector/gameplay_scene.rs`에서 1080p 프레임 의존성을 제거
 - 아틀라스 기반의 `ImageView` 호출 방식으로 전환 (GPU 아틀라스 우선, 레거시 1080p 폴백 유지)
 
+### [x] Step 3.5: Gameplay/Paused와 정적 씬 감지 경계 정리
+- `detect_scene_if_due`에서 Gameplay/Paused 관측을 정적 씬 파싱보다 먼저 수행
+- 인게임 씬이 확인되면 자켓 매칭을 실행하지 않고 즉시 공통 scene commitment 경로로 전달
+- `last_static_scene` 명칭을 실제 역할에 맞는 `last_scene`으로 변경
+
 ### [ ] Step 4: 캡처 파이프라인 연동 검증
 - DXGI 캡처 엔진의 `copy_slots_to_atlas` 로직에 신규 7개 ROI 복사 로직 추가
 - Windows 환경에서 성능 및 인식 정확도 최종 검증

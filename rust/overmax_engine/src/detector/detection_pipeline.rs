@@ -321,7 +321,8 @@ impl DetectionPipeline {
         if is_ingame {
             debug_println!(
                 "    [detect_scene_if_due] now={}, ingame_scene={:?}",
-                now, gameplay_scene
+                now,
+                gameplay_scene
             );
             final_scene = self.commit_scene(gameplay_scene);
         } else {
@@ -338,7 +339,8 @@ impl DetectionPipeline {
                 }
                 debug_println!(
                     "    [detect_scene_if_due] now={}, static_scene={:?}",
-                    now, scene
+                    now,
+                    scene
                 );
                 if scene.is_record_scene() {
                     self.rois.set_scene(scene);
@@ -890,10 +892,7 @@ fn check_category_band_solid(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        DetectionPipeline, JacketMatchStatus, SceneMissDiag,
-        SleepHint,
-    };
+    use super::{DetectionPipeline, JacketMatchStatus, SceneMissDiag, SleepHint};
     use crate::capture::frame::CapturedFrame;
     use overmax_data::ImageIndexDb;
 
@@ -1348,7 +1347,8 @@ mod tests {
         use overmax_core::SceneType;
         let mut reader = GameplaySceneReader::default();
         let mut full = CapturedFrame {
-            width: 1920, height: 1080,
+            width: 1920,
+            height: 1080,
             bgra: vec![0; 1920 * 1080 * 4],
         };
         for y in (80..=336).step_by(32) {
@@ -1358,7 +1358,8 @@ mod tests {
         }
         assert_eq!(reader.read(&full), SceneType::Gameplay);
         let atlas = CapturedFrame {
-            width: 512, height: 512,
+            width: 512,
+            height: 512,
             bgra: vec![0; 512 * 512 * 4],
         };
         assert!(GameplaySceneReader::supports_frame(&atlas));
@@ -1373,12 +1374,16 @@ mod tests {
         pipeline.commit_scene(SceneType::Gameplay);
         pipeline.last_scene_check_ts = 10.0;
         let unsupported = CapturedFrame {
-            width: 1280, height: 720,
+            width: 1280,
+            height: 720,
             bgra: vec![0; 1280 * 720 * 4],
         };
         let output = pipeline.detect(&unsupported, 10.01);
         assert_eq!(output.state.scene, SceneType::Unknown);
         assert_eq!(pipeline.scene_streak, 0);
-        assert_eq!(pipeline.commit_scene(SceneType::Gameplay), SceneType::Unknown);
+        assert_eq!(
+            pipeline.commit_scene(SceneType::Gameplay),
+            SceneType::Unknown
+        );
     }
 }

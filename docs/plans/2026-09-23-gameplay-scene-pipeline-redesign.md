@@ -57,10 +57,18 @@
 
 ### Task 1: 기준선과 변경 범위 확인
 
-- [ ] `main`과 현재 HEAD의 merge-base를 확인하고, 공통 조상 대비 현재 diff를 기능별로 분류한다.
-- [ ] `pr-27` 원본과 현재 브랜치의 씬 관련 변경을 비교해 PR 당시 동작과 Windows/atlas 후속 변경을 구분한다.
-- [ ] PR에서 추가된 코드와 기존 main 공통 조상의 대응 경로를 확인해, 기존 구현을 확장하는 편이 자연스러운 부분을 정리한다.
+- [x] `main`과 현재 HEAD의 merge-base를 확인하고, 공통 조상 대비 현재 diff를 기능별로 분류한다.
+- [x] `pr-27` 원본과 현재 브랜치의 씬 관련 변경을 비교해 PR 당시 동작과 Windows/atlas 후속 변경을 구분한다.
+- [x] PR에서 추가된 코드와 기존 main 공통 조상의 대응 경로를 확인해, 기존 구현을 확장하는 편이 자연스러운 부분을 정리한다.
 - **완료 기준:** 이번 재설계 대상과 보존할 선행 변경이 구분되고, 관련 diff 범위가 설명 가능하다.
+
+> **Task 1 결과 기록 (2026-09-24)**
+> - merge-base (`main`↔HEAD): `498abf66185cf7806f985299f5b46932bc575bdc`
+> - 현재 HEAD: `35ffb62`
+> - 공통 조상 대비 변경: docs(2), gameplay_scene/reader(신규), atlas/translator(변경), detector(pipe/worker/roi), capture/app/ui
+> - PR 원본(`pr-27`)과 현재 차이: gameplay_scene 판독 추가 + atlas ROI 통합 별도 추가됨 → 두 흐름 구분 완료
+> - 기존 대응 경로 확인: `parse_static_scene`, `SceneType`, `commit_scene`, `RoiManager`/`AtlasTranslator` 존재 → 확장·재사용 대상 명확
+> - 보존 대상 선행 변경: atlas/translator 최적화(`1b0a2a7`, `a41be96`), Windows 캡처 관련 → 재설계 무관하므로 유지
 
 ### Task 2: 현재 동작과 회귀 기준 고정
 

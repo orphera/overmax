@@ -152,6 +152,11 @@ impl RoiManager {
         Some(self.transform_roi(RoiRect::from(*roi)))
     }
 
+    pub fn get_global_roi(&self, name: &str) -> Option<RoiRect> {
+        let roi = self.config.rois.get(name)?;
+        Some(self.transform_roi(RoiRect::from(*roi)))
+    }
+
     pub fn get_roi(&self, name: &str) -> Option<RoiRect> {
         self.get_roi_for_scene(name, self.current_scene)
     }

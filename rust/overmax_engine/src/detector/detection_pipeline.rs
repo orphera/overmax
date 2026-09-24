@@ -312,7 +312,8 @@ impl DetectionPipeline {
             return None;
         }
 
-        let gameplay_scene = crate::detector::templates::gameplay_scene::read_scene(frame);
+        let gameplay_scene =
+            crate::detector::templates::gameplay_scene::read_scene(frame, &self.rois);
         let is_ingame = gameplay_scene.is_ingame();
         let final_scene: SceneType;
         if is_ingame {
@@ -1341,6 +1342,7 @@ mod tests {
     #[test]
     fn gameplay_atlas_and_full_frame_return_same_candidate_for_equivalent_evidence() {
         use overmax_core::SceneType;
+        let mut rois = crate::detector::roi::RoiManager::new(1920, 1080);
         let mut full = CapturedFrame {
             width: 1920,
             height: 1080,
@@ -1352,7 +1354,7 @@ mod tests {
             }
         }
         assert_eq!(
-            crate::detector::templates::gameplay_scene::read_scene(&full),
+            crate::detector::templates::gameplay_scene::read_scene(&full, &rois),
             SceneType::Gameplay
         );
         let atlas = CapturedFrame {
@@ -1360,11 +1362,12 @@ mod tests {
             height: 512,
             bgra: vec![0; 512 * 512 * 4],
         };
+        rois.update_window_size(atlas.width, atlas.height);
         assert!(crate::detector::templates::gameplay_scene::supports_frame(
             &atlas
         ));
         assert_eq!(
-            crate::detector::templates::gameplay_scene::read_scene(&atlas),
+            crate::detector::templates::gameplay_scene::read_scene(&atlas, &rois),
             SceneType::Unknown
         );
     }

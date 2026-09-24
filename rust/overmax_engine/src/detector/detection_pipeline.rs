@@ -1,7 +1,6 @@
 use crate::capture::frame::CapturedFrame;
 use crate::capture::frame_utils::{make_thumbnail, mean_abs_diff, thumbnail_changed};
 use crate::capture::window_tracker::WindowSnapshot;
-use crate::detector::gameplay_scene::GameplaySceneReader;
 use crate::detector::hysteresis::HysteresisBuffer;
 use crate::detector::play_state::PlayStateDetector;
 use crate::detector::roi::RoiManager;
@@ -90,7 +89,6 @@ pub struct DetectionPipeline {
     rois: RoiManager,
     hysteresis: HysteresisBuffer,
     play_state: PlayStateDetector,
-    gameplay_reader: GameplaySceneReader,
     current_song_id: Option<i32>,
     last_scene_check_ts: f64,
     last_scene: SceneType,
@@ -113,7 +111,6 @@ impl DetectionPipeline {
             rois: RoiManager::new(1920, 1080),
             hysteresis: HysteresisBuffer::new(4, 0.5, 2, 0.25, 2),
             play_state: PlayStateDetector::new(5),
-            gameplay_reader: GameplaySceneReader::default(),
             current_song_id: None,
             last_scene_check_ts: 0.0,
             last_scene: SceneType::Unknown,
@@ -156,7 +153,7 @@ impl DetectionPipeline {
         // A backend/format change may arrive on a cached tick. In-game history
         // cannot outlive the availability of its evidence, even before polling.
         if (self.last_scene.is_ingame() || self.pending_scene.is_ingame())
-            && !GameplaySceneReader::supports_frame(frame)
+            && !crate::detector::templates::gameplay_scene::supports_frame(frame)
         {
             self.commit_scene(SceneType::Unknown);
         }
@@ -315,7 +312,7 @@ impl DetectionPipeline {
             return None;
         }
 
-        let gameplay_scene = self.gameplay_reader.read(frame);
+        let gameplay_scene = crate::detector::templates::gameplay_scene::read_scene(frame);
         let is_ingame = gameplay_scene.is_ingame();
         let final_scene: SceneType;
         if is_ingame {
@@ -892,7 +889,7 @@ fn check_category_band_solid(
 
 #[cfg(test)]
 mod tests {
-    use super::{DetectionPipeline, JacketMatchStatus, SceneMissDiag, SleepHint};
+    use super::{DetectionPipeline, JacketMatchStatus, SleepHint};
     use crate::capture::frame::CapturedFrame;
     use overmax_data::ImageIndexDb;
 
@@ -1343,9 +1340,7 @@ mod tests {
 
     #[test]
     fn gameplay_atlas_and_full_frame_return_same_candidate_for_equivalent_evidence() {
-        use crate::detector::gameplay_scene::GameplaySceneReader;
         use overmax_core::SceneType;
-        let mut reader = GameplaySceneReader::default();
         let mut full = CapturedFrame {
             width: 1920,
             height: 1080,
@@ -1356,14 +1351,22 @@ mod tests {
                 full.bgra[(y * 1920 + x) * 4] = 255;
             }
         }
-        assert_eq!(reader.read(&full), SceneType::Gameplay);
+        assert_eq!(
+            crate::detector::templates::gameplay_scene::read_scene(&full),
+            SceneType::Gameplay
+        );
         let atlas = CapturedFrame {
             width: 512,
             height: 512,
             bgra: vec![0; 512 * 512 * 4],
         };
-        assert!(GameplaySceneReader::supports_frame(&atlas));
-        assert_eq!(reader.read(&atlas), SceneType::Unknown);
+        assert!(crate::detector::templates::gameplay_scene::supports_frame(
+            &atlas
+        ));
+        assert_eq!(
+            crate::detector::templates::gameplay_scene::read_scene(&atlas),
+            SceneType::Unknown
+        );
     }
 
     #[test]

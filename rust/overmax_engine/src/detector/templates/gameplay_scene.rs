@@ -53,7 +53,7 @@ pub(crate) fn read_scene(frame: &CapturedFrame, rois: &RoiManager) -> SceneType 
 }
 
 fn roi<'a>(frame: &'a CapturedFrame, rois: &RoiManager, name: &str) -> Option<ImageView<'a>> {
-    rois.get_roi_for_scene(name, SceneType::Freestyle)?
+    rois.get_roi_for_scene(name, SceneType::Unknown)?
         .crop(frame)
 }
 

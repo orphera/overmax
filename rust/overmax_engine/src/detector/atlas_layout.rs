@@ -23,7 +23,7 @@ pub struct AtlasSlot {
 /// 컴파일 타임에 2D MaxRects 알고리즘으로 100% 무손실 배치된 47개 정적 슬롯 테이블 (Zero Heap Allocation)
 pub const ATLAS_SLOTS: [AtlasSlot; 47] = [
     AtlasSlot {
-        scene: SceneType::Freestyle,
+        scene: SceneType::Unknown,
         name: "gp_center_left",
         src_rect: RawRoiRect {
             x: 702,
@@ -39,7 +39,7 @@ pub const ATLAS_SLOTS: [AtlasSlot; 47] = [
         },
     },
     AtlasSlot {
-        scene: SceneType::Freestyle,
+        scene: SceneType::Unknown,
         name: "gp_center_right",
         src_rect: RawRoiRect {
             x: 1211,
@@ -55,7 +55,7 @@ pub const ATLAS_SLOTS: [AtlasSlot; 47] = [
         },
     },
     AtlasSlot {
-        scene: SceneType::Freestyle,
+        scene: SceneType::Unknown,
         name: "gp_left_left",
         src_rect: RawRoiRect {
             x: 102,
@@ -71,7 +71,7 @@ pub const ATLAS_SLOTS: [AtlasSlot; 47] = [
         },
     },
     AtlasSlot {
-        scene: SceneType::Freestyle,
+        scene: SceneType::Unknown,
         name: "gp_left_right",
         src_rect: RawRoiRect {
             x: 611,
@@ -87,7 +87,7 @@ pub const ATLAS_SLOTS: [AtlasSlot; 47] = [
         },
     },
     AtlasSlot {
-        scene: SceneType::Freestyle,
+        scene: SceneType::Unknown,
         name: "gp_right_left",
         src_rect: RawRoiRect {
             x: 1342,
@@ -103,7 +103,7 @@ pub const ATLAS_SLOTS: [AtlasSlot; 47] = [
         },
     },
     AtlasSlot {
-        scene: SceneType::Freestyle,
+        scene: SceneType::Unknown,
         name: "gp_right_right",
         src_rect: RawRoiRect {
             x: 1851,
@@ -471,7 +471,7 @@ pub const ATLAS_SLOTS: [AtlasSlot; 47] = [
         },
     },
     AtlasSlot {
-        scene: SceneType::Freestyle,
+        scene: SceneType::Unknown,
         name: "pause_title",
         src_rect: RawRoiRect {
             x: 731,
@@ -901,6 +901,13 @@ mod tests {
         let global_config = GlobalRoiConfig::default();
 
         for slot in &ATLAS_SLOTS {
+            if slot.scene == SceneType::Unknown {
+                let expected = global_config.rois.get(slot.name).unwrap_or_else(|| {
+                    panic!("Global ROI {} not found in GlobalRoiConfig", slot.name)
+                });
+                assert_eq!(slot.src_rect, *expected, "Global src rect mismatch for {}", slot.name);
+                continue;
+            }
             let scene_config = global_config
                 .scenes
                 .get(&slot.scene)

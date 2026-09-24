@@ -148,7 +148,7 @@ impl RoiManager {
                 name, scene,
             );
         }
-        let roi = self.config.scenes.get(&scene)?.rois.get(name)?;
+        let roi = self.config.rois.get(name).or_else(|| self.config.scenes.get(&scene)?.rois.get(name))?;
         Some(self.transform_roi(RoiRect::from(*roi)))
     }
 

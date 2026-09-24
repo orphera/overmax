@@ -173,37 +173,37 @@ impl AtlasTranslator {
                 y2: 511,
             }),
             // [Freestyle]
-            (SceneType::Freestyle, b"gp_center_left") => Some(RoiRect {
+            (SceneType::Unknown, b"gp_center_left") => Some(RoiRect {
                 x1: 0,
                 y1: 0,
                 x2: 7,
                 y2: 257,
             }),
-            (SceneType::Freestyle, b"gp_center_right") => Some(RoiRect {
+            (SceneType::Unknown, b"gp_center_right") => Some(RoiRect {
                 x1: 7,
                 y1: 0,
                 x2: 14,
                 y2: 257,
             }),
-            (SceneType::Freestyle, b"gp_left_left") => Some(RoiRect {
+            (SceneType::Unknown, b"gp_left_left") => Some(RoiRect {
                 x1: 14,
                 y1: 0,
                 x2: 21,
                 y2: 257,
             }),
-            (SceneType::Freestyle, b"gp_left_right") => Some(RoiRect {
+            (SceneType::Unknown, b"gp_left_right") => Some(RoiRect {
                 x1: 21,
                 y1: 0,
                 x2: 28,
                 y2: 257,
             }),
-            (SceneType::Freestyle, b"gp_right_left") => Some(RoiRect {
+            (SceneType::Unknown, b"gp_right_left") => Some(RoiRect {
                 x1: 28,
                 y1: 0,
                 x2: 35,
                 y2: 257,
             }),
-            (SceneType::Freestyle, b"gp_right_right") => Some(RoiRect {
+            (SceneType::Unknown, b"gp_right_right") => Some(RoiRect {
                 x1: 35,
                 y1: 0,
                 x2: 42,
@@ -221,7 +221,7 @@ impl AtlasTranslator {
                 x2: 509,
                 y2: 96,
             }),
-            (SceneType::Freestyle, b"pause_title") => Some(RoiRect {
+            (SceneType::Unknown, b"pause_title") => Some(RoiRect {
                 x1: 311,
                 y1: 320,
                 x2: 459,

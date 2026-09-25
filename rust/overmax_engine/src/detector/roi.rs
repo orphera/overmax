@@ -153,6 +153,12 @@ impl RoiManager {
     }
 
     pub fn get_global_roi(&self, name: &str) -> Option<RoiRect> {
+        if self.is_atlas {
+            return crate::detector::atlas_translator::AtlasTranslator::get_roi_for_scene(
+                name,
+                SceneType::Unknown,
+            );
+        }
         let roi = self.config.rois.get(name)?;
         Some(self.transform_roi(RoiRect::from(*roi)))
     }

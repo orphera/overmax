@@ -53,7 +53,8 @@ pub(crate) fn read_scene(frame: &CapturedFrame, rois: &RoiManager) -> SceneType 
 }
 
 fn roi<'a>(frame: &'a CapturedFrame, rois: &RoiManager, name: &str) -> Option<ImageView<'a>> {
-    rois.get_global_roi(name)?.crop(frame)
+    rois.get_roi_for_scene(name, SceneType::Unknown)?
+        .crop(frame)
 }
 
 fn title_matches(crop: &ImageView<'_>, template: &[u8]) -> bool {

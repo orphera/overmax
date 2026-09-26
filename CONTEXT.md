@@ -128,6 +128,10 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
 - **100% Pure Rust CV 템플릿 매칭 (Windows OCR 완전 제거)**: Windows OCR 및 WinRT COM 의존성을 전면 삭제하고 Pure Rust Native 템플릿 매칭(`detector::templates`)으로 로고 및 씬 판별을 단일화하여 무의미한 OS 의존성과 오버헤드를 완전히 차단했습니다.
 - **동적 ROI 전환**: `RoiManager`가 감지된 씬(`SceneType`)에 따라 최적의 ROI 세트(Freestyle / Online)를 동적으로 전환.
   - `logo` ROI는 씬과 독립적으로 상단 고정 좌표를 가지며, 씬 판별의 트리거 역할을 수행.
+- **씬 독립(Global) ROI**: 특정 씬에 속하지 않는 ROI는 `GlobalRoiConfig.rois`에 위치하며, 아틀라스 모드에서는 `SceneType::Unknown` 스코프로 조회됩니다. `RoiManager::get_global_roi()`가 이 경로를 캡슐화하여 아틀라스/전체 프레임 양쪽을 모두 처리합니다.
+- **인게임(Gameplay/Paused) 씬 판독**: 레인 스트라이프 6개(`gp_*`)와 일시정지 제목(`pause_title`) ROI를 판독하여 인게임 구간을 명시적으로 구분합니다. 정적 씬 파싱보다 먼저 수행하며, 결과/인게임 씬과 동일한 2프레임 commitment를 공유합니다. 판독기는 GPU 아틀라스 프레임(512x512) 또는 전체 프레임(1920x1080) 양쪽 입력을 지원하며, 지원하지 않는 해상도에서는 인게임 히스토리를 즉시 무효화합니다.
+  - 인게임/일시정지 구간에서는 오버레이가 자동으로 숨겨지며, `always_visible` 옵션으로 예외 처리됩니다.
+  - 판독은 매 프레임이 아니라 씬 폴링 주기(0.3~2.0초)에만 수행되며, 인게임 후보 확인을 위해 다음 캡처에서 1회 완화 쿨다운을 적용합니다.
 - **히스테리시스 버퍼**: `HysteresisBuffer`를 통해 선곡 화면 진입/이탈 판정 및 신뢰도(Confidence) 계산.
 
 ## 4. 곡 인식 (Song Recognition)
@@ -148,6 +152,7 @@ Overmax는 DJMAX RESPECT V의 화면을 실시간으로 분석하여, 현재 선
   - 곡 ID, 버튼 모드, 난이도, Rate, Max Combo 전체를 하나의 `PlayContext`로 묶어 관리.
   - `PlayStateDetector`에서 이 전체 필드가 연속으로 N 프레임(기본 3프레임) 동안 완벽히 동일하게 감지될 때만 `GameSessionState.is_stable = true` 상태로 commit.
   - 안정적으로 확정된 상태에 한해서만 로컬 SQLite DB(`cache/record.db`)에 플레이 기록을 자동 upsert 및 저장.
+- **IPC 스냅샷의 씬/컨텍스트 분리**: 인게임 구간(`is_stable = false`)에서도 클라이언트가 현재 상태를 알 수 있도록, IPC 캐시(`IpcSnapshot`)는 `scene`/`stable`/`fullscreen`을 항상 최신 감지 상태로 갱신하고 `context`만 마지막으로 안정화된 곡 정보를 보존합니다. 따라서 `stable=false` 응답에 실려오는 `context`는 현재 곡이 아님을 뜻하며, `ipc-protocol-guide.md`에 이 해석이 명시되어 있습니다.
 
 ---
 

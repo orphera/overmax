@@ -45,7 +45,6 @@ impl Default for GlobalRoiConfig {
                 "btn_mode" => (80, 130, 5, 5),
                 "max_combo_badge" => (409, 585, 36, 36),
                 "diff_panel" => (98, 488, 110, 28),
-
             },
             SceneType::OpenMatch => {
                 "jacket" => (664, 533, 60, 60),
@@ -106,13 +105,69 @@ impl Default for GlobalRoiConfig {
                 height: 100,
             },
             rois: HashMap::from([
-                ("gp_center_left".to_string(), RawRoiRect { x: 702, y: 80, width: 7, height: 257 }),
-                ("gp_center_right".to_string(), RawRoiRect { x: 1211, y: 80, width: 7, height: 257 }),
-                ("gp_left_left".to_string(), RawRoiRect { x: 102, y: 80, width: 7, height: 257 }),
-                ("gp_left_right".to_string(), RawRoiRect { x: 611, y: 80, width: 7, height: 257 }),
-                ("gp_right_left".to_string(), RawRoiRect { x: 1342, y: 80, width: 7, height: 257 }),
-                ("gp_right_right".to_string(), RawRoiRect { x: 1851, y: 80, width: 7, height: 257 }),
-                ("pause_title".to_string(), RawRoiRect { x: 731, y: 177, width: 148, height: 28 }),
+                (
+                    "gp_center_left".to_string(),
+                    RawRoiRect {
+                        x: 702,
+                        y: 80,
+                        width: 7,
+                        height: 257,
+                    },
+                ),
+                (
+                    "gp_center_right".to_string(),
+                    RawRoiRect {
+                        x: 1211,
+                        y: 80,
+                        width: 7,
+                        height: 257,
+                    },
+                ),
+                (
+                    "gp_left_left".to_string(),
+                    RawRoiRect {
+                        x: 102,
+                        y: 80,
+                        width: 7,
+                        height: 257,
+                    },
+                ),
+                (
+                    "gp_left_right".to_string(),
+                    RawRoiRect {
+                        x: 611,
+                        y: 80,
+                        width: 7,
+                        height: 257,
+                    },
+                ),
+                (
+                    "gp_right_left".to_string(),
+                    RawRoiRect {
+                        x: 1342,
+                        y: 80,
+                        width: 7,
+                        height: 257,
+                    },
+                ),
+                (
+                    "gp_right_right".to_string(),
+                    RawRoiRect {
+                        x: 1851,
+                        y: 80,
+                        width: 7,
+                        height: 257,
+                    },
+                ),
+                (
+                    "pause_title".to_string(),
+                    RawRoiRect {
+                        x: 731,
+                        y: 177,
+                        width: 148,
+                        height: 28,
+                    },
+                ),
             ]),
             scenes,
         }

@@ -905,7 +905,11 @@ mod tests {
                 let expected = global_config.rois.get(slot.name).unwrap_or_else(|| {
                     panic!("Global ROI {} not found in GlobalRoiConfig", slot.name)
                 });
-                assert_eq!(slot.src_rect, *expected, "Global src rect mismatch for {}", slot.name);
+                assert_eq!(
+                    slot.src_rect, *expected,
+                    "Global src rect mismatch for {}",
+                    slot.name
+                );
                 continue;
             }
             let scene_config = global_config

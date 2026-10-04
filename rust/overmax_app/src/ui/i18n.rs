@@ -586,9 +586,9 @@ macro_rules! t {
     };
     ("settings-auto-upload-desc") => {
         $crate::t_select!(
-            Ko => "V-Archive 기록보다 Rate가 높거나 MAX COMBO를 새로 달성한 기록을, 값이 더 이상 바뀌지 않으면 자동으로 업로드합니다. 대기를 즉시로 하면 결과창 연출 중 여러 번 업로드될 수 있습니다.",
-            En => "Records that beat your V-Archive Rate or newly achieve MAX COMBO are uploaded automatically once they stop changing. With Instant, several uploads may happen during the result animation.",
-            Ja => "V-Archiveの記録よりRateが高い、またはMAX COMBOを新たに達成した記録を、値が変わらなくなった時点で自動アップロードします。即時にするとリザルト演出中に複数回アップロードされる場合があります。"
+            Ko => "V-Archive 기록보다 Rate가 높거나 MAX COMBO를 새로 달성한 기록을, 값이 더 이상 바뀌지 않으면 자동으로 업로드합니다. 즉시로 해도 결과창에서는 MAX COMBO 표시를 최대 3초 기다립니다.",
+            En => "Records that beat your V-Archive Rate or newly achieve MAX COMBO are uploaded automatically once they stop changing. Even with Instant, the result screen waits up to 3 s for the MAX COMBO mark.",
+            Ja => "V-Archiveの記録よりRateが高い、またはMAX COMBOを新たに達成した記録を、値が変わらなくなった時点で自動アップロードします。即時でもリザルト画面ではMAX COMBO表示を最大3秒待ちます。"
         )
     };
     ("settings-auto-upload-hint") => {

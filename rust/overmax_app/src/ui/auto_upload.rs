@@ -3,12 +3,29 @@
 //! 안정(stable) 확정된 기록 값이 `delay` 동안 변하지 않으면 업로드 대상으로 내보낸다.
 //! 값(곡/모드/난이도/Rate/MAX COMBO)이 바뀌거나 안정 상태가 깨지면 타이머를 처음부터 다시 센다.
 //! 결과창에서 대기 중이던 값은 결과창을 벗어나는 즉시 내보내고(flush), 선곡창에서는 취소한다.
+//! 즉시 모드(`delay_sec == 0`)의 결과창은 MAX COMBO 확정 전까지 최대 3초 기다린다.
 //!
 //! 시간은 호출자가 주입하므로 egui/네트워크 없이 단위 테스트할 수 있다.
 
 use overmax_core::{PlayContext, SceneType};
 use overmax_data::{AutoUploadScope, VArchiveAutoUploadSettings};
 use std::time::{Duration, Instant};
+
+/// 즉시 모드라도 결과창에서는 MAX COMBO 표시가 Rate 카운트업 뒤에 찍히므로,
+/// MAX COMBO가 확정되지 않은 값은 이 시간만큼 더 기다린다.
+const RESULT_MAX_COMBO_WAIT: Duration = Duration::from_secs(3);
+
+fn effective_delay(
+    settings: &VArchiveAutoUploadSettings,
+    is_result: bool,
+    ctx: &PlayContext,
+) -> Duration {
+    if settings.delay_sec == 0 && is_result && !ctx.is_max_combo {
+        RESULT_MAX_COMBO_WAIT
+    } else {
+        Duration::from_secs(settings.delay_sec)
+    }
+}
 
 /// 한 프레임의 관측값.
 pub(crate) struct AutoUploadObservation<'a> {
@@ -73,7 +90,7 @@ impl AutoUploadScheduler {
                     snapshot: ctx.clone(),
                     is_result,
                     since: now,
-                    delay: Duration::from_secs(settings.delay_sec),
+                    delay: effective_delay(settings, is_result, ctx),
                 });
             }
             (None, _) => {
@@ -283,14 +300,72 @@ mod tests {
     }
 
     #[test]
-    fn zero_delay_fires_immediately() {
+    fn zero_delay_fires_immediately_on_song_select() {
         let mut s = AutoUploadScheduler::default();
-        let cfg = settings(AutoUploadScope::ResultOnly, 0);
+        let cfg = settings(AutoUploadScope::SelectAndResult, 0);
         let c = ctx(1, 99.0, false);
 
         assert_eq!(
-            s.tick(Instant::now(), &obs(RESULT, Some(&c)), &cfg),
+            s.tick(Instant::now(), &obs(SELECT, Some(&c)), &cfg),
             Some(c)
+        );
+    }
+
+    #[test]
+    fn zero_delay_on_result_waits_for_max_combo() {
+        let mut s = AutoUploadScheduler::default();
+        let cfg = settings(AutoUploadScope::ResultOnly, 0);
+        let t0 = Instant::now();
+        let c = ctx(1, 99.0, false);
+
+        assert_eq!(s.tick(t0, &obs(RESULT, Some(&c)), &cfg), None);
+        assert_eq!(
+            s.tick(
+                t0 + Duration::from_millis(2900),
+                &obs(RESULT, Some(&c)),
+                &cfg
+            ),
+            None
+        );
+        // MAX COMBO가 끝내 찍히지 않으면 3초 뒤 업로드한다.
+        assert_eq!(
+            s.tick(t0 + Duration::from_secs(3), &obs(RESULT, Some(&c)), &cfg),
+            Some(c)
+        );
+    }
+
+    #[test]
+    fn zero_delay_on_result_uploads_once_max_combo_is_confirmed() {
+        let mut s = AutoUploadScheduler::default();
+        let cfg = settings(AutoUploadScope::ResultOnly, 0);
+        let t0 = Instant::now();
+
+        assert_eq!(
+            s.tick(t0, &obs(RESULT, Some(&ctx(1, 99.0, false))), &cfg),
+            None
+        );
+        let mc = ctx(1, 99.0, true);
+        assert_eq!(
+            s.tick(t0 + Duration::from_secs(1), &obs(RESULT, Some(&mc)), &cfg),
+            Some(mc.clone())
+        );
+        assert_eq!(
+            s.tick(t0 + Duration::from_secs(5), &obs(RESULT, Some(&mc)), &cfg),
+            None
+        );
+    }
+
+    #[test]
+    fn three_second_delay_on_result_is_unchanged_by_max_combo() {
+        let mut s = AutoUploadScheduler::default();
+        let cfg = settings(AutoUploadScope::ResultOnly, 3);
+        let t0 = Instant::now();
+        let mc = ctx(1, 99.0, true);
+
+        assert_eq!(s.tick(t0, &obs(RESULT, Some(&mc)), &cfg), None);
+        assert_eq!(
+            s.tick(t0 + Duration::from_secs(3), &obs(RESULT, Some(&mc)), &cfg),
+            Some(mc)
         );
     }
 

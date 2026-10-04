@@ -524,6 +524,20 @@ fn choice_row<T: Copy>(
             ui.style_mut().spacing.item_spacing.x = DialogTheme::GAP_XS;
             ui.spacing_mut().button_padding = egui::vec2(8.0, 4.0);
 
+            // 라벨 길이가 달라도 버튼 폭을 통일한다 (최소 84px).
+            let font = egui::FontId::proportional(DialogTheme::FONT_BODY);
+            let width = options
+                .iter()
+                .map(|(text, _)| {
+                    ui.painter()
+                        .layout_no_wrap(text.to_string(), font.clone(), Color32::WHITE)
+                        .size()
+                        .x
+                })
+                .fold(84.0_f32, |acc, w| {
+                    acc.max(w + 2.0 * ui.spacing().button_padding.x + 4.0)
+                });
+
             for (text, value) in options {
                 let btn =
                     egui::Button::new(RichText::new(*text).size(DialogTheme::FONT_BODY).strong())
@@ -537,7 +551,7 @@ fn choice_row<T: Copy>(
                         .wrap_mode(egui::TextWrapMode::Extend);
 
                 if ui
-                    .add_sized(egui::vec2(84.0, DialogTheme::CONTROL_HEIGHT), btn)
+                    .add_sized(egui::vec2(width, DialogTheme::CONTROL_HEIGHT), btn)
                     .clicked()
                 {
                     on_select(*value);

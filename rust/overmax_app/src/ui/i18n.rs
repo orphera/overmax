@@ -584,11 +584,18 @@ macro_rules! t {
             Ja => "記録の自動アップロード"
         )
     };
+    ("settings-auto-upload-desc") => {
+        $crate::t_select!(
+            Ko => "V-Archive 기록보다 Rate가 높거나 MAX COMBO를 새로 달성한 기록을, 값이 더 이상 바뀌지 않으면 자동으로 업로드합니다. 대기를 즉시로 하면 결과창 연출 중 여러 번 업로드될 수 있습니다.",
+            En => "Records that beat your V-Archive Rate or newly achieve MAX COMBO are uploaded automatically once they stop changing. With Instant, several uploads may happen during the result animation.",
+            Ja => "V-Archiveの記録よりRateが高い、またはMAX COMBOを新たに達成した記録を、値が変わらなくなった時点で自動アップロードします。即時にするとリザルト演出中に複数回アップロードされる場合があります。"
+        )
+    };
     ("settings-auto-upload-hint") => {
         $crate::t_select!(
-            Ko => "V-Archive 기록보다 Rate가 높거나 MAX COMBO를 새로 달성했을 때만 업로드합니다",
-            En => "Uploads only when the Rate beats your V-Archive record or a new MAX COMBO is achieved",
-            Ja => "V-Archiveの記録よりRateが高いか、MAX COMBOを新たに達成した場合のみアップロードします"
+            Ko => "V-Archive 기록 경신 시 자동 업로드",
+            En => "Upload new bests automatically",
+            Ja => "記録更新時に自動アップロード"
         )
     };
     ("settings-auto-upload-scope") => {
@@ -600,9 +607,9 @@ macro_rules! t {
     };
     ("settings-auto-upload-scope-hint") => {
         $crate::t_select!(
-            Ko => "선곡 화면에서는 대기 중에 커서를 옮기면 업로드가 취소됩니다",
-            En => "On song select, moving the cursor while waiting cancels the upload",
-            Ja => "選曲画面では、待機中にカーソルを動かすとアップロードがキャンセルされます"
+            Ko => "선곡창은 커서를 옮기면 취소",
+            En => "Song select: cursor move cancels",
+            Ja => "選曲画面はカーソル移動で取消"
         )
     };
     ("settings-auto-upload-scope-result") => {
@@ -628,9 +635,9 @@ macro_rules! t {
     };
     ("settings-auto-upload-delay-hint") => {
         $crate::t_select!(
-            Ko => "기록 값이 더 이상 바뀌지 않은 시점부터 셉니다. 즉시를 고르면 결과창 연출 중 여러 번 업로드될 수 있습니다",
-            En => "Counted from when the record stops changing. Instant may upload several times during the result animation",
-            Ja => "記録の値が変わらなくなった時点から数えます。即時を選ぶとリザルト演出中に複数回アップロードされる場合があります"
+            Ko => "기록 값이 멈춘 뒤부터 계산",
+            En => "Counted after the record settles",
+            Ja => "記録の確定後から計測"
         )
     };
     ("settings-auto-upload-delay-immediate") => {

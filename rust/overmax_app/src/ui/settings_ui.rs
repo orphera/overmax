@@ -439,6 +439,14 @@ fn auto_upload_rows(ui: &mut egui::Ui, draft: &mut Value) {
         .as_object_mut()
         .expect("auto_upload must be verified as a JSON Object");
 
+    // 긴 안내는 줄바꿈되는 문단으로 두고, 행 힌트는 짧게 유지해 우측 컨트롤과 겹치지 않게 한다.
+    ui.label(
+        RichText::new(crate::t!("settings-auto-upload-desc"))
+            .color(DialogTheme::TEXT_MUTED)
+            .size(DialogTheme::FONT_HINT),
+    );
+    ui.add_space(DialogTheme::GAP_SM);
+
     let mut enabled = auto
         .get("enabled")
         .and_then(Value::as_bool)

@@ -13,6 +13,11 @@ pub enum Locale {
 
 static CURRENT_LOCALE: AtomicU8 = AtomicU8::new(0);
 
+/// `CURRENT_LOCALE` 은 프로세스 전역이고 cargo test 는 테스트를 병렬 스레드로 돌린다.
+/// 로케일을 바꾸거나 로케일에 의존해 단언하는 테스트는 모두 이 락을 잡아야 한다.
+#[cfg(test)]
+pub(crate) static LOCALE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub fn set_locale(locale: Locale) {
     let code = match locale {
         Locale::Ko => 0,
@@ -1216,11 +1221,9 @@ mod tests {
     use super::*;
     use overmax_data::community::sheet_meta::{AssistMeta, GoldMeta};
 
-    static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
     #[test]
     fn test_zero_cost_i18n_translation_and_locale_switch() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = LOCALE_TEST_LOCK.lock().unwrap();
         set_locale(Locale::Ko);
         assert_eq!(t!("settings-title"), "설정");
         assert_eq!(t!("candidate-count", n = 3), "후보 3건");
@@ -1278,7 +1281,7 @@ mod tests {
 
     #[test]
     fn test_resolve_locale_explicit_and_auto() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = LOCALE_TEST_LOCK.lock().unwrap();
         assert_eq!(resolve_locale(Some("ko")), Locale::Ko);
         assert_eq!(resolve_locale(Some("en")), Locale::En);
         assert_eq!(resolve_locale(Some("ja")), Locale::Ja);

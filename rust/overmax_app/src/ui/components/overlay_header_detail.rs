@@ -340,7 +340,9 @@ mod tests {
 
     #[test]
     fn collects_sheet_meta_correctly() {
-        use crate::ui::i18n::{set_locale, Locale};
+        use crate::ui::i18n::{set_locale, Locale, LOCALE_TEST_LOCK};
+
+        let _guard = LOCALE_TEST_LOCK.lock().unwrap();
 
         let state = GameSessionState {
             scene: overmax_core::SceneType::Unknown,

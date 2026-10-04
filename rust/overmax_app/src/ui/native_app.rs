@@ -1,6 +1,6 @@
 //! Single `eframe` app: overlay + deferred debug / settings / sync viewports.
 
-use overmax_core::{Changed, GameSessionState};
+use overmax_core::{Changed, GameSessionState, PlayContext};
 use overmax_data::{
     build_candidates, load_base_settings_from_paths, load_merged_settings_from_paths,
     normalize_settings, AppPaths, PatternSheetMeta, RecommendResult, Recommender, RecordDB,
@@ -882,9 +882,14 @@ impl NativeApp {
     }
 
     pub(crate) fn current_pattern_needs_upload(&self) -> bool {
-        let Some(ctx) = &self.session.context else {
-            return false;
-        };
+        self.session
+            .context
+            .as_ref()
+            .is_some_and(|ctx| self.pattern_needs_upload(ctx))
+    }
+
+    /// `ctx` 기록이 V-Archive 기록보다 나은지(Rate +0.01 이상 또는 MAX COMBO 신규 달성) 판단한다.
+    pub(crate) fn pattern_needs_upload(&self, ctx: &PlayContext) -> bool {
         let song_id = ctx.song_id;
         let mode = ctx.mode;
         let diff = ctx.diff;
@@ -912,9 +917,13 @@ impl NativeApp {
     }
 
     pub(crate) fn upload_current_pattern(&self, ctx: egui::Context) {
-        let Some(session_ctx) = &self.session.context else {
-            return;
-        };
+        if let Some(session_ctx) = &self.session.context {
+            self.upload_pattern(session_ctx, ctx);
+        }
+    }
+
+    /// `session_ctx` 기록을 로컬 최고 기록과 합쳐 V-Archive에 단일 패턴 업로드한다.
+    pub(crate) fn upload_pattern(&self, session_ctx: &PlayContext, ctx: egui::Context) {
         let song_id = session_ctx.song_id;
         let mode = session_ctx.mode;
         let diff = session_ctx.diff;

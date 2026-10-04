@@ -1,4 +1,5 @@
 use crate::t;
+use crate::ui::components::FadeClippedLabel;
 use crate::ui::overlay_recommend_ui::PatternTabInfo;
 use crate::ui::overlay_theme::Theme;
 use eframe::egui::{self, Color32, FontId, Rect, Vec2};
@@ -6,6 +7,8 @@ use overmax_core::{GameSessionState, RecordValue};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ToastMessage {
+    /// 알림 대상 곡명. 길면 끝을 흐리게 잘라 `text` 를 항상 보이게 한다.
+    pub subject: Option<String>,
     pub text: String,
     pub is_success: bool,
     pub expires_at: std::time::Instant,
@@ -195,6 +198,60 @@ impl<'a> OverlayHeaderDetail<'a> {
     }
 
     // 3. 수집된 세그먼트와 메타 목록을 레이아웃에 맞춰 그림
+    /// `[subject] [text]` 를 한 줄 가운데 정렬로 그린다. 폭이 모자라면 subject 만 잘린다.
+    fn draw_toast(&self, ui: &mut egui::Ui, rect: Rect, toast: &ToastMessage) {
+        let font_toast = FontId::proportional(10.0 * self.scale);
+        let text_color = if toast.is_success {
+            Theme::OK
+        } else {
+            Theme::RED
+        };
+
+        let Some(subject) = toast.subject.as_deref() else {
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                &toast.text,
+                font_toast,
+                text_color,
+            );
+            return;
+        };
+
+        let measure = |text: &str| {
+            ui.painter()
+                .layout_no_wrap(text.to_string(), font_toast.clone(), Color32::WHITE)
+                .size()
+                .x
+        };
+        let gap = 6.0 * self.scale;
+        let text_w = measure(&toast.text);
+        let subject_w = measure(subject).min((rect.width() - gap - text_w).max(0.0));
+        let total_w = subject_w + gap + text_w;
+        let left = (rect.center().x - total_w / 2.0).max(rect.min.x);
+
+        let subject_rect = Rect::from_min_size(
+            egui::pos2(left, rect.min.y),
+            Vec2::new(subject_w, rect.height()),
+        );
+        ui.put(
+            subject_rect,
+            FadeClippedLabel::new(subject)
+                .font(font_toast.clone())
+                .color(Theme::TEXT_PRIMARY)
+                .max_width(subject_w)
+                .bg_color(Theme::PANEL_BG)
+                .scale(self.scale),
+        );
+        ui.painter().text(
+            egui::pos2(left + subject_w + gap, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            &toast.text,
+            font_toast,
+            text_color,
+        );
+    }
+
     fn draw_layout(
         &self,
         ui: &mut egui::Ui,
@@ -288,19 +345,7 @@ impl<'a> egui::Widget for OverlayHeaderDetail<'a> {
 
         if ui.is_rect_visible(rect) {
             if let Some(toast) = self.toast {
-                let font_toast = FontId::proportional(10.0 * self.scale);
-                let text_color = if toast.is_success {
-                    Theme::OK
-                } else {
-                    Theme::RED
-                };
-                ui.painter().text(
-                    rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    &toast.text,
-                    font_toast,
-                    text_color,
-                );
+                self.draw_toast(ui, rect, toast);
             } else {
                 let mut record_segments = self.collect_record_segments();
                 let meta_list = self.collect_pattern_meta();

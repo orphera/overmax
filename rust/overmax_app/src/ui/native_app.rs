@@ -665,6 +665,14 @@ impl NativeApp {
         }
     }
 
+    /// 업로드 알림/로그에 쓰는 곡명 (곡 DB에 없으면 `#곡ID`).
+    fn upload_song_name(&self, song_id: i32) -> String {
+        self.varchive_db
+            .search_by_id(song_id)
+            .map(|song| song.name.to_string())
+            .unwrap_or_else(|| format!("#{song_id}"))
+    }
+
     pub(crate) fn drain_upload_results(&mut self) {
         let mut refreshed = false;
         while let Ok((key, is_quick_upload, status, msg)) =
@@ -680,13 +688,14 @@ impl NativeApp {
                 }
             }
             if is_quick_upload || !matched_candidate {
-                let toast_text = if success {
+                let result_text = if success {
                     format!("V-Archive: {}", msg)
                 } else {
                     crate::t!("status-varchive-failed-toast", error = &msg)
                 };
                 self.toast = Some(crate::ui::components::ToastMessage {
-                    text: toast_text,
+                    subject: Some(self.upload_song_name(key.0)),
+                    text: format!("{} {} · {}", key.1, key.2, result_text),
                     is_success: success,
                     expires_at: std::time::Instant::now() + std::time::Duration::from_secs(3),
                 });

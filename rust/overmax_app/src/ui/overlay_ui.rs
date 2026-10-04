@@ -86,6 +86,8 @@ pub struct OverlayProps<'a> {
     pub scale: f32,
     pub opacity: f32,
     pub varchive_upload_needed: bool,
+    /// 자동 업로드 대기 진행률 (0.0..=1.0). 대기 중이 아니면 `None`.
+    pub varchive_upload_progress: Option<f32>,
     pub varchive_account_configured: bool,
     pub lite_mode: bool,
     pub is_snap_manual: bool,
@@ -129,6 +131,7 @@ pub fn draw_overlay_panel(ui: &mut egui::Ui, props: &OverlayProps) -> OverlayAct
             )
             .sync_open(&props.sync_open)
             .varchive_upload_needed(props.varchive_upload_needed)
+            .varchive_upload_progress(props.varchive_upload_progress)
             .varchive_account_configured(props.varchive_account_configured)
             .is_snap_manual(props.is_snap_manual)
             .session_initial_record(props.session_initial_record)

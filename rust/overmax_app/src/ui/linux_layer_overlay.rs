@@ -77,6 +77,7 @@ pub struct LinuxOverlaySnapshot {
     pub scale: f32,
     pub opacity: f32,
     pub varchive_upload_needed: bool,
+    pub varchive_upload_progress: Option<f32>,
     pub varchive_account_configured: bool,
     pub lite_mode: bool,
     pub always_visible: bool,
@@ -212,6 +213,7 @@ fn same_display_snapshot(
         && previous.scale == next.scale
         && previous.opacity == next.opacity
         && previous.varchive_upload_needed == next.varchive_upload_needed
+        && previous.varchive_upload_progress == next.varchive_upload_progress
         && previous.varchive_account_configured == next.varchive_account_configured
         && previous.lite_mode == next.lite_mode
         && previous.always_visible == next.always_visible
@@ -1402,6 +1404,7 @@ fn overlay_props(snapshot: &LinuxOverlaySnapshot) -> OverlayProps<'_> {
         scale: snapshot.scale,
         opacity: snapshot.opacity,
         varchive_upload_needed: snapshot.varchive_upload_needed,
+        varchive_upload_progress: snapshot.varchive_upload_progress,
         varchive_account_configured: snapshot.varchive_account_configured,
         lite_mode: snapshot.lite_mode,
         is_snap_manual: uses_manual_position(snapshot),
@@ -2148,6 +2151,7 @@ mod tests {
             scale: 1.0,
             opacity: 0.8,
             varchive_upload_needed: false,
+            varchive_upload_progress: None,
             varchive_account_configured: false,
             lite_mode: false,
             always_visible: false,

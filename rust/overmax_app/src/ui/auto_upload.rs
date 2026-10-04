@@ -23,6 +23,7 @@ struct Pending {
     snapshot: PlayContext,
     is_result: bool,
     since: Instant,
+    delay: Duration,
 }
 
 #[derive(Default)]
@@ -72,6 +73,7 @@ impl AutoUploadScheduler {
                     snapshot: ctx.clone(),
                     is_result,
                     since: now,
+                    delay: Duration::from_secs(settings.delay_sec),
                 });
             }
             (None, _) => {
@@ -80,15 +82,24 @@ impl AutoUploadScheduler {
             }
         }
 
-        let delay = Duration::from_secs(settings.delay_sec);
         let due = self
             .pending
             .as_ref()
-            .is_some_and(|p| now.duration_since(p.since) >= delay);
+            .is_some_and(|p| now.duration_since(p.since) >= p.delay);
         if due {
             return self.pending.take().map(|p| self.fire(p.snapshot));
         }
         None
+    }
+
+    /// 대기 진행률 (0.0..=1.0). 대기 중이 아니면 `None`.
+    pub(crate) fn progress(&self, now: Instant) -> Option<f32> {
+        let p = self.pending.as_ref()?;
+        if p.delay.is_zero() {
+            return Some(1.0);
+        }
+        let ratio = now.duration_since(p.since).as_secs_f32() / p.delay.as_secs_f32();
+        Some(ratio.clamp(0.0, 1.0))
     }
 
     pub(crate) fn is_pending(&self) -> bool {
@@ -298,5 +309,19 @@ mod tests {
 
         let disabled = VArchiveAutoUploadSettings::default();
         assert_eq!(s.tick(t0, &obs(RESULT, Some(&c)), &disabled), None);
+    }
+
+    #[test]
+    fn progress_reports_fill_ratio() {
+        let mut s = AutoUploadScheduler::default();
+        let cfg = settings(AutoUploadScope::ResultOnly, 3);
+        let t0 = Instant::now();
+        let c = ctx(1, 98.0, false);
+
+        assert_eq!(s.progress(t0), None);
+        s.tick(t0, &obs(RESULT, Some(&c)), &cfg);
+        let p = s.progress(t0 + Duration::from_millis(1500)).unwrap();
+        assert!((p - 0.5).abs() < 1e-3);
+        assert_eq!(s.progress(t0 + Duration::from_secs(9)), Some(1.0));
     }
 }

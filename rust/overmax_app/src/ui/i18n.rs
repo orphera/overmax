@@ -577,6 +577,76 @@ macro_rules! t {
             Ja => "プレイ記録をV-Archiveへアップロードするための設定です。"
         )
     };
+    ("settings-auto-upload") => {
+        $crate::t_select!(
+            Ko => "기록 자동 업로드",
+            En => "Auto-upload records",
+            Ja => "記録の自動アップロード"
+        )
+    };
+    ("settings-auto-upload-hint") => {
+        $crate::t_select!(
+            Ko => "V-Archive 기록보다 Rate가 높거나 MAX COMBO를 새로 달성했을 때만 업로드합니다",
+            En => "Uploads only when the Rate beats your V-Archive record or a new MAX COMBO is achieved",
+            Ja => "V-Archiveの記録よりRateが高いか、MAX COMBOを新たに達成した場合のみアップロードします"
+        )
+    };
+    ("settings-auto-upload-scope") => {
+        $crate::t_select!(
+            Ko => "업로드 화면",
+            En => "Upload on",
+            Ja => "アップロード画面"
+        )
+    };
+    ("settings-auto-upload-scope-hint") => {
+        $crate::t_select!(
+            Ko => "선곡 화면에서는 대기 중에 커서를 옮기면 업로드가 취소됩니다",
+            En => "On song select, moving the cursor while waiting cancels the upload",
+            Ja => "選曲画面では、待機中にカーソルを動かすとアップロードがキャンセルされます"
+        )
+    };
+    ("settings-auto-upload-scope-result") => {
+        $crate::t_select!(
+            Ko => "결과창만",
+            En => "Results only",
+            Ja => "リザルトのみ"
+        )
+    };
+    ("settings-auto-upload-scope-select") => {
+        $crate::t_select!(
+            Ko => "선곡+결과창",
+            En => "Select + Results",
+            Ja => "選曲+リザルト"
+        )
+    };
+    ("settings-auto-upload-delay") => {
+        $crate::t_select!(
+            Ko => "업로드 대기",
+            En => "Upload delay",
+            Ja => "アップロード待機"
+        )
+    };
+    ("settings-auto-upload-delay-hint") => {
+        $crate::t_select!(
+            Ko => "기록 값이 더 이상 바뀌지 않은 시점부터 셉니다. 즉시를 고르면 결과창 연출 중 여러 번 업로드될 수 있습니다",
+            En => "Counted from when the record stops changing. Instant may upload several times during the result animation",
+            Ja => "記録の値が変わらなくなった時点から数えます。即時を選ぶとリザルト演出中に複数回アップロードされる場合があります"
+        )
+    };
+    ("settings-auto-upload-delay-immediate") => {
+        $crate::t_select!(
+            Ko => "즉시",
+            En => "Instant",
+            Ja => "即時"
+        )
+    };
+    ("settings-auto-upload-delay-3s") => {
+        $crate::t_select!(
+            Ko => "3초",
+            En => "3 s",
+            Ja => "3秒"
+        )
+    };
     ("sync-refresh") => {
         $crate::t_select!(
             Ko => "새로고침",

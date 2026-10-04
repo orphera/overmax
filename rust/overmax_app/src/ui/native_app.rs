@@ -292,6 +292,7 @@ pub struct NativeApp {
     /// 입력(`session.context` 의 rate/is_max_combo, `record_manager` 상태)이 바뀌는
     /// 모든 경로가 `refresh_overlay_data` 를 거치므로 그 안에서 갱신한다.
     pub(crate) overlay_upload_needed: bool,
+    pub(crate) auto_upload: crate::ui::auto_upload::AutoUploadScheduler,
     pub(crate) platform: platform::PlatformState,
     pub(crate) toast: Option<crate::ui::components::ToastMessage>,
     pub(crate) last_detection_output: Option<DetectionOutput>,
@@ -543,6 +544,7 @@ impl NativeApp {
             ctx_holder: ctx_holder.clone(),
             session_initial_record: None,
             overlay_upload_needed: false,
+            auto_upload: Default::default(),
             platform,
             toast: None,
             last_detection_output: None,
@@ -913,6 +915,53 @@ impl NativeApp {
             }
             (Some((l_rate, _)), None) => l_rate > 0.0,
             _ => false,
+        }
+    }
+
+    /// 자동 업로드 스케줄러를 한 프레임 진행하고, 대기가 끝난 값을 업로드한다.
+    pub(crate) fn tick_auto_upload(&mut self, ctx: &egui::Context) {
+        let stable_context = self
+            .session
+            .context
+            .as_ref()
+            .filter(|_| self.session.is_stable);
+        // 대기 중이 아니고 업로드 후보도 없으면 설정 조회 없이 빠져나간다.
+        let has_candidate = stable_context.is_some() && self.overlay_upload_needed;
+        if !(self.auto_upload.is_pending() || has_candidate) {
+            return;
+        }
+
+        let settings = self.settings.get_merged().varchive().auto_upload;
+        let obs = crate::ui::auto_upload::AutoUploadObservation {
+            scene: self.session.scene,
+            stable_context,
+            eligible: self.overlay_upload_needed && self.is_varchive_account_configured(),
+        };
+        let fired = self
+            .auto_upload
+            .tick(std::time::Instant::now(), &obs, &settings);
+
+        // 결과창 이탈 flush 는 현재 세션이 아닌 스냅샷 기준이므로 업로드 조건을 다시 확인한다.
+        if let Some(snapshot) =
+            fired.filter(|s| self.pattern_needs_upload(s) && self.is_varchive_account_configured())
+        {
+            debug_ui::push_log(
+                &self.debug_state.log_lines,
+                self.max_log_lines(),
+                format!(
+                    "[VArchive] 자동 업로드: {}, {}, {}, {:.2}%, MaxCombo: {}",
+                    snapshot.song_id,
+                    snapshot.mode,
+                    snapshot.diff,
+                    snapshot.rate,
+                    snapshot.is_max_combo
+                ),
+            );
+            self.upload_pattern(&snapshot, ctx.clone());
+        }
+
+        if self.auto_upload.is_pending() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(33));
         }
     }
 

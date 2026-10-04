@@ -660,6 +660,7 @@ impl NativeApp {
         self.poll_startup_cache();
         self.drain_sync_scan();
         self.drain_upload_results();
+        self.tick_auto_upload(ctx);
         self.drain_fetch_results();
         self.poll_delete_requests(ctx);
         self.drain_game_found_refresh_steam();

@@ -679,6 +679,24 @@ impl NativeApp {
             self.sync_channels.upload_res_rx.try_recv()
         {
             let success = status == "success";
+            let (rate, mc) = self
+                .record_manager
+                .get_local_record(key.0, key.1, key.2)
+                .unwrap_or((0.0, false));
+            debug_ui::push_log(
+                &self.debug_state.log_lines,
+                self.max_log_lines(),
+                format!(
+                    "[VArchive] 업로드 {}: {} {} {} {:.2}% MaxCombo: {} - {}",
+                    if success { "성공" } else { "실패" },
+                    self.upload_song_name(key.0),
+                    key.1,
+                    key.2,
+                    rate,
+                    mc,
+                    msg
+                ),
+            );
             let mut matched_candidate = false;
             if let Ok(mut list) = self.sync_state.candidates.lock() {
                 if let Some(c) = list.iter_mut().find(|item| item.matches_key(&key)) {
@@ -958,8 +976,8 @@ impl NativeApp {
                 &self.debug_state.log_lines,
                 self.max_log_lines(),
                 format!(
-                    "[VArchive] 자동 업로드: {}, {}, {}, {:.2}%, MaxCombo: {}",
-                    snapshot.song_id,
+                    "[VArchive] 자동 업로드 시작: {}, {}, {}, {:.2}%, MaxCombo: {}",
+                    self.upload_song_name(snapshot.song_id),
                     snapshot.mode,
                     snapshot.diff,
                     snapshot.rate,

@@ -88,10 +88,6 @@ impl NativeApp {
 
         if changed {
             self.refresh_overlay_data();
-            // 이 함수의 입력(세션 컨텍스트 rate/is_max_combo, record_manager 상태)은
-            // 위 루프에서만 변한다. 오버레이 렌더 경로가 매 프레임 DB 조회를
-            // 반복하지 않도록 여기서 1회만 계산해 캐시한다.
-            self.overlay_upload_needed = self.current_pattern_needs_upload();
             if let Ok(recs) = serde_json::to_value(&self.recommendations) {
                 crate::system::ipc_server::update_latest_recommendations(recs);
             }
@@ -173,6 +169,10 @@ impl NativeApp {
     pub(crate) fn refresh_overlay_data(&mut self) {
         self.pattern_tabs = self.pattern_tabs_for_state(&self.session);
         self.recommendations = self.recommend_for_state(&self.session);
+        // 업로드 필요 여부의 입력(세션 컨텍스트, record_manager 상태)이 바뀌는 모든
+        // 경로(감지 결과, 업로드 결과, V-Archive 조회, Steam 세션 전환 등)가 이 함수를
+        // 거치므로 여기서 1회 계산해 캐시한다. 렌더 경로는 필드만 참조한다.
+        self.overlay_upload_needed = self.current_pattern_needs_upload();
     }
 
     fn recommend_for_state(&self, state: &GameSessionState) -> RecommendResult {

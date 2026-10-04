@@ -22,10 +22,10 @@ pub use config::paths::{
 pub use config::settings::{
     diff_settings, load_base_settings, load_base_settings_from_paths, load_merged_settings,
     load_merged_settings_from_paths, merge_settings_layers, normalize_settings, save_user_settings,
-    save_user_settings_to_path, AppUpdateSettings, DebugWindowSettings, JacketMatcherSettings,
-    OverlayPosition, OverlaySettings, RecommendProviderSettings, RecommendSettings,
-    ScreenCaptureSettings, Settings, SettingsPaths, SyncFilterSettings, VArchiveSettings,
-    VArchiveUserMap, WindowTrackerSettings,
+    save_user_settings_to_path, AppUpdateSettings, AutoUploadScope, DebugWindowSettings,
+    JacketMatcherSettings, OverlayPosition, OverlaySettings, RecommendProviderSettings,
+    RecommendSettings, ScreenCaptureSettings, Settings, SettingsPaths, SyncFilterSettings,
+    VArchiveAutoUploadSettings, VArchiveSettings, VArchiveUserMap, WindowTrackerSettings,
 };
 pub use overmax_core::{RecordKey, RecordValue};
 pub use service::jacket_matcher::{JacketMatcher, JacketMatcherConfig};

@@ -99,6 +99,7 @@ fn empty_object() -> Value {
 
 const ALLOWED_SCALES: &[f64] = &[0.75, 1.0, 1.25, 1.5];
 pub const ALLOWED_TARGET_RATES: &[f64] = &[97.0, 99.0, 99.5, 100.0];
+pub const ALLOWED_AUTO_UPLOAD_DELAYS: &[u64] = &[0, 3];
 
 pub fn normalize_settings(settings: &mut Value) {
     let Value::Object(map) = settings else { return };
@@ -166,6 +167,36 @@ pub fn normalize_settings(settings: &mut Value) {
                     new_val.insert("account_path".to_string(), json!(""));
                     *val = Value::Object(new_val);
                 }
+            }
+        }
+
+        // 잘못된 값 하나가 `Settings` 역직렬화 전체를 실패시키지 않도록 허용 값으로 교정한다.
+        if let Some(Value::Object(auto)) = varchive.get_mut("auto_upload") {
+            let scope_ok = matches!(
+                auto.get("scope").and_then(|v| v.as_str()),
+                Some("result_only" | "select_and_result")
+            );
+            if auto.contains_key("scope") && !scope_ok {
+                auto.insert("scope".to_string(), json!("result_only"));
+            }
+
+            if let Some(delay) = auto.get("delay_sec").and_then(|v| v.as_f64()) {
+                let closest = ALLOWED_AUTO_UPLOAD_DELAYS
+                    .iter()
+                    .copied()
+                    .min_by(|a, b| {
+                        (*a as f64 - delay)
+                            .abs()
+                            .total_cmp(&(*b as f64 - delay).abs())
+                    })
+                    .unwrap_or_else(default_auto_upload_delay);
+                auto.insert("delay_sec".to_string(), json!(closest));
+            } else if auto.contains_key("delay_sec") {
+                auto.insert("delay_sec".to_string(), json!(default_auto_upload_delay()));
+            }
+
+            if auto.contains_key("enabled") && !auto["enabled"].is_boolean() {
+                auto.insert("enabled".to_string(), json!(false));
             }
         }
     }
@@ -276,7 +307,7 @@ pub fn save_user_settings_to_path(
 mod tests {
     use super::{
         diff_settings, load_base_settings, load_merged_settings, merge_settings_layers,
-        normalize_settings, SettingsPaths,
+        normalize_settings, AutoUploadScope, Settings, SettingsPaths,
     };
     use serde_json::{json, Value};
     use std::fs;
@@ -424,6 +455,47 @@ mod tests {
         );
         assert_eq!(settings["recommend"]["target_rate"], json!(99.5));
         assert_eq!(settings["ipc"]["port"], json!(30110));
+    }
+
+    #[test]
+    fn auto_upload_defaults_off_result_only_three_seconds() {
+        let settings: Settings = serde_json::from_value(json!({"varchive": {}})).unwrap();
+        let auto = settings.varchive().auto_upload;
+        assert!(!auto.enabled);
+        assert_eq!(auto.scope, AutoUploadScope::ResultOnly);
+        assert_eq!(auto.delay_sec, 3);
+    }
+
+    #[test]
+    fn normalize_settings_repairs_invalid_auto_upload_values() {
+        let mut settings = json!({
+            "varchive": {
+                "auto_upload": {"enabled": "yes", "scope": "everywhere", "delay_sec": 10}
+            }
+        });
+
+        normalize_settings(&mut settings);
+
+        assert_eq!(
+            settings["varchive"]["auto_upload"],
+            json!({"enabled": false, "scope": "result_only", "delay_sec": 3})
+        );
+        // 교정된 값은 Settings 전체 역직렬화를 깨뜨리지 않아야 한다.
+        assert!(serde_json::from_value::<Settings>(settings).is_ok());
+    }
+
+    #[test]
+    fn normalize_settings_keeps_valid_auto_upload_values() {
+        let original = json!({
+            "varchive": {
+                "auto_upload": {"enabled": true, "scope": "select_and_result", "delay_sec": 0}
+            }
+        });
+        let mut settings = original.clone();
+
+        normalize_settings(&mut settings);
+
+        assert_eq!(settings, original);
     }
 
     #[test]
@@ -616,6 +688,43 @@ pub struct VArchiveSettings {
     pub download_timeout_sec: u64,
     #[serde(default)]
     pub user_map: std::collections::HashMap<String, VArchiveUserMap>,
+    #[serde(default)]
+    pub auto_upload: VArchiveAutoUploadSettings,
+}
+
+/// 자동 업로드가 동작하는 씬 범위.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoUploadScope {
+    #[default]
+    ResultOnly,
+    SelectAndResult,
+}
+
+/// V-Archive 자동 업로드 설정. 기본 OFF (원칙: 명시적 동의).
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct VArchiveAutoUploadSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub scope: AutoUploadScope,
+    /// 기록 값이 마지막으로 변한 뒤 업로드까지 기다리는 시간(초).
+    #[serde(default = "default_auto_upload_delay")]
+    pub delay_sec: u64,
+}
+
+fn default_auto_upload_delay() -> u64 {
+    3
+}
+
+impl Default for VArchiveAutoUploadSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            scope: AutoUploadScope::default(),
+            delay_sec: default_auto_upload_delay(),
+        }
+    }
 }
 
 fn default_songs_url() -> String {
@@ -711,6 +820,7 @@ impl Default for VArchiveSettings {
             cache_ttl_sec: default_ttl(),
             download_timeout_sec: default_timeout(),
             user_map: std::collections::HashMap::new(),
+            auto_upload: VArchiveAutoUploadSettings::default(),
         }
     }
 }

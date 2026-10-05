@@ -5,7 +5,7 @@ use overmax_core::SceneType;
 /// GPU 아틀라스 텍스처 규격 (512x512 RGBA8, 1 MB)
 pub const ATLAS_WIDTH: u32 = 512;
 pub const ATLAS_HEIGHT: u32 = 512;
-pub const ATLAS_SLOT_COUNT: usize = 47;
+pub const ATLAS_SLOT_COUNT: usize = 46;
 
 /// 정적 아틀라스 내부의 개별 ROI 슬롯 배치 정보
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -20,8 +20,8 @@ pub struct AtlasSlot {
     pub atlas_rect: RawRoiRect,
 }
 
-/// 컴파일 타임에 2D MaxRects 알고리즘으로 100% 무손실 배치된 47개 정적 슬롯 테이블 (Zero Heap Allocation)
-pub const ATLAS_SLOTS: [AtlasSlot; 47] = [
+/// 컴파일 타임에 2D MaxRects 알고리즘으로 100% 무손실 배치된 46개 정적 슬롯 테이블 (Zero Heap Allocation)
+pub const ATLAS_SLOTS: [AtlasSlot; 46] = [
     AtlasSlot {
         scene: SceneType::Unknown,
         name: "gp_center_left",
@@ -294,36 +294,22 @@ pub const ATLAS_SLOTS: [AtlasSlot; 47] = [
             height: 60,
         },
     },
+    // ResultOpen3(x 212..528)와 ResultOpen2(x 312..628) player_panel의 합집합에
+    // detect_rect_edges가 읽는 8px 외곽 마진을 더한 단일 슬롯. 두 씬이 이 슬롯을 공유한다.
     AtlasSlot {
         scene: SceneType::ResultOpen3,
         name: "player_panel",
         src_rect: RawRoiRect {
-            x: 212,
-            y: 830,
-            width: 316,
-            height: 40,
+            x: 204,
+            y: 822,
+            width: 432,
+            height: 56,
         },
         atlas_rect: RawRoiRect {
-            x: 97,
-            y: 240,
-            width: 316,
-            height: 40,
-        },
-    },
-    AtlasSlot {
-        scene: SceneType::ResultOpen2,
-        name: "player_panel",
-        src_rect: RawRoiRect {
-            x: 312,
-            y: 830,
-            width: 316,
-            height: 40,
-        },
-        atlas_rect: RawRoiRect {
-            x: 97,
-            y: 280,
-            width: 316,
-            height: 40,
+            x: 80,
+            y: 456,
+            width: 432,
+            height: 56,
         },
     },
     AtlasSlot {
@@ -416,8 +402,8 @@ pub const ATLAS_SLOTS: [AtlasSlot; 47] = [
             height: 31,
         },
         atlas_rect: RawRoiRect {
-            x: 75,
-            y: 426,
+            x: 97,
+            y: 240,
             width: 116,
             height: 31,
         },
@@ -432,8 +418,8 @@ pub const ATLAS_SLOTS: [AtlasSlot; 47] = [
             height: 31,
         },
         atlas_rect: RawRoiRect {
-            x: 75,
-            y: 457,
+            x: 213,
+            y: 240,
             width: 116,
             height: 31,
         },
@@ -544,8 +530,8 @@ pub const ATLAS_SLOTS: [AtlasSlot; 47] = [
             height: 28,
         },
         atlas_rect: RawRoiRect {
-            x: 191,
-            y: 451,
+            x: 97,
+            y: 271,
             width: 110,
             height: 28,
         },
@@ -640,8 +626,8 @@ pub const ATLAS_SLOTS: [AtlasSlot; 47] = [
             height: 18,
         },
         atlas_rect: RawRoiRect {
-            x: 75,
-            y: 488,
+            x: 207,
+            y: 271,
             width: 106,
             height: 18,
         },
@@ -656,8 +642,8 @@ pub const ATLAS_SLOTS: [AtlasSlot; 47] = [
             height: 18,
         },
         atlas_rect: RawRoiRect {
-            x: 181,
-            y: 488,
+            x: 313,
+            y: 271,
             width: 90,
             height: 18,
         },
@@ -975,6 +961,22 @@ mod tests {
                     assert_eq!(slot.src_rect.y, expected.y);
                     assert_eq!(slot.src_rect.width, expected.width + 16);
                     assert_eq!(slot.src_rect.height, expected.height);
+                } else if slot.scene == SceneType::ResultOpen3 && slot.name == "player_panel" {
+                    // Open3/Open2 패널 합집합 + 엣지 마진(8px) 확장 슬롯임을 검증
+                    let open2 = global_config
+                        .scenes
+                        .get(&SceneType::ResultOpen2)
+                        .and_then(|c| c.rois.get("player_panel"))
+                        .expect("player_panel not found in ResultOpen2");
+                    assert_eq!(slot.src_rect.x, expected.x - 8);
+                    assert_eq!(slot.src_rect.y, expected.y - 8);
+                    assert_eq!(
+                        slot.src_rect.x + slot.src_rect.width,
+                        open2.x + open2.width + 8
+                    );
+                    assert_eq!(slot.src_rect.height, expected.height + 16);
+                    assert_eq!(open2.y, expected.y);
+                    assert_eq!(open2.height, expected.height);
                 } else {
                     assert_eq!(
                         slot.src_rect, *expected,

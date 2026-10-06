@@ -54,10 +54,10 @@ impl AtlasTranslator {
                 y2: 364,
             }),
             (SceneType::ResultFreestyle, b"diff_panel_NM") => Some(RoiRect {
-                x1: 181,
-                y1: 488,
-                x2: 271,
-                y2: 506,
+                x1: 313,
+                y1: 271,
+                x2: 403,
+                y2: 289,
             }),
             (SceneType::ResultFreestyle, b"diff_panel_HD") => Some(RoiRect {
                 x1: 362,
@@ -78,10 +78,10 @@ impl AtlasTranslator {
                 y2: 268,
             }),
             (SceneType::ResultFreestyle, b"diff_panel") => Some(RoiRect {
-                x1: 181,
-                y1: 488,
-                x2: 271,
-                y2: 506,
+                x1: 313,
+                y1: 271,
+                x2: 403,
+                y2: 289,
             }),
             // [ResultOpen3]
             (SceneType::ResultOpen3, b"max_combo_badge") => Some(RoiRect {
@@ -97,10 +97,10 @@ impl AtlasTranslator {
                 y2: 168,
             }),
             (SceneType::ResultOpen3, b"player_panel") => Some(RoiRect {
-                x1: 97,
-                y1: 240,
-                x2: 413,
-                y2: 280,
+                x1: 88,
+                y1: 464,
+                x2: 404,
+                y2: 504,
             }),
             (SceneType::ResultOpen3, b"rate") => Some(RoiRect {
                 x1: 204,
@@ -134,10 +134,10 @@ impl AtlasTranslator {
                 y2: 240,
             }),
             (SceneType::ResultOpen2, b"player_panel") => Some(RoiRect {
-                x1: 97,
-                y1: 280,
-                x2: 413,
-                y2: 320,
+                x1: 188,
+                y1: 464,
+                x2: 504,
+                y2: 504,
             }),
             (SceneType::ResultOpen2, b"rate") => Some(RoiRect {
                 x1: 191,
@@ -146,10 +146,10 @@ impl AtlasTranslator {
                 y2: 395,
             }),
             (SceneType::ResultOpen2, b"openmatch_diff") => Some(RoiRect {
-                x1: 75,
-                y1: 488,
-                x2: 181,
-                y2: 506,
+                x1: 207,
+                y1: 271,
+                x2: 313,
+                y2: 289,
             }),
             (SceneType::ResultOpen2, b"openmatch_mode") => Some(RoiRect {
                 x1: 10,
@@ -231,10 +231,10 @@ impl AtlasTranslator {
                 y2: 451,
             }),
             (SceneType::Freestyle, b"diff_panel_SC") => Some(RoiRect {
-                x1: 191,
-                y1: 451,
-                x2: 301,
-                y2: 479,
+                x1: 97,
+                y1: 271,
+                x2: 207,
+                y2: 299,
             }),
             (SceneType::Freestyle, b"diff_panel") => Some(RoiRect {
                 x1: 191,
@@ -286,16 +286,16 @@ impl AtlasTranslator {
                 y2: 426,
             }),
             (SceneType::OpenMatch | SceneType::LadderMatch, b"diff_panel_MX") => Some(RoiRect {
-                x1: 75,
-                y1: 426,
-                x2: 191,
-                y2: 457,
+                x1: 97,
+                y1: 240,
+                x2: 213,
+                y2: 271,
             }),
             (SceneType::OpenMatch | SceneType::LadderMatch, b"diff_panel_SC") => Some(RoiRect {
-                x1: 75,
-                y1: 457,
-                x2: 191,
-                y2: 488,
+                x1: 213,
+                y1: 240,
+                x2: 329,
+                y2: 271,
             }),
             (SceneType::OpenMatch | SceneType::LadderMatch, b"diff_panel") => Some(RoiRect {
                 x1: 75,
@@ -345,16 +345,16 @@ impl AtlasTranslator {
                 y2: 426,
             }),
             (SceneType::OpenMatch | SceneType::LadderMatch, Difficulty::MX) => Some(RoiRect {
-                x1: 75,
-                y1: 426,
-                x2: 191,
-                y2: 457,
+                x1: 97,
+                y1: 240,
+                x2: 213,
+                y2: 271,
             }),
             (SceneType::OpenMatch | SceneType::LadderMatch, Difficulty::SC) => Some(RoiRect {
-                x1: 75,
-                y1: 457,
-                x2: 191,
-                y2: 488,
+                x1: 213,
+                y1: 240,
+                x2: 329,
+                y2: 271,
             }),
             (SceneType::Freestyle, Difficulty::NM) => Some(RoiRect {
                 x1: 191,
@@ -375,16 +375,16 @@ impl AtlasTranslator {
                 y2: 451,
             }),
             (SceneType::Freestyle, Difficulty::SC) => Some(RoiRect {
-                x1: 191,
-                y1: 451,
-                x2: 301,
-                y2: 479,
+                x1: 97,
+                y1: 271,
+                x2: 207,
+                y2: 299,
             }),
             (SceneType::ResultFreestyle, Difficulty::NM) => Some(RoiRect {
-                x1: 181,
-                y1: 488,
-                x2: 271,
-                y2: 506,
+                x1: 313,
+                y1: 271,
+                x2: 403,
+                y2: 289,
             }),
             (SceneType::ResultFreestyle, Difficulty::HD) => Some(RoiRect {
                 x1: 362,
@@ -595,10 +595,16 @@ mod tests {
     fn test_no_translator_mapping_without_backing_slot() {
         // LadderMatch는 OpenMatch와 좌표를 공유하고, diff_panel은 난이도 무지 별칭이다.
         // ResultOpen3/Open2의 jacket은 3씬의 src_rect가 동일해 ResultFreestyle 슬롯을 공유한다.
+        // ResultOpen2의 player_panel은 Open3/Open2 합집합으로 확장된 ResultOpen3 슬롯을 공유한다.
         let shared: &[(SceneType, SceneType, &str)] = &[
             (SceneType::LadderMatch, SceneType::OpenMatch, ""),
             (SceneType::ResultOpen3, SceneType::ResultFreestyle, "jacket"),
             (SceneType::ResultOpen2, SceneType::ResultFreestyle, "jacket"),
+            (
+                SceneType::ResultOpen2,
+                SceneType::ResultOpen3,
+                "player_panel",
+            ),
         ];
         let has_slot = |scene: SceneType, name: &str| {
             ATLAS_SLOTS

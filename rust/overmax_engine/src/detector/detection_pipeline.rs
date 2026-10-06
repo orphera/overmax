@@ -1372,6 +1372,62 @@ mod tests {
         );
     }
 
+    /// 오픈매치 결과창 2인/3인 판별(`check_open_match_badge`)은 player_panel 바깥 8px 마진의
+    /// 엣지를 읽는다. 아틀라스 모드에서도 그 마진은 이웃 슬롯이 아닌 실제 화면 픽셀이어야 한다.
+    #[test]
+    fn open_match_player_panel_edge_margin_is_identical_in_atlas() {
+        use crate::capture::frame_utils::crop_roi;
+        use crate::detector::atlas_layout::build_virtual_atlas;
+        use crate::detector::roi::RoiManager;
+        use overmax_core::SceneType;
+
+        let (w, h) = (1920usize, 1080usize);
+        let mut bgra = Vec::with_capacity(w * h * 4);
+        for y in 0..h {
+            for x in 0..w {
+                bgra.extend_from_slice(&[
+                    (x & 0xFF) as u8,
+                    (y & 0xFF) as u8,
+                    ((x ^ y) & 0xFF) as u8,
+                    255,
+                ]);
+            }
+        }
+        let full = CapturedFrame {
+            width: w as i32,
+            height: h as i32,
+            bgra,
+        };
+        let atlas = build_virtual_atlas(&full);
+        let full_rois = RoiManager::new(full.width, full.height);
+        let atlas_rois = RoiManager::new(atlas.width, atlas.height);
+
+        for scene in [SceneType::ResultOpen3, SceneType::ResultOpen2] {
+            let full_roi = full_rois
+                .get_roi_for_scene("player_panel", scene)
+                .unwrap()
+                .with_margin(8);
+            let atlas_roi = atlas_rois
+                .get_roi_for_scene("player_panel", scene)
+                .unwrap()
+                .with_margin(8);
+            let full_crop = crop_roi(&full, full_roi).unwrap();
+            let atlas_crop = crop_roi(&atlas, atlas_roi).unwrap();
+            assert_eq!(
+                (full_crop.width, full_crop.height),
+                (atlas_crop.width, atlas_crop.height),
+                "{scene:?} player_panel margin crop size mismatch"
+            );
+            for y in 0..full_crop.height {
+                assert_eq!(
+                    full_crop.row(y),
+                    atlas_crop.row(y),
+                    "{scene:?} player_panel margin pixel mismatch at row {y}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn cached_tick_with_unsupported_frame_resets_ingame_to_unknown() {
         use overmax_core::SceneType;

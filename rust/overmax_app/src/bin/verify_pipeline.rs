@@ -1,5 +1,8 @@
 use overmax_app::bin_utils::load_frame;
+use overmax_core::SceneType;
 use overmax_data::ImageIndexDb;
+use overmax_engine::capture::frame::CapturedFrame;
+use overmax_engine::detector::atlas_layout::build_virtual_atlas;
 use overmax_engine::detector::detection_pipeline::DetectionPipeline;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -29,6 +32,70 @@ fn redirect_stdout(path: &str) -> std::io::Result<()> {
 #[cfg(not(windows))]
 fn redirect_stdout(_path: &str) -> std::io::Result<()> {
     Ok(())
+}
+
+#[derive(PartialEq)]
+struct Verdict {
+    scene: SceneType,
+    song_id: String,
+    title: String,
+    mode: String,
+    diff: String,
+    info: String,
+}
+
+impl Verdict {
+    fn describe(&self) -> String {
+        format!(
+            "Scene={:?}, SongID={:<5} ({}) | Mode={}, Diff={}, Info={}",
+            self.scene, self.song_id, self.title, self.mode, self.diff, self.info
+        )
+    }
+}
+
+fn run_detection(
+    pipeline: &mut DetectionPipeline,
+    frame: &CapturedFrame,
+    now: f64,
+    song_titles: &HashMap<i32, String>,
+) -> Verdict {
+    pipeline.reset();
+    pipeline.detect(frame, now - 4.0);
+    pipeline.detect(frame, now - 2.0);
+    let out = pipeline.detect(frame, now);
+
+    let song_id = match out.current_song_id {
+        Some(id) => id.to_string(),
+        None => "None".to_string(),
+    };
+    let title = out
+        .current_song_id
+        .and_then(|id| song_titles.get(&id))
+        .cloned()
+        .unwrap_or("None".to_string());
+
+    let mut mode = "None".to_string();
+    let mut diff = "None".to_string();
+    let mut info = "None".to_string();
+    if let Some(ref ctx) = out.state.context {
+        mode = ctx.mode.to_string();
+        diff = ctx.diff.to_string();
+        let mc_suffix = if ctx.is_max_combo { " (MAX COMBO)" } else { "" };
+        info = if ctx.rate > 0.0 {
+            format!("{:.2}%{}", ctx.rate, mc_suffix)
+        } else {
+            format!("Stable{}", mc_suffix)
+        };
+    }
+
+    Verdict {
+        scene: out.state.scene,
+        song_id,
+        title,
+        mode,
+        diff,
+        info,
+    }
 }
 
 fn main() {
@@ -106,6 +173,7 @@ fn main() {
     );
 
     let mut global_file_idx = 0;
+    let mut atlas_mismatches: Vec<String> = Vec::new();
 
     for (label, dir_path) in &scan_list {
         let path = Path::new(dir_path);
@@ -124,8 +192,8 @@ fn main() {
         txt_log.push_str("==================================================\n");
 
         md_summary.push_str(&format!("## 📂 Category: {}\n\n", label));
-        md_summary.push_str("| 파일명 | 판독 씬 (Scene) | 곡 ID | 대조 곡명 (`songs.json`) | 모드 | 난이도 | 판독 정확도 / 특이사항 |\n");
-        md_summary.push_str("| :--- | :---: | :---: | :--- | :---: | :---: | :--- |\n");
+        md_summary.push_str("| 파일명 | 판독 씬 (Scene) | 곡 ID | 대조 곡명 (`songs.json`) | 모드 | 난이도 | 판독 정확도 / 특이사항 | 아틀라스 모드 |\n");
+        md_summary.push_str("| :--- | :---: | :---: | :--- | :---: | :---: | :--- | :---: |\n");
 
         let mut files = Vec::new();
         if path.is_file() {
@@ -165,55 +233,66 @@ fn main() {
             global_file_idx += 1;
             let now = global_file_idx as f64 * 10.0;
 
-            pipeline.reset();
-            pipeline.detect(&frame, now - 4.0);
-            pipeline.detect(&frame, now - 2.0);
-            let out = pipeline.detect(&frame, now);
-
-            let song_id_str = match out.current_song_id {
-                Some(id) => id.to_string(),
-                None => "None".to_string(),
+            // 실 캡처는 GPU 아틀라스(512x512) 경로를 타므로, 같은 프레임을 가상 아틀라스로도 판독해 비교한다.
+            let full = run_detection(&mut pipeline, &frame, now, &song_titles);
+            let atlas = run_detection(
+                &mut pipeline,
+                &build_virtual_atlas(&frame),
+                now + 5.0,
+                &song_titles,
+            );
+            let atlas_str = if atlas == full {
+                "OK".to_string()
+            } else {
+                atlas_mismatches.push(format!("{} / {}", label, fname));
+                format!("MISMATCH {}", atlas.describe())
             };
 
-            let title = out
-                .current_song_id
-                .and_then(|id| song_titles.get(&id))
-                .cloned()
-                .unwrap_or("None".to_string());
-
-            let mut mode_str = "None".to_string();
-            let mut diff_str = "None".to_string();
-            let mut result_str = "None".to_string();
-
-            if let Some(ref ctx) = out.state.context {
-                mode_str = ctx.mode.to_string();
-                diff_str = ctx.diff.to_string();
-                let mc_suffix = if ctx.is_max_combo { " (MAX COMBO)" } else { "" };
-                result_str = if ctx.rate > 0.0 {
-                    format!("{:.2}%{}", ctx.rate, mc_suffix)
-                } else {
-                    format!("Stable{}", mc_suffix)
-                };
-            }
-
-            let scene_type = out.state.scene;
-
             eprintln!(
-                "  File: {:<35} -> Scene={:?}, SongID={:<5} ({})",
-                fname, scene_type, song_id_str, title
+                "  File: {:<35} -> Scene={:?}, SongID={:<5} ({}) | Atlas={}",
+                fname, full.scene, full.song_id, full.title, atlas_str
             );
             txt_log.push_str(&format!(
-                "  File: {:<35} -> Scene={:?}, SongID={:<5} ({}) | Mode={}, Diff={}, Info={}\n",
-                fname, scene_type, song_id_str, title, mode_str, diff_str, result_str
+                "  File: {:<35} -> {} | Atlas={}\n",
+                fname,
+                full.describe(),
+                atlas_str
             ));
 
             md_summary.push_str(&format!(
-                "| {} | {:?} | {} | {} | {} | {} | {} |\n",
-                fname, scene_type, song_id_str, title, mode_str, diff_str, result_str
+                "| {} | {:?} | {} | {} | {} | {} | {} | {} |\n",
+                fname,
+                full.scene,
+                full.song_id,
+                full.title,
+                full.mode,
+                full.diff,
+                full.info,
+                atlas_str
             ));
         }
         md_summary.push('\n');
     }
+
+    let atlas_summary = if atlas_mismatches.is_empty() {
+        "Atlas mode: all files match full-frame results".to_string()
+    } else {
+        format!(
+            "Atlas mode: {} file(s) differ from full-frame results\n{}",
+            atlas_mismatches.len(),
+            atlas_mismatches
+                .iter()
+                .map(|m| format!("  - {}", m))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    };
+    eprintln!("\n{}", atlas_summary);
+    txt_log.push_str(&format!("\n{}\n", atlas_summary));
+    md_summary.push_str(&format!(
+        "## 🧩 Atlas Mode\n\n```\n{}\n```\n",
+        atlas_summary
+    ));
 
     // 결과 파일 저장
     fs::create_dir_all("scratch").ok();

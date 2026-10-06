@@ -184,13 +184,16 @@ pub struct SharedSyncState {
     pub steam_users: Arc<Mutex<std::collections::HashMap<String, steam_session::SteamUser>>>,
 }
 
+/// 업로드 결과: 키, 수동(quick) 업로드 여부, 상태, 메시지, 실제로 업로드한 (Rate, MAX COMBO).
+pub(crate) type UploadResultMsg = (overmax_data::RecordKey, bool, String, String, (f64, bool));
+
 pub(crate) struct SyncWorkerChannels {
     pub(crate) sync_rx: Receiver<Result<Vec<SyncCandidate>, String>>,
     pub(crate) sync_tx: Sender<Result<Vec<SyncCandidate>, String>>,
     pub(crate) upload_req_rx: Receiver<overmax_data::RecordKey>,
     pub(crate) upload_req_tx: Sender<overmax_data::RecordKey>,
-    pub(crate) upload_res_rx: Receiver<(overmax_data::RecordKey, bool, String, String)>,
-    pub(crate) upload_res_tx: Sender<(overmax_data::RecordKey, bool, String, String)>,
+    pub(crate) upload_res_rx: Receiver<UploadResultMsg>,
+    pub(crate) upload_res_tx: Sender<UploadResultMsg>,
     pub(crate) fetch_req_rx: Receiver<(String, String, i32)>,
     pub(crate) fetch_req_tx: Sender<(String, String, i32)>,
     pub(crate) fetch_res_rx: Receiver<(String, i32, Result<usize, String>)>,
@@ -675,14 +678,10 @@ impl NativeApp {
 
     pub(crate) fn drain_upload_results(&mut self) {
         let mut refreshed = false;
-        while let Ok((key, is_quick_upload, status, msg)) =
+        while let Ok((key, is_quick_upload, status, msg, (rate, mc))) =
             self.sync_channels.upload_res_rx.try_recv()
         {
             let success = status == "success";
-            let (rate, mc) = self
-                .record_manager
-                .get_local_record(key.0, key.1, key.2)
-                .unwrap_or((0.0, false));
             debug_ui::push_log(
                 &self.debug_state.log_lines,
                 self.max_log_lines(),
@@ -811,6 +810,7 @@ impl NativeApp {
         let account_path = account_path_for_steam(&settings, &steam);
         let tx = self.sync_channels.upload_res_tx.clone();
         let record_db = self.record_db.clone();
+        let uploaded = (candidate.overmax_rate, candidate.overmax_mc);
 
         std::thread::spawn(move || {
             let path = Path::new(&account_path);
@@ -820,6 +820,7 @@ impl NativeApp {
                     is_quick_upload,
                     "error".into(),
                     crate::t!("status-account-path-missing").to_string(),
+                    uploaded,
                 ));
                 ctx.request_repaint();
                 return;
@@ -830,6 +831,7 @@ impl NativeApp {
                     is_quick_upload,
                     "error".into(),
                     crate::t!("status-account-parse-failed").to_string(),
+                    uploaded,
                 ));
                 ctx.request_repaint();
                 return;
@@ -858,7 +860,7 @@ impl NativeApp {
                     base_message,
                 ) {
                     Ok(msg) => {
-                        let _ = tx.send((key, is_quick_upload, "success".into(), msg));
+                        let _ = tx.send((key, is_quick_upload, "success".into(), msg, uploaded));
                     }
                     Err(err_msg) => {
                         let _ = tx.send((
@@ -866,11 +868,12 @@ impl NativeApp {
                             is_quick_upload,
                             "success".into(),
                             crate::t!("sys-upload-cache-error", error = err_msg),
+                            uploaded,
                         ));
                     }
                 }
             } else {
-                let _ = tx.send((key, is_quick_upload, "error".into(), res.message));
+                let _ = tx.send((key, is_quick_upload, "error".into(), res.message, uploaded));
             }
             ctx.request_repaint();
         });

@@ -41,6 +41,8 @@ struct Pending {
     is_result: bool,
     since: Instant,
     delay: Duration,
+    /// 결과창에서 안정 상태가 일시적으로 깨진 상태. 값은 유지하되 안정 값이 돌아오면 타이머를 다시 센다.
+    interrupted: bool,
 }
 
 #[derive(Default)]
@@ -83,15 +85,26 @@ impl AutoUploadScheduler {
             return self.pending.take().map(|p| self.fire(p.snapshot));
         }
 
-        match (candidate, &self.pending) {
-            (Some(ctx), Some(p)) if p.snapshot == *ctx => {}
+        match (candidate, &mut self.pending) {
+            (Some(ctx), Some(p)) if p.snapshot == *ctx => {
+                if p.interrupted {
+                    p.interrupted = false;
+                    p.since = now;
+                }
+            }
             (Some(ctx), _) => {
                 self.pending = Some(Pending {
                     snapshot: ctx.clone(),
                     is_result,
                     since: now,
                     delay: effective_delay(settings, is_result, ctx),
+                    interrupted: false,
                 });
+            }
+            // 결과창에서 안정 상태만 잠깐 깨진 경우, 이탈 flush 로 내보낼 수 있도록 값을 보존한다.
+            (None, Some(p)) if p.is_result && is_result && obs.stable_context.is_none() => {
+                p.interrupted = true;
+                return None;
             }
             (None, _) => {
                 self.pending = None;
@@ -112,6 +125,9 @@ impl AutoUploadScheduler {
     /// 대기 진행률 (0.0..=1.0). 대기 중이 아니면 `None`.
     pub(crate) fn progress(&self, now: Instant) -> Option<f32> {
         let p = self.pending.as_ref()?;
+        if p.interrupted {
+            return Some(0.0);
+        }
         if p.delay.is_zero() {
             return Some(1.0);
         }
@@ -234,6 +250,25 @@ mod tests {
         );
         assert_eq!(
             s.tick(t0 + Duration::from_secs(6), &obs(RESULT, Some(&c)), &cfg),
+            Some(c)
+        );
+    }
+
+    #[test]
+    fn leaving_result_right_after_unstable_frame_still_flushes() {
+        let mut s = AutoUploadScheduler::default();
+        let cfg = settings(AutoUploadScope::ResultOnly, 3);
+        let t0 = Instant::now();
+        let c = ctx(1, 98.5, true);
+
+        s.tick(t0, &obs(RESULT, Some(&c)), &cfg);
+        s.tick(t0 + Duration::from_secs(1), &obs(RESULT, None), &cfg);
+        assert_eq!(
+            s.tick(
+                t0 + Duration::from_secs(2),
+                &obs(SceneType::Unknown, None),
+                &cfg
+            ),
             Some(c)
         );
     }

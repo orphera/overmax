@@ -135,9 +135,17 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
 
 ## 7. 기록 수집 및 V-Archive 자동 연동 (Record Automation)
 
-- [ ] **7.1 결과창 V-Archive 자동 업로드 지원**
-  - [ ] 결과창 씬 확정(`VerifiedPlayEvent`) 시 설정에 따라 백그라운드에서 V-Archive API 자동 업로드 트리거
-  - [ ] 최고 기록(Personal Best) 갱신 시에만 선택적 자동 업로드 옵션 제공 및 네트워크 재시도 가드
+- [ ] **7.1 선곡창/결과창 V-Archive 자동 업로드 지원**
+  - [x] 설정 스키마 `varchive.auto_upload` (`enabled` 기본 OFF / `scope`: `result_only`·`select_and_result` / `delay_sec`: 0·3) 및 normalize 교정
+  - [x] V-Archive 기록 대비 Rate +0.01 이상 또는 MAX COMBO 신규 달성 시에만 업로드 (⬆ 버튼 표시 조건과 동일)
+  - [x] 안정 확정 값(곡/모드/난이도/Rate/MAX COMBO)이 `delay_sec` 동안 변하지 않을 때 업로드하는 `AutoUploadScheduler` — 값 변화·안정 이탈 시 타이머 리셋, 결과창 이탈 시 즉시 flush, 선곡창 커서 이동 시 취소, 같은 값 재시도 방지
+  - [x] 즉시 모드의 결과창: MAX COMBO 확정 시 즉시, 미확정 시 최대 3초 대기 (인게임 실측에서 MAX COMBO 연출 전·후 2회 업로드 확인 후 반영)
+  - [x] ⬆ 버튼 아래→위 차오름 대기 연출 (헤더 / 라이트 패널)
+  - [x] 설정 창 V-Archive 탭 토글·범위·대기 시간 UI 및 ko/en/ja 문구
+  - [ ] 실측: 결과창 Rate 정지 → MAX COMBO 표시 간격을 디버그 로그로 측정해 3초 대기 적정성 검증
+  - [x] 업로드 토스트에 곡명(길면 페이드 클립)·패턴 표기 및 디버그 로그에 곡명 포함 업로드 결과 기록
+- [ ] **7.2 플레이어용 업로드 기록 로그창**
+  - [ ] 디버그 로그 대신 플레이어가 볼 수 있는 업로드 기록 창 (곡명 / 패턴 / Rate / MAX COMBO / 결과 / 시각) — 연속 자동 업로드 후 무엇이 올라갔는지 확인 용도
 
 ---
 

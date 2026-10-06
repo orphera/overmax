@@ -1,5 +1,5 @@
 use crate::ui::components::{
-    FadeClippedLabel, ModeBadge, OverlayHeaderDetail, StatusLamp, ToastMessage,
+    FadeClippedLabel, ModeBadge, OverlayHeaderDetail, StatusLamp, ToastMessage, UploadFillSlots,
 };
 use crate::ui::overlay_recommend_ui::PatternTabInfo;
 use crate::ui::overlay_theme::Theme;
@@ -20,6 +20,7 @@ pub struct OverlayHeader<'a> {
     sync_open: Option<&'a Arc<AtomicBool>>,
     px: &'a Px,
     varchive_upload_needed: bool,
+    varchive_upload_progress: Option<f32>,
     varchive_account_configured: bool,
     is_snap_manual: bool,
     session_initial_record: Option<RecordValue>,
@@ -42,6 +43,7 @@ impl<'a> OverlayHeader<'a> {
             sync_open: None,
             px,
             varchive_upload_needed: false,
+            varchive_upload_progress: None,
             varchive_account_configured: false,
             is_snap_manual: false,
             session_initial_record: None,
@@ -56,6 +58,11 @@ impl<'a> OverlayHeader<'a> {
 
     pub(crate) fn varchive_upload_needed(mut self, needed: bool) -> Self {
         self.varchive_upload_needed = needed;
+        self
+    }
+
+    pub(crate) fn varchive_upload_progress(mut self, progress: Option<f32>) -> Self {
+        self.varchive_upload_progress = progress;
         self
     }
 
@@ -174,8 +181,12 @@ impl<'a> OverlayHeader<'a> {
                                 })
                                 .font(FontId::proportional(10.5 * self.px.scale));
 
+                            let progress = self.varchive_upload_progress;
+                            let fill_slots = progress.map(|_| UploadFillSlots::reserve(ui));
                             let upload_btn = Button::new(upload_text)
-                                .fill(if self.varchive_account_configured {
+                                .fill(if fill_slots.is_some() {
+                                    egui::Color32::TRANSPARENT
+                                } else if self.varchive_account_configured {
                                     Theme::PRIMARY
                                 } else {
                                     Theme::SECTION_BG
@@ -184,6 +195,9 @@ impl<'a> OverlayHeader<'a> {
                                 .wrap();
 
                             let response = ui.add_sized(btn_size, upload_btn.sense(Sense::click()));
+                            if let (Some(slots), Some(p)) = (fill_slots, progress) {
+                                slots.paint(ui, response.rect, btn_radius, p);
+                            }
                             let response = if self.varchive_account_configured {
                                 response.on_hover_text(crate::t!("overlay-varchive-upload-needed"))
                             } else {

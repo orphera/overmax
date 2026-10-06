@@ -599,6 +599,7 @@ impl NativeApp {
                 scale: overlay.scale as f32,
                 opacity: overlay.base_opacity as f32,
                 varchive_upload_needed: self.overlay_upload_needed,
+                varchive_upload_progress: self.auto_upload.progress(std::time::Instant::now()),
                 varchive_account_configured: self.is_varchive_account_configured(),
                 lite_mode: overlay.lite_mode,
                 always_visible: overlay.always_visible,
@@ -660,6 +661,7 @@ impl NativeApp {
         self.poll_startup_cache();
         self.drain_sync_scan();
         self.drain_upload_results();
+        self.tick_auto_upload(ctx);
         self.drain_fetch_results();
         self.poll_delete_requests(ctx);
         self.drain_game_found_refresh_steam();
@@ -886,6 +888,7 @@ impl NativeApp {
                 scale,
                 opacity,
                 varchive_upload_needed: self.overlay_upload_needed,
+                varchive_upload_progress: self.auto_upload.progress(std::time::Instant::now()),
                 varchive_account_configured: self.is_varchive_account_configured(),
                 lite_mode: height == overlay_ui::LITE_BASE_HEIGHT,
                 is_snap_manual: snap_position == "manual",

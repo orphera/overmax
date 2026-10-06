@@ -46,7 +46,12 @@
     "dlcs_cache_path": "cache/dlcs.json",
     "cache_path": "cache/songs.json",
     "cache_ttl_sec": 86400,
-    "download_timeout_sec": 10
+    "download_timeout_sec": 10,
+    "auto_upload": {
+      "enabled": false,
+      "scope": "result_only",
+      "delay_sec": 3
+    }
   },
   "recommend_provider": {
     "enabled": false,

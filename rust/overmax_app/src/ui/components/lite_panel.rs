@@ -1,4 +1,6 @@
-use crate::ui::components::{FadeClippedLabel, ModeBadge, OverlayHeaderDetail, StatusLamp};
+use crate::ui::components::{
+    FadeClippedLabel, ModeBadge, OverlayHeaderDetail, StatusLamp, UploadFillSlots,
+};
 use crate::ui::overlay_theme::Theme;
 use crate::ui::overlay_ui::{diff_color, OverlayActions, OverlayProps, Px, LITE_BASE_HEIGHT};
 use crate::ui::ui_command::UiCommand;
@@ -111,18 +113,26 @@ impl LitePanel {
                                 })
                                 .font(FontId::proportional(11.0 * props.scale));
 
+                            let btn_radius = CornerRadius::same((4.0 * props.scale) as u8);
+                            let progress = props.varchive_upload_progress;
+                            let fill_slots = progress.map(|_| UploadFillSlots::reserve(ui));
                             let upload_btn = Button::new(upload_text)
-                                .fill(if props.varchive_account_configured {
+                                .fill(if fill_slots.is_some() {
+                                    egui::Color32::TRANSPARENT
+                                } else if props.varchive_account_configured {
                                     Theme::PRIMARY
                                 } else {
                                     Theme::SECTION_BG
                                 })
-                                .corner_radius(CornerRadius::same((4.0 * props.scale) as u8))
+                                .corner_radius(btn_radius)
                                 .wrap();
 
                             let btn_size = Vec2::splat(18.0 * props.scale);
                             let response_upload =
                                 ui.add_sized(btn_size, upload_btn.sense(Sense::click()));
+                            if let (Some(slots), Some(p)) = (fill_slots, progress) {
+                                slots.paint(ui, response_upload.rect, btn_radius, p);
+                            }
                             let response_upload = if props.varchive_account_configured {
                                 response_upload
                                     .on_hover_text(crate::t!("overlay-varchive-upload-needed"))

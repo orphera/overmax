@@ -1,6 +1,6 @@
 //! Single `eframe` app: overlay + deferred debug / settings / sync viewports.
 
-use overmax_core::{Changed, GameSessionState};
+use overmax_core::{Changed, GameSessionState, PlayContext};
 use overmax_data::{
     build_candidates, load_base_settings_from_paths, load_merged_settings_from_paths,
     normalize_settings, AppPaths, PatternSheetMeta, RecommendResult, Recommender, RecordDB,
@@ -184,13 +184,16 @@ pub struct SharedSyncState {
     pub steam_users: Arc<Mutex<std::collections::HashMap<String, steam_session::SteamUser>>>,
 }
 
+/// 업로드 결과: 키, 수동(quick) 업로드 여부, 상태, 메시지, 실제로 업로드한 (Rate, MAX COMBO).
+pub(crate) type UploadResultMsg = (overmax_data::RecordKey, bool, String, String, (f64, bool));
+
 pub(crate) struct SyncWorkerChannels {
     pub(crate) sync_rx: Receiver<Result<Vec<SyncCandidate>, String>>,
     pub(crate) sync_tx: Sender<Result<Vec<SyncCandidate>, String>>,
     pub(crate) upload_req_rx: Receiver<overmax_data::RecordKey>,
     pub(crate) upload_req_tx: Sender<overmax_data::RecordKey>,
-    pub(crate) upload_res_rx: Receiver<(overmax_data::RecordKey, bool, String, String)>,
-    pub(crate) upload_res_tx: Sender<(overmax_data::RecordKey, bool, String, String)>,
+    pub(crate) upload_res_rx: Receiver<UploadResultMsg>,
+    pub(crate) upload_res_tx: Sender<UploadResultMsg>,
     pub(crate) fetch_req_rx: Receiver<(String, String, i32)>,
     pub(crate) fetch_req_tx: Sender<(String, String, i32)>,
     pub(crate) fetch_res_rx: Receiver<(String, i32, Result<usize, String>)>,
@@ -292,6 +295,7 @@ pub struct NativeApp {
     /// 입력(`session.context` 의 rate/is_max_combo, `record_manager` 상태)이 바뀌는
     /// 모든 경로가 `refresh_overlay_data` 를 거치므로 그 안에서 갱신한다.
     pub(crate) overlay_upload_needed: bool,
+    pub(crate) auto_upload: crate::ui::auto_upload::AutoUploadScheduler,
     pub(crate) platform: platform::PlatformState,
     pub(crate) toast: Option<crate::ui::components::ToastMessage>,
     pub(crate) last_detection_output: Option<DetectionOutput>,
@@ -543,6 +547,7 @@ impl NativeApp {
             ctx_holder: ctx_holder.clone(),
             session_initial_record: None,
             overlay_upload_needed: false,
+            auto_upload: Default::default(),
             platform,
             toast: None,
             last_detection_output: None,
@@ -663,12 +668,34 @@ impl NativeApp {
         }
     }
 
+    /// 업로드 알림/로그에 쓰는 곡명 (곡 DB에 없으면 `#곡ID`).
+    fn upload_song_name(&self, song_id: i32) -> String {
+        self.varchive_db
+            .search_by_id(song_id)
+            .map(|song| song.name.to_string())
+            .unwrap_or_else(|| format!("#{song_id}"))
+    }
+
     pub(crate) fn drain_upload_results(&mut self) {
         let mut refreshed = false;
-        while let Ok((key, is_quick_upload, status, msg)) =
+        while let Ok((key, is_quick_upload, status, msg, (rate, mc))) =
             self.sync_channels.upload_res_rx.try_recv()
         {
             let success = status == "success";
+            debug_ui::push_log(
+                &self.debug_state.log_lines,
+                self.max_log_lines(),
+                format!(
+                    "[VArchive] 업로드 {}: {} {} {} {:.2}% MaxCombo: {} - {}",
+                    if success { "성공" } else { "실패" },
+                    self.upload_song_name(key.0),
+                    key.1,
+                    key.2,
+                    rate,
+                    mc,
+                    msg
+                ),
+            );
             let mut matched_candidate = false;
             if let Ok(mut list) = self.sync_state.candidates.lock() {
                 if let Some(c) = list.iter_mut().find(|item| item.matches_key(&key)) {
@@ -678,13 +705,14 @@ impl NativeApp {
                 }
             }
             if is_quick_upload || !matched_candidate {
-                let toast_text = if success {
+                let result_text = if success {
                     format!("V-Archive: {}", msg)
                 } else {
                     crate::t!("status-varchive-failed-toast", error = &msg)
                 };
                 self.toast = Some(crate::ui::components::ToastMessage {
-                    text: toast_text,
+                    subject: Some(self.upload_song_name(key.0)),
+                    text: format!("{} {} · {}", key.1, key.2, result_text),
                     is_success: success,
                     expires_at: std::time::Instant::now() + std::time::Duration::from_secs(3),
                 });
@@ -782,6 +810,7 @@ impl NativeApp {
         let account_path = account_path_for_steam(&settings, &steam);
         let tx = self.sync_channels.upload_res_tx.clone();
         let record_db = self.record_db.clone();
+        let uploaded = (candidate.overmax_rate, candidate.overmax_mc);
 
         std::thread::spawn(move || {
             let path = Path::new(&account_path);
@@ -791,6 +820,7 @@ impl NativeApp {
                     is_quick_upload,
                     "error".into(),
                     crate::t!("status-account-path-missing").to_string(),
+                    uploaded,
                 ));
                 ctx.request_repaint();
                 return;
@@ -801,6 +831,7 @@ impl NativeApp {
                     is_quick_upload,
                     "error".into(),
                     crate::t!("status-account-parse-failed").to_string(),
+                    uploaded,
                 ));
                 ctx.request_repaint();
                 return;
@@ -829,7 +860,7 @@ impl NativeApp {
                     base_message,
                 ) {
                     Ok(msg) => {
-                        let _ = tx.send((key, is_quick_upload, "success".into(), msg));
+                        let _ = tx.send((key, is_quick_upload, "success".into(), msg, uploaded));
                     }
                     Err(err_msg) => {
                         let _ = tx.send((
@@ -837,11 +868,12 @@ impl NativeApp {
                             is_quick_upload,
                             "success".into(),
                             crate::t!("sys-upload-cache-error", error = err_msg),
+                            uploaded,
                         ));
                     }
                 }
             } else {
-                let _ = tx.send((key, is_quick_upload, "error".into(), res.message));
+                let _ = tx.send((key, is_quick_upload, "error".into(), res.message, uploaded));
             }
             ctx.request_repaint();
         });
@@ -882,9 +914,14 @@ impl NativeApp {
     }
 
     pub(crate) fn current_pattern_needs_upload(&self) -> bool {
-        let Some(ctx) = &self.session.context else {
-            return false;
-        };
+        self.session
+            .context
+            .as_ref()
+            .is_some_and(|ctx| self.pattern_needs_upload(ctx))
+    }
+
+    /// `ctx` 기록이 V-Archive 기록보다 나은지(Rate +0.01 이상 또는 MAX COMBO 신규 달성) 판단한다.
+    pub(crate) fn pattern_needs_upload(&self, ctx: &PlayContext) -> bool {
         let song_id = ctx.song_id;
         let mode = ctx.mode;
         let diff = ctx.diff;
@@ -911,10 +948,61 @@ impl NativeApp {
         }
     }
 
-    pub(crate) fn upload_current_pattern(&self, ctx: egui::Context) {
-        let Some(session_ctx) = &self.session.context else {
+    /// 자동 업로드 스케줄러를 한 프레임 진행하고, 대기가 끝난 값을 업로드한다.
+    pub(crate) fn tick_auto_upload(&mut self, ctx: &egui::Context) {
+        let stable_context = self
+            .session
+            .context
+            .as_ref()
+            .filter(|_| self.session.is_stable);
+        // 대기 중이 아니고 업로드 후보도 없으면 설정 조회 없이 빠져나간다.
+        let has_candidate = stable_context.is_some() && self.overlay_upload_needed;
+        if !(self.auto_upload.is_pending() || has_candidate) {
             return;
+        }
+
+        let settings = self.settings.get_merged().varchive().auto_upload;
+        let obs = crate::ui::auto_upload::AutoUploadObservation {
+            scene: self.session.scene,
+            stable_context,
+            eligible: self.overlay_upload_needed && self.is_varchive_account_configured(),
         };
+        let fired = self
+            .auto_upload
+            .tick(std::time::Instant::now(), &obs, &settings);
+
+        // 결과창 이탈 flush 는 현재 세션이 아닌 스냅샷 기준이므로 업로드 조건을 다시 확인한다.
+        if let Some(snapshot) =
+            fired.filter(|s| self.pattern_needs_upload(s) && self.is_varchive_account_configured())
+        {
+            debug_ui::push_log(
+                &self.debug_state.log_lines,
+                self.max_log_lines(),
+                format!(
+                    "[VArchive] 자동 업로드 시작: {}, {}, {}, {:.2}%, MaxCombo: {}",
+                    self.upload_song_name(snapshot.song_id),
+                    snapshot.mode,
+                    snapshot.diff,
+                    snapshot.rate,
+                    snapshot.is_max_combo
+                ),
+            );
+            self.upload_pattern(&snapshot, ctx.clone());
+        }
+
+        if self.auto_upload.is_pending() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(33));
+        }
+    }
+
+    pub(crate) fn upload_current_pattern(&self, ctx: egui::Context) {
+        if let Some(session_ctx) = &self.session.context {
+            self.upload_pattern(session_ctx, ctx);
+        }
+    }
+
+    /// `session_ctx` 기록을 로컬 최고 기록과 합쳐 V-Archive에 단일 패턴 업로드한다.
+    pub(crate) fn upload_pattern(&self, session_ctx: &PlayContext, ctx: egui::Context) {
         let song_id = session_ctx.song_id;
         let mode = session_ctx.mode;
         let diff = session_ctx.diff;

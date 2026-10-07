@@ -28,7 +28,7 @@
 | §4.6 | MEDIUM | DXGI 타임아웃 동일 프레임 `Ok` 재전달 | ⏳ 미착수 | |
 | §4.7 | MEDIUM | 매 프레임 `is_fullscreen` syscall + dead 필드 | ✅ 완료 (Linux 빌드는 CI 확인 대기) | `2218b89`, `505e691` |
 | §4.8 | — | GDI HBITMAP 누수 | ❌ 오진 (실측 반증) | |
-| §4.9 | MEDIUM | `image_index.db` 갱신 미반영 | ⏳ 미착수 | |
+| §4.9 | MEDIUM | `image_index.db` 갱신 미반영 | ✅ 완료 (실기 검증 대기) | `63b4a54`, `6baaf48` |
 | §4.10 | MEDIUM | 서버 JSON 무검증 영속화 | ✅ 완료 | `e527501`, `58ead08` |
 | §4.11 | MEDIUM | V-Archive URL 보간 | ✅ 완료 | `74094d8`, `8185d53` |
 | §4.12 | MEDIUM | `AccountInfo` Debug로 토큰 노출 | ✅ 완료 (에러 메시지 URL 노출은 잔여) | `b7147a8` |

@@ -21,7 +21,7 @@
 | §3.4 | HIGH | Provider가 요청 대상 호스트 결정 + 비원자 쓰기 | ⚠️ 부분 완료 ((a) 완료, (b) 되돌림·§4.3 대기) | `070cfa8`, `24c8d4a` ((b) `63ae6d4` → revert `bd421d7`) |
 | §3.5 | HIGH | Linux 오버레이가 IPC 표시 명령 무시 | ✅ 완료 | `9a556ca` |
 | §4.1 | — | `with_retry`가 op을 4번째 실행 | ❌ 오진 (루프 밖 코드 도달 불가, 계약 테스트 추가) | `e93176d` |
-| §4.2 | MEDIUM | `get_merged()` 매 프레임 deep clone | ⏳ 미착수 | |
+| §4.2 | MEDIUM | `get_merged()` 매 프레임 deep clone | ⬇️ 실측 5.2µs/호출, 수정 안 함 | |
 | §4.3 | MEDIUM | `write_atomic` 비원자성 | ⛔ 수정 시도 후 되돌림, 해법 미정 | `30125d0` (문서) |
 | §4.4 | MEDIUM | DXGI 오류 1회에 GDI 강등 | ⏳ 미착수 | |
 | §4.5 | MEDIUM | 아틀라스 staging 미초기화 | ⬇️ 제안 수정 불가 + 발동 조건 좁음, 수정 안 함 | |
@@ -219,7 +219,7 @@ op(&conn)
 - **git blame**: `with_retry`는 `22bcc56`(2026-08-18) 도입.
 - **결론**: 버그가 재현되지 않으므로 **수정하지 않음.** 도달 불가 코드를 `unreachable!()`이나 루프 재구성으로 정리하는 것은 취향 판단이라 AGENTS.md 기준으로 단독 근거가 되지 않는다. 특히 `unreachable!()`은 release 프로파일의 `panic = "abort"` 아래 새 패닉 지점을 만든다.
 
-### 4.2 `get_merged()`가 매 프레임 settings 전체 JSON을 deep clone + 재파싱
+### 4.2 `get_merged()`가 매 프레임 settings 전체 JSON을 deep clone + 재파싱 — ⬇️ 실측 결과 비용 미미, 수정하지 않음
 
 - **파일**: `rust/overmax_app/src/ui/native_app.rs:125-131`, 호출부 `native_app_viewports.rs:96, 584, 667, 915, 992`
 ```rust
@@ -229,6 +229,14 @@ serde_json::from_value(val).unwrap_or_default()
 - **문제**: 호출부 5곳이 모두 프레임 루프 내부. 특히 `:667` `poll_and_drain_events`는 **무조건 매 프레임** `screen_capture().content_protected`를 읽기 위해 호출하고, `read_overlay_settings`도 매 프레임 `settings.merged.lock()`을 건다. §2.2 잔여인 `is_varchive_account_configured`도 같은 경로다.
 - **수정**: `state_tracker.prev_protected: Changed<Option<bool>>` 같은 기존 중복 억제 패턴을 적용. 캐시 필드를 두고 설정 변경 시점에만 갱신.
 - **측정 관련 주의**: 정량 프레임 비용은 **미측정**. 구조적 문제로만 표기.
+- **재검토 (2026-10-07, 실측)**: 수정하지 않는다.
+  - **측정 방법**: 실제 `settings.json` + `settings.user.json` 병합 결과(JSON 1,313바이트)에 대해 `get_merged()`와 동일한 동작(`Mutex` 잠금 → `Value` deep clone → `from_value::<Settings>`)을 release 빌드에서 10만 회 반복. 저장소 밖 별도 crate에서 수행.
+  - **결과 (호출당)**: `get_merged()` 전체 **5.16 µs**, 그중 `Value` clone 4.02 µs. 비교용 하한인 "잠금 + 필드 하나 읽기"(`read_overlay_settings` 방식)는 0.028 µs로 약 180배 차이.
+  - **프레임당 환산**: 무조건 매 프레임인 호출은 `native_app_viewports.rs:667` 하나, 오버레이 표시 시 `:584`가 추가되고 나머지는 조건부. 프레임당 최대 3회·60 FPS로 가정해도 약 0.93 ms/초(코어 1개의 약 0.09%), 프레임당 약 15 µs(16.7 ms 예산의 0.1%).
+  - **감지 워커**: `detection_worker.rs`의 `sync_live_settings`도 매 루프 같은 `from_value::<Settings>`를 수행하나 비용은 같은 자릿수라 무시 가능.
+  - **판단**: 구조적으로는 필드 하나 읽기에 전체를 복제·재파싱하는 낭비가 맞으나, 절대 비용이 작고 UI 프레임 경로라 인게임 성능과 경쟁하지 않는다. 수정해도 개선을 주장할 근거가 없다(AGENTS.md 「근거 없는 성능 개선 주장 금지」).
+  - **측정 한계**: 락 경합, 할당기 압박, 캐시 효과는 반영하지 않았다.
+  - **재개 조건**: 설정 JSON이 크게 늘어나거나, 프레임 프로파일에서 이 경로가 상위로 나타나면 재개한다. 그 경우 수정 방향은 위의 캐시 필드 + 변경 시점 갱신 방식을 따른다.
 
 ### 4.3 `write_atomic`이 원자적이지 않음 (remove → rename 2단계) — ⛔ 해법 미정
 

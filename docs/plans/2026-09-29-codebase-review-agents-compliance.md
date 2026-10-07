@@ -23,7 +23,7 @@
 | §4.1 | — | `with_retry`가 op을 4번째 실행 | ❌ 오진 (루프 밖 코드 도달 불가, 계약 테스트 추가) | `e93176d` |
 | §4.2 | MEDIUM | `get_merged()` 매 프레임 deep clone | ⬇️ 실측 5.2µs/호출, 수정 안 함 | |
 | §4.3 | MEDIUM | `write_atomic` 비원자성 | ⛔ 수정 시도 후 되돌림, 해법 미정 | `30125d0` (문서) |
-| §4.4 | MEDIUM | DXGI 오류 1회에 GDI 강등 | ⏳ 미착수 | |
+| §4.4 | MEDIUM | DXGI 오류 1회에 GDI 강등 | ⬇️ 의도된 fail-safe, 발생 사례 없음, 수정 안 함 | |
 | §4.5 | MEDIUM | 아틀라스 staging 미초기화 | ⬇️ 제안 수정 불가 + 발동 조건 좁음, 수정 안 함 | |
 | §4.6 | MEDIUM | DXGI 타임아웃 동일 프레임 `Ok` 재전달 | ❌ 오진 (카운터는 시간 게이트, 제안 수정은 기능 파손) | |
 | §4.7 | MEDIUM | 매 프레임 `is_fullscreen` syscall + dead 필드 | ✅ 완료 (Linux 빌드는 CI 확인 대기) | `2218b89`, `505e691` |
@@ -269,7 +269,7 @@ std::fs::rename(tmp, path)?;
   1번이 diff가 가장 작다. 착수 전 두 후보 모두 read-only 대상 프로브로 확인한다. §3.4(b)의 `recommend_provider` 쓰기(현재 직접 `fs::write`, `bd421d7`)도 같은 방식으로 맞춘다.
 - **결정 선행 조건**: 포터블 모드에서 복사된 read-only 캐시가 실제로 존재할 수 있는지 사용자 확인.
 
-### 4.4 DXGI가 오류 한 번에도 즉시 GDI로 강등
+### 4.4 DXGI가 오류 한 번에도 즉시 GDI로 강등 — ⬇️ 의도된 fail-safe, 발생 사례 없음, 수정하지 않음
 
 - **파일**: `rust/overmax_engine/src/capture/capture_engine/windows/mod.rs:166-174`
 ```rust
@@ -285,6 +285,13 @@ match dxgi.capture_bgra_inplace(rect, out_frame) {
 - **문제**: `0x887A0027`(타임아웃) 외 **모든** 오류 — 일시적 `Map` 실패, `DXGI_ERROR_ACCESS_LOST` 1회, 그리고 §3.2 수정 이후의 출력 교체 실패 — 가 DXGI 백엔드를 파괴하고 GDI `BitBlt`로 강등시킨다. 이후 3초 쿨다운(`:145`) 동안 GDI 고정.
 - **수정 방향**: HRESULT 코드로 판별하여 `ACCESS_LOST(0x887A0006)`일 때만 내부 `dup_result = None` 후 재협상(1회), 그래도 실패할 때만 `Err`을 올려 상위 폴백 유지. 상위 `mod.rs`는 문자열 대신 상수 비교.
 - **미측정**: 3초 GDI 강등의 실측 성능 영향 미측정. Decision Log의 "~4ms vs ~30ms"는 2026-08-15 값이며 현재 아틀라스 경로와 비교 기준이 다르다.
+- **재검토 (2026-10-07)**: 수정하지 않는다. (코드와 로컬 텔레메트리로 확인, 실기 재현은 하지 않았다.)
+  - **HRESULT 오기 정정**: 위 수정 방향이 `ACCESS_LOST`라고 적은 `0x887A0006`은 `DXGI_ERROR_DEVICE_HUNG`이다. 실제 `DXGI_ERROR_ACCESS_LOST`는 **`0x887A0026`**(windows crate 상수로 확인). 타임아웃 `0x887A0027`은 맞다.
+  - **의도된 설계다.** Decision Log 2026-08-15(`docs/decisions/capture_and_window.md`)가 "DXGI ACCESS_LOST/Timeout 및 3초 GDI Fail-Safe 폴백 안정화"로 이 동작을 명시한다. `dxgi.rs`는 타임아웃만 따로 처리하고 나머지 오류는 `Err`로 올려 `mod.rs`가 백엔드를 버린 뒤 3초 쿨다운 후 재생성한다. `ACCESS_LOST`에 duplication을 해제·재생성하는 것은 표준 처리이며 현재 구조도 같은 모양이다.
+  - **오류 순간 프레임은 잃지 않는다.** 실패한 호출에서 곧바로 GDI로 같은 프레임을 캡처한다. 비용은 이후 약 3초의 GDI 고정이다.
+  - **제안 수정의 비용**: 오류 종류별 분기와 내부 재협상 재시도의 폭주 방지(현재는 3초 쿨다운이 담당)를 새로 설계해야 한다. §3.2에서 출력 교체 실패를 전파하도록 바꾼 경로(`a58a502`)와도 변경이 겹친다.
+  - **발생 사례 없음**: 로컬 `cache/telemetry.log` 9개 윈도우 합계 시도 353 / 성공 353 / 실패 0, "DXGI capture failed" 로그 0건(`telemetry.prev.log`는 비어 있음). 단일 세션 표본이라 부재의 증명은 아니다.
+  - **재개 조건**: 사용자 로그/텔레메트리에서 DXGI 강등이 반복 관찰되면 재개한다. 그 경우 `ACCESS_LOST`(`0x887A0026`)만 분기해 재협상하고 그 외는 기존 폴백을 유지하는 방안을 검토한다.
 
 ### 4.5 DXGI 아틀라스 staging 텍스처가 Clear되지 않아 이전 프레임 픽셀이 남음 — ⬇️ 제안 수정 불가 + 발동 조건 좁음, 수정하지 않음
 

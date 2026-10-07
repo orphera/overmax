@@ -1094,10 +1094,10 @@ impl NativeApp {
     }
 
     pub(crate) fn poll_startup_cache(&mut self) {
-        if self
+        let polled = self
             .startup_cache_manager
-            .poll_updates(&mut self.varchive_db, &mut self.sheet_meta)
-        {
+            .poll_updates(&mut self.varchive_db, &mut self.sheet_meta);
+        if polled.data {
             self.on_varchive_db_updated();
         }
     }

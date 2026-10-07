@@ -4,7 +4,7 @@ pub mod gateway;
 pub mod service;
 pub mod store;
 
-pub use community::cache_downloader::{CacheUpdateResult, StartupCacheManager};
+pub use community::cache_downloader::{CacheUpdateResult, PolledUpdates, StartupCacheManager};
 pub use community::client::VArchiveDB;
 pub use community::sheet_meta::{PatternSheetMeta, PatternSheetMetaItem};
 pub use community::sync::{

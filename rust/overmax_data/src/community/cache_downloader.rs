@@ -35,6 +35,17 @@ type LogFn<'a> = &'a mut dyn FnMut(String);
 pub struct CacheUpdateResult {
     pub updated_varchive_db: Option<VArchiveDB>,
     pub updated_sheet_meta: Option<PatternSheetMeta>,
+    /// `image_index.db` 파일이 새 버전으로 교체됨 (이미 메모리에 로드된 인덱스는 낡은 상태)
+    pub updated_image_index: bool,
+}
+
+/// `StartupCacheManager::poll_updates`가 이번 호출에서 반영한 갱신 종류.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PolledUpdates {
+    /// `varchive_db` 또는 `sheet_meta`가 교체됨
+    pub data: bool,
+    /// `image_index.db`가 교체됨 — 호출자가 인덱스 소비자에게 재로드를 알려야 함
+    pub image_index: bool,
 }
 
 pub struct StartupCacheManager {
@@ -56,6 +67,8 @@ impl StartupCacheManager {
             std::thread::spawn(move || {
                 let mut logs = Vec::new();
                 let mut updated_any = false;
+                let image_path = root_buf.join(&settings_clone.jacket_matcher().db_path);
+                let image_version_before = local_version(&image_path);
 
                 refresh_startup_caches(&root_buf, &settings_clone, &mut |msg| {
                     if msg.contains("갱신 완료") || msg.contains("업데이트 완료") {
@@ -91,6 +104,7 @@ impl StartupCacheManager {
                     let _ = tx.send(CacheUpdateResult {
                         updated_varchive_db: new_vdb_opt,
                         updated_sheet_meta: new_meta_opt,
+                        updated_image_index: local_version(&image_path) != image_version_before,
                     });
                 }
             });
@@ -103,19 +117,20 @@ impl StartupCacheManager {
         &self,
         varchive_db: &mut Arc<VArchiveDB>,
         sheet_meta: &mut Arc<PatternSheetMeta>,
-    ) -> bool {
-        let mut updated = false;
+    ) -> PolledUpdates {
+        let mut polled = PolledUpdates::default();
         while let Ok(res) = self.rx.try_recv() {
             if let Some(new_vdb) = res.updated_varchive_db {
                 *varchive_db = Arc::new(new_vdb);
-                updated = true;
+                polled.data = true;
             }
             if let Some(new_meta) = res.updated_sheet_meta {
                 *sheet_meta = Arc::new(new_meta);
-                updated = true;
+                polled.data = true;
             }
+            polled.image_index |= res.updated_image_index;
         }
-        updated
+        polled
     }
 }
 

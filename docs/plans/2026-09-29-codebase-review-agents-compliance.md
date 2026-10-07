@@ -38,7 +38,7 @@
 | §4.16 | MEDIUM | `upsert` 트랜잭션 부재 | ⬇️ 프로덕션 쓰기 스레드 1개, 수정 안 함 | |
 | §4.17 | MEDIUM | OCR 잔존 설정/문서 | ✅ 완료 (필드는 호환성 위해 유지) | `5a0c831`, `41b3dab` |
 | §4.18 | MEDIUM | 이진화 대비율 문서 72% → 65% | ✅ 완료 | `98c2a9f` |
-| §4.19 | MEDIUM | `detect_rect_edges` margin unscaled | ⏳ 미착수 (측정 선행) | |
+| §4.19 | MEDIUM | `detect_rect_edges` margin unscaled | ⬇️ margin은 결과에 무영향, 수정 안 함 | |
 | §4.20 | MEDIUM | IPC 인증/스레드 제한 부재 | ⏸️ 설계 의도 확인 대기 | |
 | §4.21 | LOW | 벤치 바이너리 릴리스 포함 | ⬇️ 배포물에 미포함(컴파일만), 수정 안 함 | |
 | §4.22 | MEDIUM | CV 중복 작업 | ⏳ 미착수 (계측 선행) | |
@@ -487,7 +487,7 @@ if self.create_records_table(&conn).is_ok() && ... {
 - **잔여**: `image.rs:1153` 테스트 주석의 "기존 하드 이진화(72% 대비)" 표현은 그대로다(과거형 서술이라 오해 소지는 작음).
 - **커밋 규율**: 원래 §3.4와 같은 커밋(`aeeb763`)에 섞여 있었으나 단독 커밋으로 분리했다.
 
-### 4.19 `detect_rect_edges`의 margin 8이 unscaled
+### 4.19 `detect_rect_edges`의 margin 8이 unscaled — ⬇️ margin은 결과에 무영향, 수정하지 않음
 
 - **파일**: `rust/overmax_engine/src/detector/detection_pipeline.rs:803-807`
 ```rust
@@ -499,6 +499,12 @@ fn detect_rect_edges(frame: &CapturedFrame, roi: crate::detector::roi::RoiRect) 
 - **수정 방향**: `scale: f32` 파라미터를 받아 `((8.0 * scale).round() as i32).max(4)`로 계산, 호출부(`:531`, `:535`)에 `rois.scale()` 전달. **동작 변경이므로 1440p 회귀 스냅샷으로 검증 후 별도 커밋.**
 - **git blame 게이트**: `b54ce34` (2026-08-09), `58e7ea0`.
 - **미측정**: 1440p에서의 정량 영향 및 1440p 스냅샷 존재 여부 미확인.
+- **재검토 (2026-10-07)**: 수정하지 않는다. (코드 읽기와 합성 이미지 실험으로 확인했으며 1440p 실스냅샷으로 검증하지는 않았다.)
+  - **margin 값은 결과에 영향을 주지 않는다.** `overmax_cv::detect_rect_edges`는 ROI에 `margin`을 더한 영역을 받아 그 안쪽 `margin` 위치(= 원래 ROI 경계선)의 ±1픽셀 그래디언트만 샘플링한다. `margin`은 경계선 바깥에 ±1 이웃 픽셀이 존재하도록 확보하는 여유일 뿐 샘플되는 픽셀은 margin과 무관하다. **검증**: 같은 ROI를 margin 4, 8, 11, 16으로 잘라 `detect_rect_edges`를 호출한 결과가 전부 동일(`56.12875`)했다. 따라서 제안된 `round(8×scale)`로 바꿔도 1440p에서 엣지 결과는 달라지지 않는다.
+  - **아틀라스 경로(Windows 기본값, `enable_gpu_atlas: true`)는 어차피 `scale = 1.0`이다.** `RoiManager::update_window_size`가 512×512 프레임에서 scale을 1.0으로 고정하며, 아틀라스 슬롯은 8px 마진을 1080p 정규화 공간에서 포함하도록 설계되어 있다(`atlas_layout.rs:298`, Decision Log 2026-10-06). margin을 scale에 연동하면 이 계약과 어긋날 위험만 생긴다.
+  - **커밋 메시지와 코드의 불일치는 무해하다.** `b54ce34`의 "margin 스케일링" 의도와 `let margin = 8;`이 다른 것은 맞으나, `check_category_band_solid`의 `width`는 판정 대상 자체라 스케일되고 엣지 검사의 margin은 판정 대상이 아니므로 차이는 의도된 결과로 볼 수 있다.
+  - **한계**: 경계가 프레임 가장자리 8px 이내인 ROI에서는 margin이 크롭 클램프에 걸릴 수 있으나 `player_panel`은 화면 중앙부에 있다.
+  - **재개 조건**: `detect_rect_edges`의 샘플링이 margin의 크기·위치에 의존하도록 바뀔 때.
 
 ### 4.20 IPC `/rpc`에 인증·rate limit 부재, 연결마다 무제한 스레드 — ⏸️ 설계 의도 확인 대기
 

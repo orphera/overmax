@@ -16,7 +16,7 @@ use crate::detector::telemetry::RuntimeTelemetry;
 use overmax_core::GameSessionState;
 use overmax_data::{DataCompatibility, ImageIndexDb, Settings};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -129,6 +129,7 @@ pub fn spawn(
     runtime_telemetry: Option<Arc<RuntimeTelemetry>>,
     presentation_observation: SharedPresentationObservation,
     repaint_callback: Box<dyn Fn() + Send + Sync + 'static>,
+    image_index_reload_rx: Receiver<()>,
 ) {
     std::thread::spawn(move || {
         initialize_winrt(&log_tx);
@@ -142,7 +143,8 @@ pub fn spawn(
             runtime_telemetry,
             presentation_observation,
             repaint_callback,
-        );
+        )
+        .with_image_index_reload(image_index_reload_rx);
         worker.run();
     });
 }
@@ -218,6 +220,8 @@ struct DetectionWorker {
     #[allow(dead_code)]
     presentation_observation: SharedPresentationObservation,
     capture_failure_active: bool,
+    /// `image_index.db`가 백그라운드에서 갱신되었을 때 앱이 보내는 재로드 신호
+    image_index_reload_rx: Option<Receiver<()>>,
 }
 
 impl DetectionWorker {
@@ -275,7 +279,13 @@ impl DetectionWorker {
             focus_policy: LinuxFocusPolicy::new(),
             presentation_observation,
             capture_failure_active: false,
+            image_index_reload_rx: None,
         }
+    }
+
+    fn with_image_index_reload(mut self, rx: Receiver<()>) -> Self {
+        self.image_index_reload_rx = Some(rx);
+        self
     }
 
     fn run(&mut self) {
@@ -312,6 +322,7 @@ impl DetectionWorker {
                 telemetry.maybe_log();
             }
             self.sync_live_settings(&mut capturer);
+            self.reload_image_index_if_requested(&mut pipeline);
             #[cfg(target_os = "windows")]
             self.tick(&tracker, &mut capturer, &mut pipeline);
             #[cfg(target_os = "linux")]
@@ -384,7 +395,25 @@ impl DetectionWorker {
         (self.repaint_callback)();
     }
 
+    fn reload_image_index_if_requested(&self, pipeline: &mut DetectionPipeline) {
+        let Some(rx) = &self.image_index_reload_rx else {
+            return;
+        };
+        let mut requested = false;
+        while rx.try_recv().is_ok() {
+            requested = true;
+        }
+        if requested {
+            self.log("[Detection] image_index.db 갱신 감지: 인덱스 재로드".to_string());
+            pipeline.replace_image_db(self.load_image_db());
+        }
+    }
+
     fn build_pipeline(&self) -> DetectionPipeline {
+        DetectionPipeline::new(self.load_image_db())
+    }
+
+    fn load_image_db(&self) -> ImageIndexDb {
         let db_path = image_index_path(&self.root, &self.settings);
         self.log(format!(
             "[Detection] image_index path={}",
@@ -397,7 +426,7 @@ impl DetectionWorker {
             Ok(n) => self.log(format!("[Detection] image_index loaded: {n} images")),
             Err(e) => self.log(format!("[Detection] image_index load failed: {e}")),
         }
-        DetectionPipeline::new(db)
+        db
     }
 
     #[cfg(target_os = "windows")]

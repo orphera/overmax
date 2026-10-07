@@ -281,6 +281,7 @@ pub struct NativeApp {
     pub(crate) varchive_db: Arc<VArchiveDB>,
     pub(crate) sheet_meta: Arc<PatternSheetMeta>,
     pub(crate) startup_cache_manager: cache_update::StartupCacheManager,
+    pub(crate) image_index_reload_tx: mpsc::Sender<()>,
     pub(crate) recommendations: RecommendResult,
     pub(crate) pattern_tabs: Vec<crate::ui::overlay_recommend_ui::PatternTabInfo>,
     pub(crate) state_tracker: AppStateTracker,
@@ -446,6 +447,7 @@ impl NativeApp {
 
         let presentation_observation = platform.presentation_observation();
 
+        let (image_index_reload_tx, image_index_reload_rx) = mpsc::channel();
         detection_worker::spawn(
             paths.data_dir().to_path_buf(),
             app_settings.clone(),
@@ -456,6 +458,7 @@ impl NativeApp {
             runtime_telemetry.clone(),
             presentation_observation,
             repaint_callback,
+            image_index_reload_rx,
         );
 
         let mut filters = std::collections::HashMap::new();
@@ -536,6 +539,7 @@ impl NativeApp {
             varchive_db,
             sheet_meta,
             startup_cache_manager,
+            image_index_reload_tx,
             recommendations: RecommendResult::empty(),
             pattern_tabs: Vec::new(),
             state_tracker: AppStateTracker::new(),
@@ -1094,11 +1098,14 @@ impl NativeApp {
     }
 
     pub(crate) fn poll_startup_cache(&mut self) {
-        if self
+        let polled = self
             .startup_cache_manager
-            .poll_updates(&mut self.varchive_db, &mut self.sheet_meta)
-        {
+            .poll_updates(&mut self.varchive_db, &mut self.sheet_meta);
+        if polled.data {
             self.on_varchive_db_updated();
+        }
+        if polled.image_index {
+            let _ = self.image_index_reload_tx.send(());
         }
     }
 

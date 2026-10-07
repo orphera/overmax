@@ -21,29 +21,29 @@
 | §3.4 | HIGH | Provider가 요청 대상 호스트 결정 + 비원자 쓰기 | ⚠️ 부분 완료 ((a) 완료, (b) 되돌림·§4.3 대기) | `070cfa8`, `24c8d4a` ((b) `63ae6d4` → revert `bd421d7`) |
 | §3.5 | HIGH | Linux 오버레이가 IPC 표시 명령 무시 | ✅ 완료 | `9a556ca` |
 | §4.1 | — | `with_retry`가 op을 4번째 실행 | ❌ 오진 (루프 밖 코드 도달 불가, 계약 테스트 추가) | `e93176d` |
-| §4.2 | MEDIUM | `get_merged()` 매 프레임 deep clone | ⏳ 미착수 | |
+| §4.2 | MEDIUM | `get_merged()` 매 프레임 deep clone | ⬇️ 실측 5.2µs/호출, 수정 안 함 | |
 | §4.3 | MEDIUM | `write_atomic` 비원자성 | ⛔ 수정 시도 후 되돌림, 해법 미정 | `30125d0` (문서) |
-| §4.4 | MEDIUM | DXGI 오류 1회에 GDI 강등 | ⏳ 미착수 | |
-| §4.5 | MEDIUM | 아틀라스 staging 미초기화 | ⏳ 미착수 | |
-| §4.6 | MEDIUM | DXGI 타임아웃 동일 프레임 `Ok` 재전달 | ⏳ 미착수 | |
+| §4.4 | MEDIUM | DXGI 오류 1회에 GDI 강등 | ⬇️ 의도된 fail-safe, 발생 사례 없음, 수정 안 함 | |
+| §4.5 | MEDIUM | 아틀라스 staging 미초기화 | ⬇️ 제안 수정 불가 + 발동 조건 좁음, 수정 안 함 | |
+| §4.6 | MEDIUM | DXGI 타임아웃 동일 프레임 `Ok` 재전달 | ❌ 오진 (카운터는 시간 게이트, 제안 수정은 기능 파손) | |
 | §4.7 | MEDIUM | 매 프레임 `is_fullscreen` syscall + dead 필드 | ✅ 완료 (Linux 빌드는 CI 확인 대기) | `2218b89`, `505e691` |
 | §4.8 | — | GDI HBITMAP 누수 | ❌ 오진 (실측 반증) | |
-| §4.9 | MEDIUM | `image_index.db` 갱신 미반영 | ⏳ 미착수 | |
+| §4.9 | MEDIUM | `image_index.db` 갱신 미반영 | ✅ 완료 (실기 검증 대기) | `63b4a54`, `6baaf48` |
 | §4.10 | MEDIUM | 서버 JSON 무검증 영속화 | ✅ 완료 | `e527501`, `58ead08` |
 | §4.11 | MEDIUM | V-Archive URL 보간 | ✅ 완료 | `74094d8`, `8185d53` |
 | §4.12 | MEDIUM | `AccountInfo` Debug로 토큰 노출 | ✅ 완료 (에러 메시지 URL 노출은 잔여) | `b7147a8` |
 | §4.13 | LOW | `image_index` 로드마다 DDL | ⬇️ 결함 없음, 수정 안 함 | |
 | §4.14 | — | `user_version` 미사용 | ⏸️ 근거 부족, 사용자 판단 대기 | |
 | §4.15 | MEDIUM | 마이그레이션 실패를 삼키고 `is_ready=true` | ✅ 완료 | `d6c2546`, `19457c1` |
-| §4.16 | MEDIUM | `upsert` 트랜잭션 부재 | ⏳ 미착수 (재현 실패) | |
+| §4.16 | MEDIUM | `upsert` 트랜잭션 부재 | ⬇️ 프로덕션 쓰기 스레드 1개, 수정 안 함 | |
 | §4.17 | MEDIUM | OCR 잔존 설정/문서 | ✅ 완료 (필드는 호환성 위해 유지) | `5a0c831`, `41b3dab` |
 | §4.18 | MEDIUM | 이진화 대비율 문서 72% → 65% | ✅ 완료 | `98c2a9f` |
-| §4.19 | MEDIUM | `detect_rect_edges` margin unscaled | ⏳ 미착수 (측정 선행) | |
+| §4.19 | MEDIUM | `detect_rect_edges` margin unscaled | ⬇️ margin은 결과에 무영향, 수정 안 함 | |
 | §4.20 | MEDIUM | IPC 인증/스레드 제한 부재 | ⏸️ 설계 의도 확인 대기 | |
 | §4.21 | LOW | 벤치 바이너리 릴리스 포함 | ⬇️ 배포물에 미포함(컴파일만), 수정 안 함 | |
-| §4.22 | MEDIUM | CV 중복 작업 | ⏳ 미착수 (계측 선행) | |
+| §4.22 | MEDIUM | CV 중복 작업 | ⬇️ 실측 결과 비용 미미, 수정 안 함 (해시 항목만 재개 후보) | |
 | §4.23 | MEDIUM | Linux 정규화 부재 | ⏸️ 측정 전 보류 | |
-| §4.24 | MEDIUM | Linux 풀 프레임 2회 순회 | ⏳ 미착수 | |
+| §4.24 | MEDIUM | Linux 풀 프레임 2회 순회 | ⬇️ 제안 수정 효과 없음, 수정 안 함 | |
 | §4.25 | MEDIUM | 문서-코드 드리프트 | ⚠️ 부분 완료 (슬롯 수만) | `4bcfbf2` |
 | §7.2 | — | 2026-10-02 후속 리뷰 지적 사항 | ✅ 완료 | |
 
@@ -219,7 +219,7 @@ op(&conn)
 - **git blame**: `with_retry`는 `22bcc56`(2026-08-18) 도입.
 - **결론**: 버그가 재현되지 않으므로 **수정하지 않음.** 도달 불가 코드를 `unreachable!()`이나 루프 재구성으로 정리하는 것은 취향 판단이라 AGENTS.md 기준으로 단독 근거가 되지 않는다. 특히 `unreachable!()`은 release 프로파일의 `panic = "abort"` 아래 새 패닉 지점을 만든다.
 
-### 4.2 `get_merged()`가 매 프레임 settings 전체 JSON을 deep clone + 재파싱
+### 4.2 `get_merged()`가 매 프레임 settings 전체 JSON을 deep clone + 재파싱 — ⬇️ 실측 결과 비용 미미, 수정하지 않음
 
 - **파일**: `rust/overmax_app/src/ui/native_app.rs:125-131`, 호출부 `native_app_viewports.rs:96, 584, 667, 915, 992`
 ```rust
@@ -229,6 +229,14 @@ serde_json::from_value(val).unwrap_or_default()
 - **문제**: 호출부 5곳이 모두 프레임 루프 내부. 특히 `:667` `poll_and_drain_events`는 **무조건 매 프레임** `screen_capture().content_protected`를 읽기 위해 호출하고, `read_overlay_settings`도 매 프레임 `settings.merged.lock()`을 건다. §2.2 잔여인 `is_varchive_account_configured`도 같은 경로다.
 - **수정**: `state_tracker.prev_protected: Changed<Option<bool>>` 같은 기존 중복 억제 패턴을 적용. 캐시 필드를 두고 설정 변경 시점에만 갱신.
 - **측정 관련 주의**: 정량 프레임 비용은 **미측정**. 구조적 문제로만 표기.
+- **재검토 (2026-10-07, 실측)**: 수정하지 않는다.
+  - **측정 방법**: 실제 `settings.json` + `settings.user.json` 병합 결과(JSON 1,313바이트)에 대해 `get_merged()`와 동일한 동작(`Mutex` 잠금 → `Value` deep clone → `from_value::<Settings>`)을 release 빌드에서 10만 회 반복. 저장소 밖 별도 crate에서 수행.
+  - **결과 (호출당)**: `get_merged()` 전체 **5.16 µs**, 그중 `Value` clone 4.02 µs. 비교용 하한인 "잠금 + 필드 하나 읽기"(`read_overlay_settings` 방식)는 0.028 µs로 약 180배 차이.
+  - **프레임당 환산**: 무조건 매 프레임인 호출은 `native_app_viewports.rs:667` 하나, 오버레이 표시 시 `:584`가 추가되고 나머지는 조건부. 프레임당 최대 3회·60 FPS로 가정해도 약 0.93 ms/초(코어 1개의 약 0.09%), 프레임당 약 15 µs(16.7 ms 예산의 0.1%).
+  - **감지 워커**: `detection_worker.rs`의 `sync_live_settings`도 매 루프 같은 `from_value::<Settings>`를 수행하나 비용은 같은 자릿수라 무시 가능.
+  - **판단**: 구조적으로는 필드 하나 읽기에 전체를 복제·재파싱하는 낭비가 맞으나, 절대 비용이 작고 UI 프레임 경로라 인게임 성능과 경쟁하지 않는다. 수정해도 개선을 주장할 근거가 없다(AGENTS.md 「근거 없는 성능 개선 주장 금지」).
+  - **측정 한계**: 락 경합, 할당기 압박, 캐시 효과는 반영하지 않았다.
+  - **재개 조건**: 설정 JSON이 크게 늘어나거나, 프레임 프로파일에서 이 경로가 상위로 나타나면 재개한다. 그 경우 수정 방향은 위의 캐시 필드 + 변경 시점 갱신 방식을 따른다.
 
 ### 4.3 `write_atomic`이 원자적이지 않음 (remove → rename 2단계) — ⛔ 해법 미정
 
@@ -261,7 +269,7 @@ std::fs::rename(tmp, path)?;
   1번이 diff가 가장 작다. 착수 전 두 후보 모두 read-only 대상 프로브로 확인한다. §3.4(b)의 `recommend_provider` 쓰기(현재 직접 `fs::write`, `bd421d7`)도 같은 방식으로 맞춘다.
 - **결정 선행 조건**: 포터블 모드에서 복사된 read-only 캐시가 실제로 존재할 수 있는지 사용자 확인.
 
-### 4.4 DXGI가 오류 한 번에도 즉시 GDI로 강등
+### 4.4 DXGI가 오류 한 번에도 즉시 GDI로 강등 — ⬇️ 의도된 fail-safe, 발생 사례 없음, 수정하지 않음
 
 - **파일**: `rust/overmax_engine/src/capture/capture_engine/windows/mod.rs:166-174`
 ```rust
@@ -277,8 +285,15 @@ match dxgi.capture_bgra_inplace(rect, out_frame) {
 - **문제**: `0x887A0027`(타임아웃) 외 **모든** 오류 — 일시적 `Map` 실패, `DXGI_ERROR_ACCESS_LOST` 1회, 그리고 §3.2 수정 이후의 출력 교체 실패 — 가 DXGI 백엔드를 파괴하고 GDI `BitBlt`로 강등시킨다. 이후 3초 쿨다운(`:145`) 동안 GDI 고정.
 - **수정 방향**: HRESULT 코드로 판별하여 `ACCESS_LOST(0x887A0006)`일 때만 내부 `dup_result = None` 후 재협상(1회), 그래도 실패할 때만 `Err`을 올려 상위 폴백 유지. 상위 `mod.rs`는 문자열 대신 상수 비교.
 - **미측정**: 3초 GDI 강등의 실측 성능 영향 미측정. Decision Log의 "~4ms vs ~30ms"는 2026-08-15 값이며 현재 아틀라스 경로와 비교 기준이 다르다.
+- **재검토 (2026-10-07)**: 수정하지 않는다. (코드와 로컬 텔레메트리로 확인, 실기 재현은 하지 않았다.)
+  - **HRESULT 오기 정정**: 위 수정 방향이 `ACCESS_LOST`라고 적은 `0x887A0006`은 `DXGI_ERROR_DEVICE_HUNG`이다. 실제 `DXGI_ERROR_ACCESS_LOST`는 **`0x887A0026`**(windows crate 상수로 확인). 타임아웃 `0x887A0027`은 맞다.
+  - **의도된 설계다.** Decision Log 2026-08-15(`docs/decisions/capture_and_window.md`)가 "DXGI ACCESS_LOST/Timeout 및 3초 GDI Fail-Safe 폴백 안정화"로 이 동작을 명시한다. `dxgi.rs`는 타임아웃만 따로 처리하고 나머지 오류는 `Err`로 올려 `mod.rs`가 백엔드를 버린 뒤 3초 쿨다운 후 재생성한다. `ACCESS_LOST`에 duplication을 해제·재생성하는 것은 표준 처리이며 현재 구조도 같은 모양이다.
+  - **오류 순간 프레임은 잃지 않는다.** 실패한 호출에서 곧바로 GDI로 같은 프레임을 캡처한다. 비용은 이후 약 3초의 GDI 고정이다.
+  - **제안 수정의 비용**: 오류 종류별 분기와 내부 재협상 재시도의 폭주 방지(현재는 3초 쿨다운이 담당)를 새로 설계해야 한다. §3.2에서 출력 교체 실패를 전파하도록 바꾼 경로(`a58a502`)와도 변경이 겹친다.
+  - **발생 사례 없음**: 로컬 `cache/telemetry.log` 9개 윈도우 합계 시도 353 / 성공 353 / 실패 0, "DXGI capture failed" 로그 0건(`telemetry.prev.log`는 비어 있음). 단일 세션 표본이라 부재의 증명은 아니다.
+  - **재개 조건**: 사용자 로그/텔레메트리에서 DXGI 강등이 반복 관찰되면 재개한다. 그 경우 `ACCESS_LOST`(`0x887A0026`)만 분기해 재협상하고 그 외는 기존 폴백을 유지하는 방안을 검토한다.
 
-### 4.5 DXGI 아틀라스 staging 텍스처가 Clear되지 않아 이전 프레임 픽셀이 남음
+### 4.5 DXGI 아틀라스 staging 텍스처가 Clear되지 않아 이전 프레임 픽셀이 남음 — ⬇️ 제안 수정 불가 + 발동 조건 좁음, 수정하지 않음
 
 - **파일**: `rust/overmax_engine/src/capture/capture_engine/windows/dxgi.rs:795-806`
 ```rust
@@ -293,13 +308,25 @@ for slot in ATLAS_SLOTS.iter() {
 - **문제**: staging 아틀라스 텍스처는 `ensure_staging_atlas_textures()`에서 한 번만 생성되고 파일 전체에 Clear 호출이 없다(`grep Clear` 0건). 창이 화면 왼쪽으로 일부 벗어나 `local_left < 0`이 되면 일부 슬롯이 `continue`되고, 그 영역에는 **핑퐁 2세대 전 프레임의 픽셀**이 남아 현재 프레임 데이터로 인식된다. 최초 생성 직후에는 `CreateTexture2D(&desc, None, ...)`의 **미초기화 메모리**가 노출된다.
 - **수정 방향**: 추상 계층 추가 없이 해당 함수 내부와 `DxgiCaptureEngine`에 RTV 필드 1개만 늘려 staging 텍스처 전체를 1회 clear.
 - **재현 미완**: `local_left < 0` 발생 빈도 미확인. 미초기화 메모리 노출은 코드상 확실하나 재현하지 않았다.
+- **재검토 (2026-10-07)**: 수정하지 않는다.
+  - **제안된 수정은 성립하지 않는다.** 아틀라스 staging 텍스처는 `D3D11_USAGE_STAGING`, `BindFlags: 0`(`dxgi.rs:447-448`)이라 렌더 타깃이 될 수 없어 RTV로 `Clear`할 수 없다. CPU `Map(WRITE)`로 지우면 직전 GPU 복사와 stall이 생겨 핑퐁 더블버퍼링(Decision Log 2026-09-04)의 목적을 해친다.
+  - **"미초기화 메모리 노출" 주장은 근거가 약하다.** 새 D3D11 리소스는 드라이버가 0으로 초기화하는 것이 일반적이라 노출되는 값은 쓰레기가 아니라 0일 가능성이 높다. 재현·확인하지 않았다.
+  - **발동 조건이 좁다.** 슬롯 skip은 `copy_slots_to_atlas`의 범위 검사(`dxgi.rs:795-806`)에서만 일어난다. 정규화(normalizer) 경로는 항상 `0,0` 기준이라 skip이 없으므로, **창이 정확히 1920×1080이면서 일부가 모니터 밖으로 나간 경우**에만 해당한다. 이때 skip된 슬롯에는 해당 위치가 마지막으로 유효했던 프레임의 픽셀이 남는다.
+  - **"해로운가"가 열려 있다.** 화면 밖 슬롯은 어차피 정상 인식이 불가능하다. 마지막 유효 상태 유지가 바람직한지, 0 채움으로 Unknown 처리가 바람직한지는 동작 정책이며 측정 근거가 없다. 비-아틀라스 경로(`crop_texture_to_buffer`)는 범위를 clamp해 더 작은 프레임을 만들어 이미 결과가 다르다.
+  - **판단**: 발생 빈도·오인식 사례가 확인되지 않았고, 수정 대상은 캡처 경로(최신 수정 2026-09-04)다. 측정된 회귀가 없어 수정 근거로 부족하다.
+  - **재개 조건**: 창을 모니터 밖으로 일부 밀어낸 상태에서 skip 슬롯과 인식 결과를 로그로 재현해 오인식이 확인되면 재개한다. 그 경우 후보는 (a) skip 발생 프레임에만 0으로 채운 DEFAULT 아틀라스 텍스처를 `CopyResource`해 GPU에서 덮는 방식(정상 경로 비용 0, 텍스처 1개 추가), (b) skip 시 프레임 무효 신호(§4.6과 계약이 얽힘)다.
 
-### 4.6 DXGI 타임아웃이 동일 프레임을 `Ok`로 재전달
+### 4.6 DXGI 타임아웃이 동일 프레임을 `Ok`로 재전달 — ❌ 오진, 수정하지 않음
 
 - **파일**: `rust/overmax_engine/src/capture/capture_engine/windows/dxgi.rs:627-639`
 - **문제**: 정적 화면에서 매 tick **동일 프레임이 `Ok`로 재전달**된다. 호출자(`detection_worker.rs:454-509`)는 "새 프레임"과 "직전 프레임 재사용"을 구분할 수단이 없어, history 로직이 매 tick 동일 입력을 받아 안정화 카운터를 전진시킬 수 있다(AGENTS.md 「단일 프레임 판단보다 history 기반 접근」과 상충). 설계 의도는 Decision Log 2026-09-04 더블버퍼링이므로, 문제는 "Ok로 위장"이라는 점이다.
 - **수정 방향**: `CapturedFrame`에 `pub reused: bool` 추가, timeout 경로에서 `true`, 호출자는 `reused`일 때 `pipeline.detect`를 스킵하고 `SleepHint`만 갱신.
 - **미검증**: 동일 프레임 반복이 안정화 카운터를 실제로 오염시키는지 미확인.
+- **재검토 (2026-10-07)**: 오진이다. 수정하지 않는다. (코드와 기존 테스트로 확인했으며 실기 재현은 하지 않았다.)
+  - **카운터는 프레임 수가 아니라 벽시계로 게이트된다.** `hysteresis.update()`는 `process_frame_with_scene`에서만 호출되며 이는 `detect_scene_if_due`가 폴링 쿨다운(0.3/1.5/2.0초)을 넘겼을 때만 실행된다. `scene_streak`는 `commit_scene`에서만 증가하고 그 주석이 "cached ticks never call this method"라고 명시한다. 쿨다운 안의 틱은 `process_frame_cached`를 타며 이 카운터들을 건드리지 않는다. `detection_pipeline.rs`의 인게임 씬 테스트가 같은 프레임을 `start + 0.99`에 다시 넣어도 `scene_streak`가 1에서 변하지 않음을 이미 검증한다. 따라서 "매 tick 안정화 카운터 전진" 경로는 없다.
+  - **재전달 프레임은 현재 화면이다.** Desktop Duplication 타임아웃은 화면에 변화가 없다는 뜻이므로 직전 프레임을 다시 읽는 것은 새로 캡처해도 같을 픽셀을 읽는 것이다. 아틀라스 더블버퍼에서도 타임아웃 시 읽는 `prev_idx`는 마지막으로 쓴 버퍼라 정상 경로의 1프레임 지연보다 오히려 최신이다.
+  - **제안된 수정(`reused`이면 `detect` 스킵)은 기능을 깨뜨린다.** 결과창·인게임 씬은 두 번 연속 관찰로 확정된다(`scene_streak >= 2`). 폴링 사이 정적 화면은 새 프레임을 만들지 않으므로 둘째 관찰은 재전달 프레임에서 일어난다. 스킵하면 정적 결과창은 확정되지 않는다. 쿨다운, `unknown_since`(3초 후 폴링 주기 전환), `JACKET_MATCH_INTERVAL` 같은 시간 기반 로직과 §4.9의 `image_index` 재로드 반영도 틱에 의존한다. **`detect`는 새 프레임이 없어도 호출되어야 한다.**
+  - **남는 것은 성능 질문뿐이다.** 재전달 틱마다 `copy_atlas_to_buffer`(Map, HDR이면 fp16→BGRA8 변환 512×512)가 돈다. 이 비용은 측정하지 않았으며 정확성 문제인 이 항목과는 별개의 후보다.
 
 ### 4.7 매 프레임 5회 win32 syscall + 읽히지 않는 필드 — ✅ 완료 (`2218b89`, `505e691`)
 
@@ -430,12 +457,16 @@ if self.create_records_table(&conn).is_ok() && ... {
 - **재현·검증**: 테스트 `initialize_reports_failure_when_migration_cannot_alter` 추가. 현행 스키마에서 `is_max_combo`만 DROP한 DB에 다른 연결이 `BEGIN IMMEDIATE`로 쓰기 잠금을 쥔 상태에서 초기화하면, ALTER가 `busy_timeout`(5초) 후 실패하는데도 수정 전 코드는 `initialize() == true`를 반환했다(테스트 실패 확인). 수정 후 `false`를 반환하고, 잠금 해제 후 재초기화하면 정상 마이그레이션되어 `is_max_combo=true` upsert가 보존됨을 확인했다. 테스트가 busy_timeout만큼 약 5초 걸린다.
 - **후속 (완료, `19457c1`)**: 앱 호출부 `native_app.rs:367`이 `record_db.initialize()`의 반환값을 버려, 실패가 직후 `migrate_json_cache_to_db`의 "DB is not ready" 로그로만 간접 노출되었다. 실패 시 `log_tx`로 `[RecordDB] 기록 DB 초기화 실패` 로그를 남기도록 했다. git blame: `0140d56d`(2026-05-18), §4.15 후속으로 명시된 변경이라 수정 근거 충족. `NativeApp` 생성 경로라 단위 테스트는 붙이지 않았다(fmt·clippy만 확인).
 
-### 4.16 `upsert`가 트랜잭션 없는 read-modify-write
+### 4.16 `upsert`가 트랜잭션 없는 read-modify-write — ⬇️ 프로덕션 쓰기 스레드 1개, 수정하지 않음
 
 - **파일**: `rust/overmax_data/src/store/record_db/mod.rs:152-216`
 - **문제**: `with_retry`가 매 시도마다 새 커넥션을 열고(`:103`) SELECT와 INSERT 사이에 `BEGIN`이 없다. 두 스레드가 같은 키를 갱신하면 같은 `existing_rate`를 읽고 마지막 writer가 덮어쓸 수 있다.
 - **수정**: 클로저 내부를 `BEGIN IMMEDIATE` … `COMMIT`으로 감싼다.
 - **재현 실패**: 4스레드 × 50회 프로브에서 `raced_final_rate=93.49`로 정상 수렴. WAL + `busy_timeout=5000`이 자연 직렬화한 결과로 보이며, **재현 실패는 버그 부재를 증명하지 않는다.** 재현 전에는 착수하지 않는다.
+- **재검토 (2026-10-07)**: 수정하지 않는다. (코드로 호출 경로 확인, 실기 재현은 하지 않았다.)
+  - **`records` 테이블의 프로덕션 쓰기 경로는 전부 UI 스레드다.** `RecordManager::handle_verified_play` → `upsert`(`native_app_recommend.rs:63`)와 자동 업로드 전 로컬 반영 `record_manager.upsert`(`native_app.rs:1032`)는 UI 업데이트 루프(`&mut self`)에서 실행된다. `upsert_varchive_record`(`native_app.rs:726`)는 V-Archive 캐시 테이블이며 `records`가 아니다. IPC 서버(`ipc_server.rs`)는 `record_manager`를 `get_recent_records` 읽기에만 쓴다. `community/sync.rs`의 `rdb.upsert`는 테스트 코드에만 존재한다. `single_instance`가 중복 실행을 막으므로 프로세스 간 경합도 없다.
+  - 따라서 같은 키에 대한 동시 read-modify-write는 현재 구조에서 도달 불가능하며, 위 "4스레드×50회 프로브 재현 실패"도 이 구조와 일관된다.
+  - **재개 조건**: `records`를 쓰는 경로가 UI 스레드 밖에 추가될 때(예: IPC 쓰기 RPC, 백그라운드 동기화가 `records`에 직접 쓰기). 그 경우 위 수정(`BEGIN IMMEDIATE` … `COMMIT`)이 맞는 방향이다.
 
 ### 4.17 OCR 제거 후 남은 죽은 설정 필드와 잘못된 문서 서술 — ✅ 완료 (`5a0c831`, `41b3dab`)
 
@@ -456,7 +487,7 @@ if self.create_records_table(&conn).is_ok() && ... {
 - **잔여**: `image.rs:1153` 테스트 주석의 "기존 하드 이진화(72% 대비)" 표현은 그대로다(과거형 서술이라 오해 소지는 작음).
 - **커밋 규율**: 원래 §3.4와 같은 커밋(`aeeb763`)에 섞여 있었으나 단독 커밋으로 분리했다.
 
-### 4.19 `detect_rect_edges`의 margin 8이 unscaled
+### 4.19 `detect_rect_edges`의 margin 8이 unscaled — ⬇️ margin은 결과에 무영향, 수정하지 않음
 
 - **파일**: `rust/overmax_engine/src/detector/detection_pipeline.rs:803-807`
 ```rust
@@ -468,6 +499,12 @@ fn detect_rect_edges(frame: &CapturedFrame, roi: crate::detector::roi::RoiRect) 
 - **수정 방향**: `scale: f32` 파라미터를 받아 `((8.0 * scale).round() as i32).max(4)`로 계산, 호출부(`:531`, `:535`)에 `rois.scale()` 전달. **동작 변경이므로 1440p 회귀 스냅샷으로 검증 후 별도 커밋.**
 - **git blame 게이트**: `b54ce34` (2026-08-09), `58e7ea0`.
 - **미측정**: 1440p에서의 정량 영향 및 1440p 스냅샷 존재 여부 미확인.
+- **재검토 (2026-10-07)**: 수정하지 않는다. (코드 읽기와 합성 이미지 실험으로 확인했으며 1440p 실스냅샷으로 검증하지는 않았다.)
+  - **margin 값은 결과에 영향을 주지 않는다.** `overmax_cv::detect_rect_edges`는 ROI에 `margin`을 더한 영역을 받아 그 안쪽 `margin` 위치(= 원래 ROI 경계선)의 ±1픽셀 그래디언트만 샘플링한다. `margin`은 경계선 바깥에 ±1 이웃 픽셀이 존재하도록 확보하는 여유일 뿐 샘플되는 픽셀은 margin과 무관하다. **검증**: 같은 ROI를 margin 4, 8, 11, 16으로 잘라 `detect_rect_edges`를 호출한 결과가 전부 동일(`56.12875`)했다. 따라서 제안된 `round(8×scale)`로 바꿔도 1440p에서 엣지 결과는 달라지지 않는다.
+  - **아틀라스 경로(Windows 기본값, `enable_gpu_atlas: true`)는 어차피 `scale = 1.0`이다.** `RoiManager::update_window_size`가 512×512 프레임에서 scale을 1.0으로 고정하며, 아틀라스 슬롯은 8px 마진을 1080p 정규화 공간에서 포함하도록 설계되어 있다(`atlas_layout.rs:298`, Decision Log 2026-10-06). margin을 scale에 연동하면 이 계약과 어긋날 위험만 생긴다.
+  - **커밋 메시지와 코드의 불일치는 무해하다.** `b54ce34`의 "margin 스케일링" 의도와 `let margin = 8;`이 다른 것은 맞으나, `check_category_band_solid`의 `width`는 판정 대상 자체라 스케일되고 엣지 검사의 margin은 판정 대상이 아니므로 차이는 의도된 결과로 볼 수 있다.
+  - **한계**: 경계가 프레임 가장자리 8px 이내인 ROI에서는 margin이 크롭 클램프에 걸릴 수 있으나 `player_panel`은 화면 중앙부에 있다.
+  - **재개 조건**: `detect_rect_edges`의 샘플링이 margin의 크기·위치에 의존하도록 바뀔 때.
 
 ### 4.20 IPC `/rpc`에 인증·rate limit 부재, 연결마다 무제한 스레드 — ⏸️ 설계 의도 확인 대기
 
@@ -488,7 +525,7 @@ fn detect_rect_edges(frame: &CapturedFrame, roi: crate::detector::roi::RoiRect) 
   - **판단**: 배포물 영향이 없고 빌드 시간 외 측정된 비용이 없으며, 게이트는 검증 도구를 CI에서 빼는 부작용이 있다. **수정하지 않는다.** 릴리스 빌드 시간이 문제가 되면 `build.bat`/패키징 스크립트에서 `--bin overmax-rs`로 빌드 대상을 좁히는 쪽이 CI 커버리지를 유지하는 대안이다.
   - **부수 발견**: `build.bat`은 `cargo build -p overmax-app --release` 후 `package-rust.ps1`을 호출하는데, 이 스크립트도 같은 빌드를 다시 실행한다(두 번째는 증분이라 사실상 no-op).
 
-### 4.22 CV 파이프라인의 불필요 중복 작업 (성능 항목군)
+### 4.22 CV 파이프라인의 불필요 중복 작업 (성능 항목군) — ⬇️ 실측 결과 비용 미미, 수정하지 않음 (해시 항목만 재개 후보)
 
 모두 AGENTS.md 「성능 저하 야기 금지」를 근거로 하며 최소 diff가 가능한 항목이다. **정량 효과는 전부 미측정**이며, 구조적 중복만 확인했다. 각 항목은 수정 전후 계측을 붙여 개별 커밋으로 진행한다(「근거 없는 성능 개선 주장 금지」).
 
@@ -503,6 +540,16 @@ fn detect_rect_edges(frame: &CapturedFrame, roi: crate::detector::roi::RoiRect) 
 | `ImageView` zero-copy 계약이 해시·에지 진입점에서 깨짐 | `capture/frame_utils.rs:130-141, 94-105` | `to_image_region()`이 매번 소유 `Vec<u8>` 할당 + 전 행 복사. `play_state.rs:690, 715`가 매 프레임 `compute_hashes(4)` 호출. `crop`(`:66-85`)이 stride == width*4를 보장하므로 슬라이스 직접 전달 가능. |
 | 씬 미스마다 비용을 내는 텔레메트리 경로 | `detection_pipeline.rs:349-350, 360-364` | `screen_static_thumb_diff`가 크롭 + 힙 복사 + 그레이 + resize를 수행하나 결과는 stats 로깅으로만 소비. 텔레메트리 비활성 시 스킵 가드 1개. |
 
+- **재검토 (2026-10-07, 실측)**: 항목군 전체를 수정하지 않는다. 해시 항목만 재개 후보로 남긴다.
+  - **측정 방법**: release 빌드, 로컬 `cache/image_index.db`(817곡), `test/jackets`의 실제 자켓 11장을 60×60 BGRA로 리사이즈한 입력. 저장소 밖 별도 crate에서 수행.
+  - **결과**: `match_jacket`(실제 자켓, 전체 DB 스캔 포함) 약 473 µs/호출, `compute_image_hashes` 60×60 약 709 µs/호출, `check_centroid_kernel` 5~7 µs, 14.4KB `Vec` 복사 0.35 µs. 해시가 `match_jacket` 전체보다 크게 나온 것은 자켓별 편차나 측정 잡음으로 보이며 "둘 다 0.5~0.7 ms 규모, 해시가 비용의 대부분" 정도로만 해석한다.
+  - **자켓 매칭 중복(표 첫 항목)은 "항상 버려짐"이 아니다.** 두 후보는 각각 센트로이드 게이트와 카테고리 띠 검사를 거친 뒤 매칭한다. 센트로이드 게이트는 노이즈·평평한 이미지도 통과시키므로(측정, 로컬 텔레메트리의 `cg=0`과 일관) 중복 여부는 띠 검사가 사실상 결정한다. 두 번 다 실행돼도 선곡/미인식 씬 폴링당 최대 약 0.5 ms이고 폴링 간격이 0.3초 이상이라 코어 1개의 0.16% 이하다. 인게임 씬이 감지되면 `detect_scene_if_due`가 정적 씬 파싱을 건너뛰므로 인게임 경로가 아니며, 선곡 화면 로직이라 AGENTS.md 기준 정확도 우선 영역이다.
+  - **자켓 ROI 2회 복사**는 0.35 µs로 근거가 없다.
+  - **띠 검사 2회 순회, `median_result_rate` Vec, `detect_rate` 버려지는 이진화 버퍼, 텔레메트리 경로**는 마이크로초 규모의 소형 버퍼(바이트~수 KB)라 측정하지 않았다. 측정 없이 개선을 주장할 수 없다.
+  - **해시 항목(표 4번째 + `ImageView` 항목)은 재개 후보다.** 호출당 0.5~0.7 ms 규모이고, `match_jacket`뿐 아니라 `detect_max_combo`가 결과·선곡 씬에서 틱마다 `compute_hashes(4)`를 호출한다. 다만 호출 빈도와 ROI 크기를 확인하지 않았고, 로컬 `cache/telemetry.log`는 debug 빌드(`build=debug`)라 release의 단계별 비용을 보여 주지 못한다.
+  - **재개 조건**: release 빌드(`--features telemetry`)로 인게임 텔레메트리를 수집해 `play`/`scene` 단계 평균이 눈에 띄게 나올 때. 그 경우 해시 항목만 수정 전후 계측을 붙여 개별 커밋으로 진행한다.
+  - **별도 관찰(범위 밖)**: 센트로이드 게이트가 노이즈와 평평한 이미지도 통과시킨다. 이 게이트가 의도대로 동작하는지는 `jacket_matcher`의 `centroid_max_diff` 임계값을 별도로 확인해야 한다.
+
 ### 4.23 Linux 경로의 정규화 부재로 Windows와 인식 결과가 달라질 수 있음 — ⏸️ 측정 전 보류
 
 - **파일**: `capture_engine/linux.rs:608-620` vs `windows/dxgi.rs:511-624`, `windows/normalizer.rs:34-77`, `detector/roi.rs:212-233`
@@ -510,7 +557,7 @@ fn detect_rect_edges(frame: &CapturedFrame, roi: crate::detector::roi::RoiRect) 
 - **수정 방향**: 지금 단계에서 Linux 정규화는 도입하지 않는다. `_rect` 대신 실제 `WindowInfo` geometry로 ROI 스케일을 명시하는 것만 권고(동작 변경 없음).
 - **미측정**: 실제 오인식률 영향은 측정하지 않았다. 실측 전에는 버그로 단정하지 않는다.
 
-### 4.24 Linux 풀 프레임 2회 순회
+### 4.24 Linux 풀 프레임 2회 순회 — ⬇️ 제안 수정 효과 없음, 수정하지 않음
 
 - **파일**: `rust/overmax_engine/src/capture/capture_engine/linux.rs:573-603` (특히 `:596-598`)
 ```rust
@@ -522,6 +569,13 @@ for (source, destination) in generation.map.chunks_exact(generation.stride)
 ```
 - **문제**: Windows 아틀라스 경로가 47개 슬롯만 CPU로 옮기는 것과 달리 Linux는 풀 프레임을 매 캡처 복사하고 4바이트마다 별도로 쓴다(1080p 기준 2,073,600회). 기능상 필요한 작업(알파 강제)이지만 프레임 전체를 2회 순회한다.
 - **수정**: 알파 강제 루프를 `chunks_exact_mut(4)`로 바꾸는 2줄 변경에 한정. 계측 후 진행.
+- **재검토 (2026-10-07, 실측)**: 수정하지 않는다.
+  - **측정 방법**: `capture_into`의 복사·알파 루프를 그대로 옮겨 1080p(stride == row) 프레임으로 release 벤치. 저장소 밖 별도 crate. **한계**: Linux 타깃이 아니라 Windows x86 CPU를 프록시로 썼고 실행 간 편차가 있다(같은 항목이 0.92 ms와 1.11 ms로 나옴).
+  - **결과 (프레임당)**: 현재(행 복사 + `step_by(4)` 알파) 0.92~1.11 ms, 복사만(하한) 0.31~0.37 ms, **제안 수정(`chunks_exact_mut(4)`) 0.94~1.02 ms**, 참고용 `u32` 융합 단일 패스 0.88 ms.
+  - **제안 수정은 효과가 없다.** 두 형태가 편차 안에서 구분되지 않는다(컴파일러가 거의 같은 코드로 생성). `u32` 융합도 이득이 0.1~0.2 ms에 그쳐 메모리 대역폭이 지배적이다.
+  - **영향이 작다.** `active_sleep_ms` 기본값 120ms라 초당 약 8회 캡처이고 1 ms로 잡아도 코어 1개의 0.8% 이하이며, 인게임(`relaxed`)에서는 더 낮다. Linux 캡처의 지배 비용인 X11 pixmap 전송은 측정하지 않았다.
+  - **"2회 순회" 서술 자체는 사실이다**(복사 1회 + 알파 1회). 다만 측정상 의미 있는 낭비로 이어지지 않는다.
+  - **재개 조건**: 실제 Linux 하드웨어에서 `capture` 단계 평균이 눈에 띄게 높게 나올 때. 그 경우 `chunks_exact_mut(4)`가 아니라 복사와 알파를 한 패스로 합치는 방식을 검토한다.
 
 ### 4.25 문서-코드 드리프트 및 릴리스 추적 누락 — ⚠️ 부분 완료 (`4bcfbf2`)
 

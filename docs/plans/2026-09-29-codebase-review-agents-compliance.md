@@ -41,7 +41,7 @@
 | §4.19 | MEDIUM | `detect_rect_edges` margin unscaled | ⬇️ margin은 결과에 무영향, 수정 안 함 | |
 | §4.20 | MEDIUM | IPC 인증/스레드 제한 부재 | ⏸️ 설계 의도 확인 대기 | |
 | §4.21 | LOW | 벤치 바이너리 릴리스 포함 | ⬇️ 배포물에 미포함(컴파일만), 수정 안 함 | |
-| §4.22 | MEDIUM | CV 중복 작업 | ⏳ 미착수 (계측 선행) | |
+| §4.22 | MEDIUM | CV 중복 작업 | ⬇️ 실측 결과 비용 미미, 수정 안 함 (해시 항목만 재개 후보) | |
 | §4.23 | MEDIUM | Linux 정규화 부재 | ⏸️ 측정 전 보류 | |
 | §4.24 | MEDIUM | Linux 풀 프레임 2회 순회 | ⏳ 미착수 | |
 | §4.25 | MEDIUM | 문서-코드 드리프트 | ⚠️ 부분 완료 (슬롯 수만) | `4bcfbf2` |
@@ -525,7 +525,7 @@ fn detect_rect_edges(frame: &CapturedFrame, roi: crate::detector::roi::RoiRect) 
   - **판단**: 배포물 영향이 없고 빌드 시간 외 측정된 비용이 없으며, 게이트는 검증 도구를 CI에서 빼는 부작용이 있다. **수정하지 않는다.** 릴리스 빌드 시간이 문제가 되면 `build.bat`/패키징 스크립트에서 `--bin overmax-rs`로 빌드 대상을 좁히는 쪽이 CI 커버리지를 유지하는 대안이다.
   - **부수 발견**: `build.bat`은 `cargo build -p overmax-app --release` 후 `package-rust.ps1`을 호출하는데, 이 스크립트도 같은 빌드를 다시 실행한다(두 번째는 증분이라 사실상 no-op).
 
-### 4.22 CV 파이프라인의 불필요 중복 작업 (성능 항목군)
+### 4.22 CV 파이프라인의 불필요 중복 작업 (성능 항목군) — ⬇️ 실측 결과 비용 미미, 수정하지 않음 (해시 항목만 재개 후보)
 
 모두 AGENTS.md 「성능 저하 야기 금지」를 근거로 하며 최소 diff가 가능한 항목이다. **정량 효과는 전부 미측정**이며, 구조적 중복만 확인했다. 각 항목은 수정 전후 계측을 붙여 개별 커밋으로 진행한다(「근거 없는 성능 개선 주장 금지」).
 
@@ -539,6 +539,16 @@ fn detect_rect_edges(frame: &CapturedFrame, roi: crate::detector::roi::RoiRect) 
 | `median_result_rate`가 매 호출 Vec 할당 + 정렬 | `play_state.rs:302-306` | 윈도우 최대 7개 고정(`:297`). `[f32; 7]` 스택 배열로 대체. |
 | `ImageView` zero-copy 계약이 해시·에지 진입점에서 깨짐 | `capture/frame_utils.rs:130-141, 94-105` | `to_image_region()`이 매번 소유 `Vec<u8>` 할당 + 전 행 복사. `play_state.rs:690, 715`가 매 프레임 `compute_hashes(4)` 호출. `crop`(`:66-85`)이 stride == width*4를 보장하므로 슬라이스 직접 전달 가능. |
 | 씬 미스마다 비용을 내는 텔레메트리 경로 | `detection_pipeline.rs:349-350, 360-364` | `screen_static_thumb_diff`가 크롭 + 힙 복사 + 그레이 + resize를 수행하나 결과는 stats 로깅으로만 소비. 텔레메트리 비활성 시 스킵 가드 1개. |
+
+- **재검토 (2026-10-07, 실측)**: 항목군 전체를 수정하지 않는다. 해시 항목만 재개 후보로 남긴다.
+  - **측정 방법**: release 빌드, 로컬 `cache/image_index.db`(817곡), `test/jackets`의 실제 자켓 11장을 60×60 BGRA로 리사이즈한 입력. 저장소 밖 별도 crate에서 수행.
+  - **결과**: `match_jacket`(실제 자켓, 전체 DB 스캔 포함) 약 473 µs/호출, `compute_image_hashes` 60×60 약 709 µs/호출, `check_centroid_kernel` 5~7 µs, 14.4KB `Vec` 복사 0.35 µs. 해시가 `match_jacket` 전체보다 크게 나온 것은 자켓별 편차나 측정 잡음으로 보이며 "둘 다 0.5~0.7 ms 규모, 해시가 비용의 대부분" 정도로만 해석한다.
+  - **자켓 매칭 중복(표 첫 항목)은 "항상 버려짐"이 아니다.** 두 후보는 각각 센트로이드 게이트와 카테고리 띠 검사를 거친 뒤 매칭한다. 센트로이드 게이트는 노이즈·평평한 이미지도 통과시키므로(측정, 로컬 텔레메트리의 `cg=0`과 일관) 중복 여부는 띠 검사가 사실상 결정한다. 두 번 다 실행돼도 선곡/미인식 씬 폴링당 최대 약 0.5 ms이고 폴링 간격이 0.3초 이상이라 코어 1개의 0.16% 이하다. 인게임 씬이 감지되면 `detect_scene_if_due`가 정적 씬 파싱을 건너뛰므로 인게임 경로가 아니며, 선곡 화면 로직이라 AGENTS.md 기준 정확도 우선 영역이다.
+  - **자켓 ROI 2회 복사**는 0.35 µs로 근거가 없다.
+  - **띠 검사 2회 순회, `median_result_rate` Vec, `detect_rate` 버려지는 이진화 버퍼, 텔레메트리 경로**는 마이크로초 규모의 소형 버퍼(바이트~수 KB)라 측정하지 않았다. 측정 없이 개선을 주장할 수 없다.
+  - **해시 항목(표 4번째 + `ImageView` 항목)은 재개 후보다.** 호출당 0.5~0.7 ms 규모이고, `match_jacket`뿐 아니라 `detect_max_combo`가 결과·선곡 씬에서 틱마다 `compute_hashes(4)`를 호출한다. 다만 호출 빈도와 ROI 크기를 확인하지 않았고, 로컬 `cache/telemetry.log`는 debug 빌드(`build=debug`)라 release의 단계별 비용을 보여 주지 못한다.
+  - **재개 조건**: release 빌드(`--features telemetry`)로 인게임 텔레메트리를 수집해 `play`/`scene` 단계 평균이 눈에 띄게 나올 때. 그 경우 해시 항목만 수정 전후 계측을 붙여 개별 커밋으로 진행한다.
+  - **별도 관찰(범위 밖)**: 센트로이드 게이트가 노이즈와 평평한 이미지도 통과시킨다. 이 게이트가 의도대로 동작하는지는 `jacket_matcher`의 `centroid_max_diff` 임계값을 별도로 확인해야 한다.
 
 ### 4.23 Linux 경로의 정규화 부재로 Windows와 인식 결과가 달라질 수 있음 — ⏸️ 측정 전 보류
 

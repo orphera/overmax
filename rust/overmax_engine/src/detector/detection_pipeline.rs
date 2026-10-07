@@ -124,6 +124,12 @@ impl DetectionPipeline {
         }
     }
 
+    /// 갱신된 이미지 인덱스로 교체한다. 곡/씬 이력은 유지하고 DB와 매처만 바꾼다.
+    pub fn replace_image_db(&mut self, image_db: ImageIndexDb) {
+        self.jacket_matcher = image_db.matcher();
+        self.image_db = image_db;
+    }
+
     pub fn reset(&mut self) {
         self.stats.reset();
         self.current_song_id = None;
@@ -893,6 +899,18 @@ mod tests {
     use super::{DetectionPipeline, JacketMatchStatus, SleepHint};
     use crate::capture::frame::CapturedFrame;
     use overmax_data::ImageIndexDb;
+
+    #[test]
+    fn replace_image_db_keeps_recognition_history() {
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        pipeline.current_song_id = Some(42);
+        pipeline.last_scene = overmax_core::SceneType::Gameplay;
+
+        pipeline.replace_image_db(ImageIndexDb::new("other-missing.db", 0.7));
+
+        assert_eq!(pipeline.current_song_id, Some(42));
+        assert_eq!(pipeline.last_scene, overmax_core::SceneType::Gameplay);
+    }
 
     #[test]
     fn ingame_scenes_share_result_commitment_and_break_on_misses() {

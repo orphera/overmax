@@ -24,7 +24,7 @@
 | §4.2 | MEDIUM | `get_merged()` 매 프레임 deep clone | ⏳ 미착수 | |
 | §4.3 | MEDIUM | `write_atomic` 비원자성 | ⛔ 수정 시도 후 되돌림, 해법 미정 | `30125d0` (문서) |
 | §4.4 | MEDIUM | DXGI 오류 1회에 GDI 강등 | ⏳ 미착수 | |
-| §4.5 | MEDIUM | 아틀라스 staging 미초기화 | ⏳ 미착수 | |
+| §4.5 | MEDIUM | 아틀라스 staging 미초기화 | ⬇️ 제안 수정 불가 + 발동 조건 좁음, 수정 안 함 | |
 | §4.6 | MEDIUM | DXGI 타임아웃 동일 프레임 `Ok` 재전달 | ⏳ 미착수 | |
 | §4.7 | MEDIUM | 매 프레임 `is_fullscreen` syscall + dead 필드 | ✅ 완료 (Linux 빌드는 CI 확인 대기) | `2218b89`, `505e691` |
 | §4.8 | — | GDI HBITMAP 누수 | ❌ 오진 (실측 반증) | |
@@ -278,7 +278,7 @@ match dxgi.capture_bgra_inplace(rect, out_frame) {
 - **수정 방향**: HRESULT 코드로 판별하여 `ACCESS_LOST(0x887A0006)`일 때만 내부 `dup_result = None` 후 재협상(1회), 그래도 실패할 때만 `Err`을 올려 상위 폴백 유지. 상위 `mod.rs`는 문자열 대신 상수 비교.
 - **미측정**: 3초 GDI 강등의 실측 성능 영향 미측정. Decision Log의 "~4ms vs ~30ms"는 2026-08-15 값이며 현재 아틀라스 경로와 비교 기준이 다르다.
 
-### 4.5 DXGI 아틀라스 staging 텍스처가 Clear되지 않아 이전 프레임 픽셀이 남음
+### 4.5 DXGI 아틀라스 staging 텍스처가 Clear되지 않아 이전 프레임 픽셀이 남음 — ⬇️ 제안 수정 불가 + 발동 조건 좁음, 수정하지 않음
 
 - **파일**: `rust/overmax_engine/src/capture/capture_engine/windows/dxgi.rs:795-806`
 ```rust
@@ -293,6 +293,13 @@ for slot in ATLAS_SLOTS.iter() {
 - **문제**: staging 아틀라스 텍스처는 `ensure_staging_atlas_textures()`에서 한 번만 생성되고 파일 전체에 Clear 호출이 없다(`grep Clear` 0건). 창이 화면 왼쪽으로 일부 벗어나 `local_left < 0`이 되면 일부 슬롯이 `continue`되고, 그 영역에는 **핑퐁 2세대 전 프레임의 픽셀**이 남아 현재 프레임 데이터로 인식된다. 최초 생성 직후에는 `CreateTexture2D(&desc, None, ...)`의 **미초기화 메모리**가 노출된다.
 - **수정 방향**: 추상 계층 추가 없이 해당 함수 내부와 `DxgiCaptureEngine`에 RTV 필드 1개만 늘려 staging 텍스처 전체를 1회 clear.
 - **재현 미완**: `local_left < 0` 발생 빈도 미확인. 미초기화 메모리 노출은 코드상 확실하나 재현하지 않았다.
+- **재검토 (2026-10-07)**: 수정하지 않는다.
+  - **제안된 수정은 성립하지 않는다.** 아틀라스 staging 텍스처는 `D3D11_USAGE_STAGING`, `BindFlags: 0`(`dxgi.rs:447-448`)이라 렌더 타깃이 될 수 없어 RTV로 `Clear`할 수 없다. CPU `Map(WRITE)`로 지우면 직전 GPU 복사와 stall이 생겨 핑퐁 더블버퍼링(Decision Log 2026-09-04)의 목적을 해친다.
+  - **"미초기화 메모리 노출" 주장은 근거가 약하다.** 새 D3D11 리소스는 드라이버가 0으로 초기화하는 것이 일반적이라 노출되는 값은 쓰레기가 아니라 0일 가능성이 높다. 재현·확인하지 않았다.
+  - **발동 조건이 좁다.** 슬롯 skip은 `copy_slots_to_atlas`의 범위 검사(`dxgi.rs:795-806`)에서만 일어난다. 정규화(normalizer) 경로는 항상 `0,0` 기준이라 skip이 없으므로, **창이 정확히 1920×1080이면서 일부가 모니터 밖으로 나간 경우**에만 해당한다. 이때 skip된 슬롯에는 해당 위치가 마지막으로 유효했던 프레임의 픽셀이 남는다.
+  - **"해로운가"가 열려 있다.** 화면 밖 슬롯은 어차피 정상 인식이 불가능하다. 마지막 유효 상태 유지가 바람직한지, 0 채움으로 Unknown 처리가 바람직한지는 동작 정책이며 측정 근거가 없다. 비-아틀라스 경로(`crop_texture_to_buffer`)는 범위를 clamp해 더 작은 프레임을 만들어 이미 결과가 다르다.
+  - **판단**: 발생 빈도·오인식 사례가 확인되지 않았고, 수정 대상은 캡처 경로(최신 수정 2026-09-04)다. 측정된 회귀가 없어 수정 근거로 부족하다.
+  - **재개 조건**: 창을 모니터 밖으로 일부 밀어낸 상태에서 skip 슬롯과 인식 결과를 로그로 재현해 오인식이 확인되면 재개한다. 그 경우 후보는 (a) skip 발생 프레임에만 0으로 채운 DEFAULT 아틀라스 텍스처를 `CopyResource`해 GPU에서 덮는 방식(정상 경로 비용 0, 텍스처 1개 추가), (b) skip 시 프레임 무효 신호(§4.6과 계약이 얽힘)다.
 
 ### 4.6 DXGI 타임아웃이 동일 프레임을 `Ok`로 재전달
 

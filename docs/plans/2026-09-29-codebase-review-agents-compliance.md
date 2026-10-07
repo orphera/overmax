@@ -35,7 +35,7 @@
 | §4.13 | LOW | `image_index` 로드마다 DDL | ⬇️ 결함 없음, 수정 안 함 | |
 | §4.14 | — | `user_version` 미사용 | ⏸️ 근거 부족, 사용자 판단 대기 | |
 | §4.15 | MEDIUM | 마이그레이션 실패를 삼키고 `is_ready=true` | ✅ 완료 | `d6c2546`, `19457c1` |
-| §4.16 | MEDIUM | `upsert` 트랜잭션 부재 | ⏳ 미착수 (재현 실패) | |
+| §4.16 | MEDIUM | `upsert` 트랜잭션 부재 | ⬇️ 프로덕션 쓰기 스레드 1개, 수정 안 함 | |
 | §4.17 | MEDIUM | OCR 잔존 설정/문서 | ✅ 완료 (필드는 호환성 위해 유지) | `5a0c831`, `41b3dab` |
 | §4.18 | MEDIUM | 이진화 대비율 문서 72% → 65% | ✅ 완료 | `98c2a9f` |
 | §4.19 | MEDIUM | `detect_rect_edges` margin unscaled | ⏳ 미착수 (측정 선행) | |
@@ -457,12 +457,16 @@ if self.create_records_table(&conn).is_ok() && ... {
 - **재현·검증**: 테스트 `initialize_reports_failure_when_migration_cannot_alter` 추가. 현행 스키마에서 `is_max_combo`만 DROP한 DB에 다른 연결이 `BEGIN IMMEDIATE`로 쓰기 잠금을 쥔 상태에서 초기화하면, ALTER가 `busy_timeout`(5초) 후 실패하는데도 수정 전 코드는 `initialize() == true`를 반환했다(테스트 실패 확인). 수정 후 `false`를 반환하고, 잠금 해제 후 재초기화하면 정상 마이그레이션되어 `is_max_combo=true` upsert가 보존됨을 확인했다. 테스트가 busy_timeout만큼 약 5초 걸린다.
 - **후속 (완료, `19457c1`)**: 앱 호출부 `native_app.rs:367`이 `record_db.initialize()`의 반환값을 버려, 실패가 직후 `migrate_json_cache_to_db`의 "DB is not ready" 로그로만 간접 노출되었다. 실패 시 `log_tx`로 `[RecordDB] 기록 DB 초기화 실패` 로그를 남기도록 했다. git blame: `0140d56d`(2026-05-18), §4.15 후속으로 명시된 변경이라 수정 근거 충족. `NativeApp` 생성 경로라 단위 테스트는 붙이지 않았다(fmt·clippy만 확인).
 
-### 4.16 `upsert`가 트랜잭션 없는 read-modify-write
+### 4.16 `upsert`가 트랜잭션 없는 read-modify-write — ⬇️ 프로덕션 쓰기 스레드 1개, 수정하지 않음
 
 - **파일**: `rust/overmax_data/src/store/record_db/mod.rs:152-216`
 - **문제**: `with_retry`가 매 시도마다 새 커넥션을 열고(`:103`) SELECT와 INSERT 사이에 `BEGIN`이 없다. 두 스레드가 같은 키를 갱신하면 같은 `existing_rate`를 읽고 마지막 writer가 덮어쓸 수 있다.
 - **수정**: 클로저 내부를 `BEGIN IMMEDIATE` … `COMMIT`으로 감싼다.
 - **재현 실패**: 4스레드 × 50회 프로브에서 `raced_final_rate=93.49`로 정상 수렴. WAL + `busy_timeout=5000`이 자연 직렬화한 결과로 보이며, **재현 실패는 버그 부재를 증명하지 않는다.** 재현 전에는 착수하지 않는다.
+- **재검토 (2026-10-07)**: 수정하지 않는다. (코드로 호출 경로 확인, 실기 재현은 하지 않았다.)
+  - **`records` 테이블의 프로덕션 쓰기 경로는 전부 UI 스레드다.** `RecordManager::handle_verified_play` → `upsert`(`native_app_recommend.rs:63`)와 자동 업로드 전 로컬 반영 `record_manager.upsert`(`native_app.rs:1032`)는 UI 업데이트 루프(`&mut self`)에서 실행된다. `upsert_varchive_record`(`native_app.rs:726`)는 V-Archive 캐시 테이블이며 `records`가 아니다. IPC 서버(`ipc_server.rs`)는 `record_manager`를 `get_recent_records` 읽기에만 쓴다. `community/sync.rs`의 `rdb.upsert`는 테스트 코드에만 존재한다. `single_instance`가 중복 실행을 막으므로 프로세스 간 경합도 없다.
+  - 따라서 같은 키에 대한 동시 read-modify-write는 현재 구조에서 도달 불가능하며, 위 "4스레드×50회 프로브 재현 실패"도 이 구조와 일관된다.
+  - **재개 조건**: `records`를 쓰는 경로가 UI 스레드 밖에 추가될 때(예: IPC 쓰기 RPC, 백그라운드 동기화가 `records`에 직접 쓰기). 그 경우 위 수정(`BEGIN IMMEDIATE` … `COMMIT`)이 맞는 방향이다.
 
 ### 4.17 OCR 제거 후 남은 죽은 설정 필드와 잘못된 문서 서술 — ✅ 완료 (`5a0c831`, `41b3dab`)
 

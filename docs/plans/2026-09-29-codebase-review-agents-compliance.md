@@ -25,7 +25,7 @@
 | §4.3 | MEDIUM | `write_atomic` 비원자성 | ⛔ 수정 시도 후 되돌림, 해법 미정 | `30125d0` (문서) |
 | §4.4 | MEDIUM | DXGI 오류 1회에 GDI 강등 | ⏳ 미착수 | |
 | §4.5 | MEDIUM | 아틀라스 staging 미초기화 | ⬇️ 제안 수정 불가 + 발동 조건 좁음, 수정 안 함 | |
-| §4.6 | MEDIUM | DXGI 타임아웃 동일 프레임 `Ok` 재전달 | ⏳ 미착수 | |
+| §4.6 | MEDIUM | DXGI 타임아웃 동일 프레임 `Ok` 재전달 | ❌ 오진 (카운터는 시간 게이트, 제안 수정은 기능 파손) | |
 | §4.7 | MEDIUM | 매 프레임 `is_fullscreen` syscall + dead 필드 | ✅ 완료 (Linux 빌드는 CI 확인 대기) | `2218b89`, `505e691` |
 | §4.8 | — | GDI HBITMAP 누수 | ❌ 오진 (실측 반증) | |
 | §4.9 | MEDIUM | `image_index.db` 갱신 미반영 | ✅ 완료 (실기 검증 대기) | `63b4a54`, `6baaf48` |
@@ -309,12 +309,17 @@ for slot in ATLAS_SLOTS.iter() {
   - **판단**: 발생 빈도·오인식 사례가 확인되지 않았고, 수정 대상은 캡처 경로(최신 수정 2026-09-04)다. 측정된 회귀가 없어 수정 근거로 부족하다.
   - **재개 조건**: 창을 모니터 밖으로 일부 밀어낸 상태에서 skip 슬롯과 인식 결과를 로그로 재현해 오인식이 확인되면 재개한다. 그 경우 후보는 (a) skip 발생 프레임에만 0으로 채운 DEFAULT 아틀라스 텍스처를 `CopyResource`해 GPU에서 덮는 방식(정상 경로 비용 0, 텍스처 1개 추가), (b) skip 시 프레임 무효 신호(§4.6과 계약이 얽힘)다.
 
-### 4.6 DXGI 타임아웃이 동일 프레임을 `Ok`로 재전달
+### 4.6 DXGI 타임아웃이 동일 프레임을 `Ok`로 재전달 — ❌ 오진, 수정하지 않음
 
 - **파일**: `rust/overmax_engine/src/capture/capture_engine/windows/dxgi.rs:627-639`
 - **문제**: 정적 화면에서 매 tick **동일 프레임이 `Ok`로 재전달**된다. 호출자(`detection_worker.rs:454-509`)는 "새 프레임"과 "직전 프레임 재사용"을 구분할 수단이 없어, history 로직이 매 tick 동일 입력을 받아 안정화 카운터를 전진시킬 수 있다(AGENTS.md 「단일 프레임 판단보다 history 기반 접근」과 상충). 설계 의도는 Decision Log 2026-09-04 더블버퍼링이므로, 문제는 "Ok로 위장"이라는 점이다.
 - **수정 방향**: `CapturedFrame`에 `pub reused: bool` 추가, timeout 경로에서 `true`, 호출자는 `reused`일 때 `pipeline.detect`를 스킵하고 `SleepHint`만 갱신.
 - **미검증**: 동일 프레임 반복이 안정화 카운터를 실제로 오염시키는지 미확인.
+- **재검토 (2026-10-07)**: 오진이다. 수정하지 않는다. (코드와 기존 테스트로 확인했으며 실기 재현은 하지 않았다.)
+  - **카운터는 프레임 수가 아니라 벽시계로 게이트된다.** `hysteresis.update()`는 `process_frame_with_scene`에서만 호출되며 이는 `detect_scene_if_due`가 폴링 쿨다운(0.3/1.5/2.0초)을 넘겼을 때만 실행된다. `scene_streak`는 `commit_scene`에서만 증가하고 그 주석이 "cached ticks never call this method"라고 명시한다. 쿨다운 안의 틱은 `process_frame_cached`를 타며 이 카운터들을 건드리지 않는다. `detection_pipeline.rs`의 인게임 씬 테스트가 같은 프레임을 `start + 0.99`에 다시 넣어도 `scene_streak`가 1에서 변하지 않음을 이미 검증한다. 따라서 "매 tick 안정화 카운터 전진" 경로는 없다.
+  - **재전달 프레임은 현재 화면이다.** Desktop Duplication 타임아웃은 화면에 변화가 없다는 뜻이므로 직전 프레임을 다시 읽는 것은 새로 캡처해도 같을 픽셀을 읽는 것이다. 아틀라스 더블버퍼에서도 타임아웃 시 읽는 `prev_idx`는 마지막으로 쓴 버퍼라 정상 경로의 1프레임 지연보다 오히려 최신이다.
+  - **제안된 수정(`reused`이면 `detect` 스킵)은 기능을 깨뜨린다.** 결과창·인게임 씬은 두 번 연속 관찰로 확정된다(`scene_streak >= 2`). 폴링 사이 정적 화면은 새 프레임을 만들지 않으므로 둘째 관찰은 재전달 프레임에서 일어난다. 스킵하면 정적 결과창은 확정되지 않는다. 쿨다운, `unknown_since`(3초 후 폴링 주기 전환), `JACKET_MATCH_INTERVAL` 같은 시간 기반 로직과 §4.9의 `image_index` 재로드 반영도 틱에 의존한다. **`detect`는 새 프레임이 없어도 호출되어야 한다.**
+  - **남는 것은 성능 질문뿐이다.** 재전달 틱마다 `copy_atlas_to_buffer`(Map, HDR이면 fp16→BGRA8 변환 512×512)가 돈다. 이 비용은 측정하지 않았으며 정확성 문제인 이 항목과는 별개의 후보다.
 
 ### 4.7 매 프레임 5회 win32 syscall + 읽히지 않는 필드 — ✅ 완료 (`2218b89`, `505e691`)
 

@@ -506,6 +506,7 @@ impl DetectionWorker {
                 out.state.is_fullscreen = self.window_scheduler.cached_fullscreen;
                 self.log_detection_summary(&out);
                 self.check_and_log_scene_transition(&out);
+                self.log_verified_event(&out);
 
                 let fingerprint = RepaintFingerprint::from(&out);
 
@@ -682,6 +683,7 @@ impl DetectionWorker {
                 out.state.is_fullscreen = snapshot.fullscreen;
                 self.log_detection_summary(&out);
                 self.check_and_log_scene_transition(&out);
+                self.log_verified_event(&out);
 
                 let fingerprint = RepaintFingerprint::from(&out);
 
@@ -955,6 +957,30 @@ impl DetectionWorker {
             self.log(msg.clone());
             self.append_to_telemetry_log(&msg);
         }
+    }
+
+    /// 확정 이벤트(`VerifiedPlayEvent`)를 telemetry 로그에 남긴다.
+    /// 선곡 화면의 미플레이(0.00%) 이벤트는 로컬 기록 삭제로 이어지므로 오탐 추적용으로 구분해 기록한다.
+    fn log_verified_event(&mut self, out: &DetectionOutput) {
+        let Some(event) = &out.event else {
+            return;
+        };
+        let msg = format!(
+            "[VerifiedEvent] {} SongID: {}, Mode: {:?}, Diff: {:?}, Rate: {:.2}%, MaxCombo: {}",
+            if event.is_result_screen {
+                "result"
+            } else {
+                "select"
+            },
+            event.song_id,
+            event.mode,
+            event.diff,
+            event.rate,
+            event.is_max_combo
+        );
+        println!("{msg}");
+        self.log(msg.clone());
+        self.append_to_telemetry_log(&msg);
     }
 
     fn append_to_telemetry_log(&self, line: &str) {

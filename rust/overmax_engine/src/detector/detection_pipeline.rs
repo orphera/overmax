@@ -256,11 +256,6 @@ impl DetectionPipeline {
             );
         }
 
-        // 결과창에서 다시 선곡 화면으로 복귀하는 경우 결과창 캐시 리셋
-        if !view.is_result {
-            self.play_state.clear_detected_cache();
-        }
-
         let jacket_start = Instant::now();
         let jacket_status = self.update_song_id_from_jacket(frame, now);
         let jacket_elapsed = jacket_start.elapsed().as_micros() as u64;
@@ -1217,6 +1212,58 @@ mod tests {
 
         assert_eq!(pipeline.rois.current_scene(), SceneType::Unknown);
         assert!(pipeline.play_state.detected_cache_is_empty_for_test());
+    }
+
+    #[test]
+    fn song_select_emits_verified_event_once_across_stable_frames() {
+        use crate::detector::roi::RoiRect;
+        use overmax_core::SceneType;
+
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut frame = blank_frame();
+        let mut paint = |r: RoiRect, bgr: [u8; 3]| {
+            for y in r.y1..r.y2 {
+                for x in r.x1..r.x2 {
+                    let i = ((y * frame.width + x) * 4) as usize;
+                    frame.bgra[i..i + 3].copy_from_slice(&bgr);
+                    frame.bgra[i + 3] = 255;
+                }
+            }
+        };
+        paint(
+            RoiRect {
+                x1: 80,
+                y1: 130,
+                x2: 85,
+                y2: 135,
+            },
+            [0x55, 0x4F, 0x2D],
+        ); // 4B
+        paint(
+            RoiRect {
+                x1: 98,
+                y1: 488,
+                x2: 208,
+                y2: 516,
+            },
+            [0xDC, 0xDC, 0xDC],
+        ); // NORMAL
+
+        let mut stable = 0;
+        let mut events = 0;
+        for i in 0..30 {
+            // 이미지 DB가 없으므로 곡 ID는 매 프레임 주입 (화면 이탈 시 초기화되기 때문)
+            pipeline.current_song_id = Some(7);
+            let out = pipeline.process_frame_with_scene(
+                &frame,
+                SceneType::Freestyle,
+                10.0 + f64::from(i) * 0.1,
+            );
+            stable += usize::from(out.state.is_stable);
+            events += usize::from(out.event.is_some());
+        }
+        assert!(stable > 1, "선곡 화면이 안정화되어야 검증 가능");
+        assert_eq!(events, 1, "안정 상태에서 동일 패턴 이벤트가 중복 방출됨");
     }
 
     fn blank_frame() -> CapturedFrame {

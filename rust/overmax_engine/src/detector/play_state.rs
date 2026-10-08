@@ -157,6 +157,8 @@ pub struct PlayStateDetector {
     result_mode_diff: ResultModeDiffLatch,
     result_rate_window: VecDeque<f32>,
     last_emitted_event: Option<VerifiedPlayEvent>,
+    /// 직전 프레임이 결과창이었는지 (결과창 → 선곡 복귀 시점 1회 감지용)
+    was_result: bool,
 }
 
 impl PlayStateDetector {
@@ -345,6 +347,7 @@ impl PlayStateDetector {
             result_mode_diff: ResultModeDiffLatch::new(),
             result_rate_window: VecDeque::new(),
             last_emitted_event: None,
+            was_result: false,
         }
     }
 
@@ -414,6 +417,13 @@ impl PlayStateDetector {
         now: f64,
     ) -> (GameSessionState, Option<VerifiedPlayEvent>) {
         let scene = rois.current_scene();
+
+        // 결과창 → 선곡 복귀 전환 시점에만 결과창 캐시/이벤트 래치를 비운다.
+        // (선곡 화면 프레임마다 비우면 이벤트가 매 프레임 재방출되고 rate 캐시가 무력화된다)
+        if self.was_result && !scene.is_result() {
+            self.clear_detected_cache();
+        }
+        self.was_result = scene.is_result();
 
         // 1. 현재 프레임의 플레이 컨텍스트 관측 (모드, 난이도, 점수)
         let current_context = self.observe_current_context(frame, rois, song_id, scene, now);
@@ -807,6 +817,55 @@ mod tests {
         paint_rect(&mut frame, 218, 488, 328, 516, Bgr::from_rgb_hex(0xFFFFFF));
         let (_state3, _) = detector.detect(&frame, &rois, Some(1), 3.0);
         assert_eq!(detector.mode_diff_cache.last_detect_ts, 3.0);
+    }
+
+    #[test]
+    fn song_select_emits_event_once_per_pattern() {
+        let mut detector = PlayStateDetector::new(3);
+        let mut frame = blank_frame();
+        paint_rect(&mut frame, 80, 130, 85, 135, Bgr::from_rgb_hex(0x2D4F55)); // 4B
+        paint_rect(&mut frame, 98, 488, 208, 516, Bgr::from_rgb_hex(0xDCDCDC)); // NORMAL diff
+        let mut rois = RoiManager::new(1920, 1080);
+        rois.set_scene(SceneType::Freestyle);
+
+        let emitted = (0..10)
+            .filter(|i| {
+                detector
+                    .detect(&frame, &rois, Some(7), f64::from(*i))
+                    .1
+                    .is_some()
+            })
+            .count();
+        assert_eq!(emitted, 1, "선곡 화면에서 동일 패턴 이벤트가 중복 방출됨");
+    }
+
+    #[test]
+    fn result_exit_resets_event_latch_once() {
+        let mut detector = PlayStateDetector::new(1);
+        detector.result_mode_diff.mode.update(Some(super::Mode::B4));
+        detector
+            .result_mode_diff
+            .diff
+            .update(Some(super::Difficulty::NM));
+        detector.rate_cache.set(
+            Some(PatternRecord::Played {
+                rate: 99.5,
+                is_max_combo: false,
+            }),
+            None,
+            0.0,
+        );
+        let frame = blank_frame();
+        let mut rois = RoiManager::new(1920, 1080);
+        rois.set_scene(SceneType::ResultFreestyle);
+        assert!(detector.detect(&frame, &rois, Some(10), 1.0).1.is_some());
+        assert!(detector.last_emitted_event.is_some());
+
+        // 결과창 체류 중에는 래치 유지, 선곡 복귀 첫 프레임에서 비워짐
+        rois.set_scene(SceneType::Freestyle);
+        let _ = detector.detect(&frame, &rois, Some(10), 2.0);
+        assert!(detector.last_emitted_event.is_none());
+        assert!(detector.detected_cache_is_empty_for_test());
     }
 
     fn blank_frame() -> CapturedFrame {

@@ -1,5 +1,7 @@
 # Linux 지원 안내
 
+[English](linux-support.en.md)
+
 Overmax의 Linux 지원은 초기 단계입니다. Windows와 같은 범용 지원이 아니며, 아래 조건을 만족하는 Proton/XWayland 환경만 현재 지원 대상으로 봅니다.
 
 ## 지원 범위

@@ -259,7 +259,7 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [x] 위치 값으로 스냅 중일 때 `overlay_props.is_snap_manual`(창 모드면 수동으로 표시) 및 드래그 동작 정리 (창모드에서 드래그 종료 시 좌표와 `snap: manual`을 함께 저장)
 
 - [ ] **12.4 검증 및 회귀 방지**
-  - [ ] Xvfb+Openbox 기반 lifecycle 게이트에 창 이동·크기 변경 시나리오 추가
+  - [x] Xvfb+Openbox 기반 lifecycle 게이트에 창 이동·크기 변경 시나리오 추가
   - [ ] 인게임 성능 영향 확인 (Windows 및 Linux 모두)
 
 - [ ] **12.5 (보류) 후속 검토 항목**

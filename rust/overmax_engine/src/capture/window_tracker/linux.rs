@@ -584,7 +584,8 @@ mod tests {
     use x11rb::connection::Connection;
     use x11rb::errors::{ConnectionError, ReplyError};
     use x11rb::protocol::xproto::{
-        AtomEnum, ConnectionExt as _, CreateWindowAux, GetPropertyReply, PropMode, WindowClass,
+        AtomEnum, ClientMessageEvent, ConfigureWindowAux, ConnectionExt as _, CreateWindowAux,
+        EventMask, GetPropertyReply, PropMode, WindowClass,
     };
     use x11rb::wrapper::ConnectionExt as _;
 
@@ -776,6 +777,95 @@ mod tests {
         };
         assert!(snapshot.rect.is_valid());
         assert!(snapshot.fullscreen);
+
+        let fullscreen_off = ClientMessageEvent::new(
+            32,
+            window,
+            atoms._NET_WM_STATE,
+            [0, atoms._NET_WM_STATE_FULLSCREEN, 0, 1, 0],
+        );
+        conn.send_event(
+            false,
+            screen.root,
+            EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
+            fullscreen_off,
+        )
+        .expect("send fullscreen removal")
+        .check()
+        .expect("remove fullscreen state");
+        conn.flush().expect("flush fullscreen removal");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let windowed = loop {
+            match tracker.game_snapshot() {
+                Ok(Some((snapshot, _)))
+                    if snapshot.window == u64::from(window) && !snapshot.fullscreen =>
+                {
+                    break snapshot;
+                }
+                Ok(_) => {}
+                Err(error) => panic!("tracker failed after leaving fullscreen: {error}"),
+            }
+            assert!(
+                Instant::now() < deadline,
+                "fullscreen state was not removed"
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        };
+        let initial_rect = windowed.rect;
+
+        conn.configure_window(window, &ConfigureWindowAux::new().x(180).y(120))
+            .expect("send move test window")
+            .check()
+            .expect("move test window");
+        conn.flush().expect("flush move");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let moved = loop {
+            match tracker.game_snapshot() {
+                Ok(Some((snapshot, _)))
+                    if snapshot.window == u64::from(window)
+                        && (snapshot.rect.left != initial_rect.left
+                            || snapshot.rect.top != initial_rect.top) =>
+                {
+                    break snapshot;
+                }
+                Ok(_) => {}
+                Err(error) => panic!("tracker failed after move: {error}"),
+            }
+            assert!(
+                Instant::now() < deadline,
+                "moved window geometry was not observed"
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        };
+        assert_ne!(moved.rect.left, snapshot.rect.left);
+        assert_ne!(moved.rect.top, snapshot.rect.top);
+
+        conn.configure_window(window, &ConfigureWindowAux::new().width(420).height(240))
+            .expect("send resize test window")
+            .check()
+            .expect("resize test window");
+        conn.flush().expect("flush resize");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let resized = loop {
+            match tracker.game_snapshot() {
+                Ok(Some((snapshot, _)))
+                    if snapshot.window == u64::from(window)
+                        && snapshot.rect.width == 420
+                        && snapshot.rect.height == 240 =>
+                {
+                    break snapshot;
+                }
+                Ok(_) => {}
+                Err(error) => panic!("tracker failed after resize: {error}"),
+            }
+            assert!(
+                Instant::now() < deadline,
+                "resized window geometry was not observed"
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        };
+        assert_eq!(resized.rect.width, 420);
+        assert_eq!(resized.rect.height, 240);
 
         if !snapshot.foreground {
             assert!(restore_foreground_by_title(&title));

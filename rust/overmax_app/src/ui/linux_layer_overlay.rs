@@ -1289,10 +1289,22 @@ impl Backend {
         if actions.restore_game_focus && self.dragging {
             self.dragging = false;
             self.drag_total_delta = egui::Vec2::ZERO;
-            self.send_command(UiCommand::SetOverlayPosition {
-                x: self.margin.0,
-                y: self.margin.1,
-            });
+            let position_command = if self
+                .snapshot
+                .as_ref()
+                .is_some_and(|snapshot| should_switch_drag_to_manual_snap(snapshot))
+            {
+                UiCommand::SetOverlayPositionAndManualSnap {
+                    x: self.margin.0,
+                    y: self.margin.1,
+                }
+            } else {
+                UiCommand::SetOverlayPosition {
+                    x: self.margin.0,
+                    y: self.margin.1,
+                }
+            };
+            self.send_command(position_command);
         }
     }
 
@@ -1600,6 +1612,13 @@ fn retained_panel_size(current: (u32, u32), snapshot: &LinuxOverlaySnapshot) -> 
 fn uses_manual_position(snapshot: &LinuxOverlaySnapshot) -> bool {
     snapshot.snap == "manual"
         || capture_presentation(snapshot).is_some_and(|(_, fullscreen)| !fullscreen)
+}
+
+fn should_switch_drag_to_manual_snap(snapshot: &LinuxOverlaySnapshot) -> bool {
+    snapshot.snap != "manual"
+        && snapshot
+            .window_snapshot
+            .is_some_and(|window| !window.fullscreen)
 }
 
 fn game_anchor_on_output(
@@ -2362,6 +2381,7 @@ mod tests {
         background.window_snapshot.as_mut().unwrap().fullscreen = false;
         background.snap = "bottom_right".to_string();
         background.position = Some((25, 35));
+        assert!(super::should_switch_drag_to_manual_snap(&background));
         assert_eq!(panel_size(Some(&background)), (360, 406));
         assert!(uses_manual_position(&background));
         assert!(overlay_props(&background).is_snap_manual);
@@ -2422,6 +2442,7 @@ mod tests {
         );
         background.window_snapshot.as_mut().unwrap().fullscreen = true;
         assert!(!uses_manual_position(&background));
+        assert!(!super::should_switch_drag_to_manual_snap(&background));
         assert_eq!(
             panel_margin(&background, (360, 406), Some((1920, 1080)), None),
             (1544, 658)

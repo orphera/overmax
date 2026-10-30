@@ -256,7 +256,7 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [ ] 11.2의 오버레이 입구에 컴포지터별 위치 소스(하위 crate) 연결
   - [ ] 위치 정보가 없는 환경은 현재 수동 배치 유지
   - [x] 소스가 위치를 갱신할 때 오버레이를 깨우는 경로 추가 (`GameGeometrySource::start` 알림 콜백이 app repaint를 요청해 최신 스냅샷을 다시 발행)
-  - [ ] 위치 값으로 스냅 중일 때 `overlay_props.is_snap_manual`(창 모드면 수동으로 표시) 및 드래그 동작 정리
+  - [x] 위치 값으로 스냅 중일 때 `overlay_props.is_snap_manual`(창 모드면 수동으로 표시) 및 드래그 동작 정리 (창모드에서 드래그 종료 시 좌표와 `snap: manual`을 함께 저장)
 
 - [ ] **12.4 검증 및 회귀 방지**
   - [ ] Xvfb+Openbox 기반 lifecycle 게이트에 창 이동·크기 변경 시나리오 추가

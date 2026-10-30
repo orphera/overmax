@@ -11,8 +11,10 @@ Overmax의 Linux 지원은 초기 단계입니다. Windows와 같은 범용 지�
 | 테두리 없는 전체화면               | **지원 · 권장**                 | 아래 필수 환경을 만족해야 합니다.                                                                                                                                                                           |
 | 창 모드                            | **사용 가능하나 사실상 미지원** | 단일 모니터에서 캡처·인식이 가능하지만 정상 동작을 보장하지 않습니다. 오버레이를 직접 배치해야 하며, 게임 창을 이동해도 따라가지 않습니다. 고정된 창 크기로 화면 비율이 달라지면 인식에 실패할 수 있습니다. |
 | 독점 전체화면                      | 검증 부족                       | 호환성을 보장하지 않습니다. 테두리 없는 전체화면을 사용해 주세요.                                                                                                                                           |
+| native Wayland 게임                 | 미지원                          | 게임 창 추적·캡처는 Proton/XWayland 기준이며 native Wayland 게임 surface는 지원하지 않습니다.                                                                                                                |
 | GNOME (Mutter)                     | 미지원                          | `wlr-layer-shell` 미지원으로 Overmax 오버레이를 사용할 수 없습니다.                                                                                                                                         |
 | Gamescope / Steam Deck Gaming Mode | 미지원                          | Gamescope의 별도 XWayland 세션에 대한 창 추적·캡처·오버레이 연동을 현재 지원·검증하지 않습니다.                                                                                                             |
+| X11 데스크톱 세션                  | 미지원                          | 현재 오버레이는 Wayland `wlr-layer-shell`을 사용하며 X11용 오버레이 경로는 제공하지 않습니다.                                                                                                                |
 
 ### 필수 환경
 
@@ -24,6 +26,12 @@ Overmax의 Linux 지원은 초기 단계입니다. Windows와 같은 범용 지�
 - 같은 `DISPLAY`에서 Proton/XWayland로 실행한 DJMAX RESPECT V
 
 **데스크톱은 Wayland 세션, 게임은 그 세션의 XWayland에서 실행해야 합니다.** X11 데스크톱 세션이나 native Wayland로 실행한 게임은 지원하지 않습니다.
+
+### 오버레이 배치 범위
+
+- 현재 지원 대상으로 삼는 조합은 같은 Wayland 세션의 Proton/XWayland 게임, `wlr-layer-shell` 오버레이, 테두리 없는 전체화면입니다. 이 모드에서는 오버레이를 선택된 출력 기준으로 배치합니다.
+- 창 모드에서는 캡처와 인식이 가능할 수 있지만, 게임 창을 따라가는 자동 배치는 지원하지 않습니다. 오버레이를 수동 배치해야 하며, 컴포지터별 위치 소스가 구현되고 검증되기 전까지 이 제한은 유지됩니다.
+- native Wayland 게임, Gamescope 내부 세션, GNOME, X11 데스크톱 세션은 지원 대상이 아닙니다.
 
 ## 검증 환경
 

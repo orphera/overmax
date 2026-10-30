@@ -149,6 +149,10 @@ fn relevant_event(line: &str) -> bool {
                 | "windowtitlev2"
                 | "changefloatingmode"
                 | "configreloaded"
+                | "monitoradded"
+                | "monitoraddedv2"
+                | "monitorremoved"
+                | "monitorremovedv2"
         )
     )
 }
@@ -282,6 +286,10 @@ mod tests {
     fn ignores_unrelated_events() {
         assert!(relevant_event("movewindowv2>>0x123,4,workspace"));
         assert!(relevant_event("closewindow>>0x123"));
+        assert!(relevant_event("monitoradded>>DP-2"));
+        assert!(relevant_event("monitoraddedv2>>2,DP-2,Generic monitor"));
+        assert!(relevant_event("monitorremoved>>DP-2"));
+        assert!(relevant_event("monitorremovedv2>>2,DP-2,Generic monitor"));
         assert!(!relevant_event("mouseaxis>>vertical"));
     }
 }

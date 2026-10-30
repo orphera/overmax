@@ -24,8 +24,8 @@ Wayland는 설계상 일반 클라이언트에게 다른 창의 전역 좌표를
 
 | 환경 | 위치 소스 | 이벤트 | 가능성 | 검증 |
 |:---|:---|:---|:---|:---|
-| Hyprland | `$HYPRLAND_INSTANCE_SIGNATURE` 소켓 — `clients -j`의 `at`/`size`, socket2 이벤트 | 있음 | 높음 (전역 논리 좌표 직접 제공) | 미검증 |
-| Sway / i3 호환 | `$SWAYSOCK` IPC — `get_tree`의 `rect`, `window` 이벤트 구독 | 있음 | 높음 | 미검증 |
+| Hyprland | `$HYPRLAND_INSTANCE_SIGNATURE` 소켓 — `clients -j`의 `at`/`size`, socket2 창 및 monitor add/remove 이벤트 | 있음 | 높음 (전역 논리 좌표 직접 제공) | fixture 테스트; 실환경 미검증 |
+| Sway / i3 호환 | `$SWAYSOCK` IPC — `get_tree`의 `rect`, `window`/`output` 이벤트 구독 | 있음 | 높음 | fixture 테스트; 실환경 미검증 |
 | niri | `$NIRI_SOCKET` IPC — 창·workspace event stream, 출력·layer 목록은 별도 IPC 조회 | 있음 | 중간 (`outputs.logical`은 compositor 좌표, 창 위치는 workspace-view 기준 논리 좌표) | 문서 기반 adapter 및 fixture 구현; 실환경 좌표 매핑은 미검증 |
 | KDE Plasma (KWin) | KWin 스크립팅 API — 공개된 API에서 창 추가·삭제·활성 신호는 확인, 창별 geometry 변경 신호는 미확인 | 부분 확인 | 낮음 (geometry 이벤트 경로 및 설치·버전 유지보수 부담) | 공개 API만으로 구현 가능성 미확정 |
 | Wayfire | IPC 플러그인 (사용자가 활성화 필요) | 일부 | 낮음 — 제보 시 검토 | 미검증 |

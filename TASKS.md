@@ -246,8 +246,8 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
 
 - [ ] **12.2 컴포지터별 위치 소스 구현 (검증 가능한 환경부터)**
   - 기준 표·우선순위: [2026-10-28-linux-window-geometry-sources.md](docs/plans/2026-10-28-linux-window-geometry-sources.md) §2
-  - [x] Hyprland IPC 소스 (`clients -j` + socket2 이벤트, fixture 테스트 완료; 실환경 검증 미완료)
-  - [x] Sway IPC 소스 (`get_tree` + `window` 이벤트, fixture 테스트 완료; 실환경 검증 미완료)
+  - [x] Hyprland IPC 소스 (`clients -j` + socket2 창/monitor add·remove 이벤트, fixture 테스트 완료; 실환경 검증 미완료)
+  - [x] Sway IPC 소스 (`get_tree` + `window`/`output` 이벤트, fixture 테스트 완료; 실환경 검증 미완료)
   - [x] niri IPC 소스 — 문서 기반 event-stream adapter 및 fixture 테스트 구현; active workspace/창만 처리하고 다른 layer surface가 있으면 수동 배치로 fail-closed
   - [ ] niri 실환경 좌표 검증 — 출력 원점·배율·workspace 전환·창 이동/크기 변경 비교 (실제 검증은 niri 사용자 제보 필요)
   - [x] KWin 스크립트 geometry 신호 경로 조사 및 설치·유지보수 부담 평가 (공개 API에서 창별 변경 신호 미확인; 별도 패키징·활성화 필요, 구현은 보류)

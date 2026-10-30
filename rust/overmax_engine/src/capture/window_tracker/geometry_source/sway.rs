@@ -11,9 +11,14 @@ const MAGIC: &[u8; 6] = b"i3-ipc";
 const GET_TREE: u32 = 4;
 const SUBSCRIBE: u32 = 2;
 const WINDOW_EVENT: u32 = 0x8000_0003;
+const OUTPUT_EVENT: u32 = 0x8000_0001;
 const MAX_MESSAGE_BYTES: u32 = 16 * 1024 * 1024;
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(3);
 const RECONNECT_DELAY: Duration = Duration::from_secs(3);
+
+fn is_geometry_event(message_type: u32) -> bool {
+    matches!(message_type, WINDOW_EVENT | OUTPUT_EVENT)
+}
 
 pub(super) struct SwayGeometrySource {
     socket: PathBuf,
@@ -66,7 +71,7 @@ fn run_connection(
 ) -> Result<(), String> {
     let mut events = UnixStream::connect(socket)
         .map_err(|error| format!("connect event socket {}: {error}", socket.display()))?;
-    write_message(&mut events, SUBSCRIBE, br#"["window"]"#)?;
+    write_message(&mut events, SUBSCRIBE, br#"["window","output"]"#)?;
     let (reply_type, reply) = read_message(&mut events)?;
     if reply_type != SUBSCRIBE
         || serde_json::from_slice::<Value>(&reply)
@@ -80,7 +85,7 @@ fn run_connection(
     refresh_geometry(socket, title, sink, generation, on_change)?;
     loop {
         let (message_type, _) = read_message(&mut events)?;
-        if message_type == WINDOW_EVENT {
+        if is_geometry_event(message_type) {
             refresh_geometry(socket, title, sink, generation, on_change)?;
         }
     }
@@ -226,7 +231,7 @@ fn json_i32(value: &Value) -> Option<i32> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_tree;
+    use super::{is_geometry_event, parse_tree, OUTPUT_EVENT, WINDOW_EVENT};
 
     const TREE: &str = r#"{
         "type":"root",
@@ -288,5 +293,13 @@ mod tests {
         assert!(parse_tree("DJMAX RESPECT V", invalid_rect.as_bytes())
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn refreshes_geometry_for_window_and_output_events() {
+        assert_eq!(OUTPUT_EVENT, 0x8000_0001);
+        assert!(is_geometry_event(WINDOW_EVENT));
+        assert!(is_geometry_event(OUTPUT_EVENT));
+        assert!(!is_geometry_event(0x8000_0006));
     }
 }

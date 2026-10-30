@@ -238,7 +238,7 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
 - 위치: 컴포지터별 위치 소스는 11.2의 trait 구현으로 하위 crate에 둔다. app은 받은 좌표로 그리기만 한다
 - 진행 순서 (2026-10-28 합의): 12.3 깨우기 경로 → 12.1 문서 → 12.4 Xvfb 게이트 → 12.2 Hyprland·Sway. 12.3 깨우기 경로는 #35 종료 코멘트에서 "먼저 준비"하기로 안내한 항목
 - 개발 환경 한계: Windows + WSL Ubuntu(Wayland 컴포지터 없음). 어댑터는 IPC 응답 픽스처 단위 테스트까지만 가능, 실환경 검증·인게임 성능 측정은 불가
-- 미결정: 실환경 검증 전인 Hyprland·Sway 어댑터를 `select_geometry_source`에 기본 등록할지, 설정으로 켤 때만 쓸지 (12.2 착수 전 소유자 확인)
+- 위치 소스 선택 (2026-10-30 사용자 결정): `HYPRLAND_INSTANCE_SIGNATURE` 또는 `SWAYSOCK` 중 하나가 설정되면 해당 소스를 자동 선택한다. 둘 다 있거나 둘 다 없으면 소스를 선택하지 않는다. 실제 compositor 환경 검증은 아직 남아 있다.
 
 - [x] **12.1 지원 범위 확정 및 문서화**
   - [x] 현재 지원 조합(Proton/XWayland + wlr-layer-shell + 테두리 없는 전체화면) 기준으로 오버레이 배치 범위 명시
@@ -246,15 +246,15 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
 
 - [ ] **12.2 컴포지터별 위치 소스 구현 (검증 가능한 환경부터)**
   - 기준 표·우선순위: [2026-10-28-linux-window-geometry-sources.md](docs/plans/2026-10-28-linux-window-geometry-sources.md) §2
-  - [ ] Hyprland IPC 소스 (`clients -j` + socket2 이벤트)
-  - [ ] Sway IPC 소스 (`get_tree` + `window` 이벤트)
+  - [x] Hyprland IPC 소스 (`clients -j` + socket2 이벤트, fixture 테스트 완료; 실환경 검증 미완료)
+  - [x] Sway IPC 소스 (`get_tree` + `window` 이벤트, fixture 테스트 완료; 실환경 검증 미완료)
   - [ ] niri IPC 소스 — 화면 절대 좌표 제공 여부 확인 (기여자 환경 기준, 실제 검증은 제보 받기)
   - [ ] KWin 스크립트 geometry 신호 경로 조사 및 설치·유지보수 부담 평가
   - [ ] 좌표 변환·배율·창 장식·workspace 전환 영향 확인, 검증 결과를 기준 표에 기록
 
 - [ ] **12.3 오버레이 위치 갱신 연결**
-  - [ ] 11.2의 오버레이 입구에 컴포지터별 위치 소스(하위 crate) 연결
-  - [ ] 위치 정보가 없는 환경은 현재 수동 배치 유지
+  - [x] 11.2의 오버레이 입구에 컴포지터별 위치 소스(하위 crate) 연결 (Hyprland/Sway 환경변수 기반 자동 선택)
+  - [x] 위치 정보가 없는 환경은 현재 수동 배치 유지 (미지원·중복 추적·비활성 workspace는 fail-closed)
   - [x] 소스가 위치를 갱신할 때 오버레이를 깨우는 경로 추가 (`GameGeometrySource::start` 알림 콜백이 app repaint를 요청해 최신 스냅샷을 다시 발행)
   - [x] 위치 값으로 스냅 중일 때 `overlay_props.is_snap_manual`(창 모드면 수동으로 표시) 및 드래그 동작 정리 (창모드에서 드래그 종료 시 좌표와 `snap: manual`을 함께 저장)
 

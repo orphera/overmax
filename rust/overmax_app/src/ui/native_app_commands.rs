@@ -4,7 +4,12 @@ use crate::ui::debug_ui;
 use crate::ui::native_app::NativeApp;
 use crate::ui::ui_command::UiCommand;
 
-fn set_overlay_position(settings: &mut serde_json::Value, x: i32, y: i32) -> bool {
+fn set_overlay_position(
+    settings: &mut serde_json::Value,
+    x: i32,
+    y: i32,
+    snap: Option<&str>,
+) -> bool {
     let Some(settings) = settings.as_object_mut() else {
         return false;
     };
@@ -22,6 +27,9 @@ fn set_overlay_position(settings: &mut serde_json::Value, x: i32, y: i32) -> boo
     };
     position.insert("x".into(), serde_json::json!(x));
     position.insert("y".into(), serde_json::json!(y));
+    if let Some(snap) = snap {
+        position.insert("snap".into(), serde_json::json!(snap));
+    }
     true
 }
 
@@ -72,19 +80,22 @@ impl NativeApp {
                 }
             }
             UiCommand::SetOverlayPosition { x, y } => {
-                self.save_overlay_position(x, y);
+                self.save_overlay_position(x, y, None);
+            }
+            UiCommand::SetOverlayPositionAndManualSnap { x, y } => {
+                self.save_overlay_position(x, y, Some("manual"));
             }
         }
     }
 
-    fn save_overlay_position(&self, x: i32, y: i32) {
+    fn save_overlay_position(&self, x: i32, y: i32, snap: Option<&str>) {
         let max_log_lines = self.max_log_lines();
         let base = overmax_core::lock_clone_or_default(&self.settings.base);
         let Ok(mut merged) = self.settings.merged.lock() else {
             return;
         };
         let mut updated = merged.clone();
-        if !set_overlay_position(&mut updated, x, y) {
+        if !set_overlay_position(&mut updated, x, y, snap) {
             return;
         }
 
@@ -97,13 +108,16 @@ impl NativeApp {
         );
 
         if result.is_err() {
-            let _ = set_overlay_position(&mut merged, x, y);
+            let _ = set_overlay_position(&mut merged, x, y, snap);
         }
         drop(merged);
         if let Ok(mut draft) = self.settings.draft.lock() {
-            let _ = set_overlay_position(&mut draft, x, y);
+            let _ = set_overlay_position(&mut draft, x, y, snap);
         }
         let message = match result {
+            Ok(()) if snap == Some("manual") => {
+                format!("[Overlay] manual position saved: ({x},{y})")
+            }
             Ok(()) => format!("[Overlay] position saved: ({x},{y})"),
             Err(error) => format!("[Overlay] position save failed: {error}"),
         };
@@ -199,7 +213,29 @@ mod tests {
             }
         });
 
-        assert!(super::set_overlay_position(&mut settings, 30, 40));
+        assert!(super::set_overlay_position(&mut settings, 30, 40, None));
+
+        assert_eq!(settings["overlay"]["scale"], 1.25);
+        assert_eq!(settings["overlay"]["position"]["snap"], "manual");
+        assert_eq!(settings["overlay"]["position"]["x"], 30);
+        assert_eq!(settings["overlay"]["position"]["y"], 40);
+    }
+
+    #[test]
+    fn manual_drag_persists_position_and_snap_together() {
+        let mut settings = serde_json::json!({
+            "overlay": {
+                "scale": 1.25,
+                "position": { "snap": "bottom_right", "x": 1, "y": 2 }
+            }
+        });
+
+        assert!(super::set_overlay_position(
+            &mut settings,
+            30,
+            40,
+            Some("manual")
+        ));
 
         assert_eq!(settings["overlay"]["scale"], 1.25);
         assert_eq!(settings["overlay"]["position"]["snap"], "manual");

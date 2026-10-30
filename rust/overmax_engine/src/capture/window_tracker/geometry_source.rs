@@ -7,6 +7,7 @@ use super::WindowRect;
 use std::sync::{Arc, Mutex};
 
 mod hyprland;
+mod niri;
 mod sway;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -102,16 +103,18 @@ impl GameGeometrySource for NoGeometrySource {
 enum SourceSelection {
     None,
     Hyprland,
+    Niri,
     Sway,
     Ambiguous,
 }
 
-fn source_selection(has_hyprland: bool, has_sway: bool) -> SourceSelection {
-    match (has_hyprland, has_sway) {
-        (true, false) => SourceSelection::Hyprland,
-        (false, true) => SourceSelection::Sway,
-        (false, false) => SourceSelection::None,
-        (true, true) => SourceSelection::Ambiguous,
+fn source_selection(has_hyprland: bool, has_sway: bool, has_niri: bool) -> SourceSelection {
+    match (has_hyprland, has_sway, has_niri) {
+        (true, false, false) => SourceSelection::Hyprland,
+        (false, true, false) => SourceSelection::Sway,
+        (false, false, true) => SourceSelection::Niri,
+        (false, false, false) => SourceSelection::None,
+        _ => SourceSelection::Ambiguous,
     }
 }
 
@@ -120,7 +123,12 @@ pub fn select_geometry_source() -> Box<dyn GameGeometrySource> {
     let hyprland_signature =
         std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").filter(|value| !value.is_empty());
     let sway_socket = std::env::var_os("SWAYSOCK").filter(|value| !value.is_empty());
-    match source_selection(hyprland_signature.is_some(), sway_socket.is_some()) {
+    let niri_socket = std::env::var_os("NIRI_SOCKET").filter(|value| !value.is_empty());
+    match source_selection(
+        hyprland_signature.is_some(),
+        sway_socket.is_some(),
+        niri_socket.is_some(),
+    ) {
         SourceSelection::Hyprland => {
             let Some(runtime_dir) = std::env::var_os("XDG_RUNTIME_DIR") else {
                 eprintln!("[GeometrySource] XDG_RUNTIME_DIR is required for Hyprland IPC");
@@ -146,9 +154,16 @@ pub fn select_geometry_source() -> Box<dyn GameGeometrySource> {
             };
             Box::new(sway::SwayGeometrySource::new(socket.into()))
         }
+        SourceSelection::Niri => {
+            let Some(socket) = niri_socket else {
+                eprintln!("[GeometrySource] NIRI_SOCKET is unavailable");
+                return Box::new(NoGeometrySource);
+            };
+            Box::new(niri::NiriGeometrySource::new(socket.into()))
+        }
         SourceSelection::Ambiguous => {
             eprintln!(
-                "[GeometrySource] both Hyprland and Sway IPC variables are set; keeping manual placement"
+                "[GeometrySource] multiple compositor IPC variables are set; keeping manual placement"
             );
             Box::new(NoGeometrySource)
         }
@@ -237,10 +252,29 @@ mod tests {
 
     #[test]
     fn compositor_source_is_selected_only_when_unambiguous() {
-        assert_eq!(source_selection(false, false), SourceSelection::None);
-        assert_eq!(source_selection(true, false), SourceSelection::Hyprland);
-        assert_eq!(source_selection(false, true), SourceSelection::Sway);
-        assert_eq!(source_selection(true, true), SourceSelection::Ambiguous);
+        assert_eq!(source_selection(false, false, false), SourceSelection::None);
+        assert_eq!(
+            source_selection(true, false, false),
+            SourceSelection::Hyprland
+        );
+        assert_eq!(source_selection(false, true, false), SourceSelection::Sway);
+        assert_eq!(source_selection(false, false, true), SourceSelection::Niri);
+        assert_eq!(
+            source_selection(true, true, false),
+            SourceSelection::Ambiguous
+        );
+        assert_eq!(
+            source_selection(true, false, true),
+            SourceSelection::Ambiguous
+        );
+        assert_eq!(
+            source_selection(false, true, true),
+            SourceSelection::Ambiguous
+        );
+        assert_eq!(
+            source_selection(true, true, true),
+            SourceSelection::Ambiguous
+        );
     }
 
     #[test]

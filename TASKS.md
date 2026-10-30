@@ -240,9 +240,9 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
 - 개발 환경 한계: Windows + WSL Ubuntu(Wayland 컴포지터 없음). 어댑터는 IPC 응답 픽스처 단위 테스트까지만 가능, 실환경 검증·인게임 성능 측정은 불가
 - 미결정: 실환경 검증 전인 Hyprland·Sway 어댑터를 `select_geometry_source`에 기본 등록할지, 설정으로 켤 때만 쓸지 (12.2 착수 전 소유자 확인)
 
-- [ ] **12.1 지원 범위 확정 및 문서화**
-  - [ ] 현재 지원 조합(Proton/XWayland + wlr-layer-shell + 테두리 없는 전체화면) 기준으로 자동 배치 대상 범위 명시
-  - [ ] 미지원 환경을 `docs/guides/linux-support.md`에 명시 (native Wayland, Gamescope, GNOME, X11 데스크톱)
+- [x] **12.1 지원 범위 확정 및 문서화**
+  - [x] 현재 지원 조합(Proton/XWayland + wlr-layer-shell + 테두리 없는 전체화면) 기준으로 오버레이 배치 범위 명시
+  - [x] 미지원 환경을 `docs/guides/linux-support.md`에 명시 (native Wayland, Gamescope, GNOME, X11 데스크톱)
 
 - [ ] **12.2 컴포지터별 위치 소스 구현 (검증 가능한 환경부터)**
   - 기준 표·우선순위: [2026-10-28-linux-window-geometry-sources.md](docs/plans/2026-10-28-linux-window-geometry-sources.md) §2

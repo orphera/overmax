@@ -9,8 +9,10 @@ Linux support for Overmax is still in its early stages. It is not as broadly sup
 | Borderless fullscreen | **Supported and recommended** | Requires the environment listed below. |
 | Windowed mode | **Usable, but effectively unsupported** | Capture and recognition can work on a single output, but correct operation is not guaranteed. Place the overlay manually; it does not follow the game window. A fixed window size that changes the game's aspect ratio can cause recognition to fail. |
 | Exclusive fullscreen | Limited validation | Compatibility is not guaranteed. Use borderless fullscreen. |
+| Native Wayland game | Unsupported | Game window tracking and capture target Proton/XWayland; native Wayland game surfaces are not supported. |
 | GNOME (Mutter) | Unsupported | The overlay requires `wlr-layer-shell`, which Mutter does not support. |
 | Gamescope / Steam Deck Gaming Mode | Unsupported | Window tracking, capture, and overlay integration in Gamescope's separate XWayland session are not currently supported or validated. |
+| X11 desktop session | Unsupported | The current overlay uses Wayland `wlr-layer-shell`; an X11 overlay path is not provided. |
 
 ### Requirements
 
@@ -22,6 +24,12 @@ Linux support for Overmax is still in its early stages. It is not as broadly sup
 - DJMAX RESPECT V running through Proton/XWayland on the same `DISPLAY`
 
 **Use a Wayland desktop session and run the game through XWayland in that session.** X11 desktop sessions and games running through native Wayland are not supported.
+
+### Overlay Placement Scope
+
+- The current supported combination is a Proton/XWayland game in the same Wayland session, a `wlr-layer-shell` overlay, and borderless fullscreen. In this mode, the overlay is positioned relative to the selected output.
+- Capture and recognition may work in windowed mode, but automatic placement that follows the game window is not supported. Place the overlay manually; this remains the limitation until compositor-specific geometry sources are implemented and verified.
+- Native Wayland games, Gamescope sessions, GNOME, and X11 desktop sessions are outside the supported scope.
 
 ## Verified Environments
 

@@ -476,6 +476,7 @@ struct Backend {
     game_window_title: String,
     presentation_observation: SharedPresentationObservation,
     presentation_generation: u64,
+    presentation_focus: Option<bool>,
     connection: Connection,
     layer: Option<LayerSurface>,
     viewport: Option<WpViewport>,
@@ -623,6 +624,7 @@ impl Backend {
                 game_window_title,
                 presentation_observation,
                 presentation_generation: 0,
+                presentation_focus: None,
                 connection,
                 layer: Some(layer),
                 viewport,
@@ -689,6 +691,16 @@ impl Backend {
         if let Ok(mut shared) = self.presentation_observation.lock() {
             *shared = observation;
         }
+        let focus = target.map(|(activated, _)| activated);
+        if self.presentation_focus != focus {
+            self.presentation_focus = focus;
+            let hidden = self
+                .snapshot
+                .as_deref()
+                .is_some_and(|snapshot| is_hidden(snapshot, self.presentation_focus));
+            self.set_input_passthrough(hidden);
+            self.needs_redraw = true;
+        }
     }
 
     fn remove_toplevel_output(&mut self, output: &wl_output::WlOutput) {
@@ -743,8 +755,8 @@ impl Backend {
         {
             telemetry.record_snapshot_applied(delivery);
         }
-        let hidden = is_hidden(&snapshot);
-        let size = retained_panel_size(self.requested_size, &snapshot);
+        let hidden = is_hidden(&snapshot, self.presentation_focus);
+        let size = retained_panel_size(self.requested_size, &snapshot, self.presentation_focus);
         let size_changed = self.requested_size != size;
         let reposition = self.snapshot.as_ref().is_none_or(|previous| {
             previous.snap != snapshot.snap
@@ -753,7 +765,7 @@ impl Backend {
                 || previous.game_geometry != snapshot.game_geometry
                 || size_changed
         });
-        let margin = if reposition {
+        let margin = if reposition && !hidden {
             panel_margin(
                 &snapshot,
                 size,
@@ -835,7 +847,11 @@ impl Backend {
         if !self.update_output_geometry() {
             return;
         }
-        if let Some(snapshot) = &self.snapshot {
+        if let Some(snapshot) = self
+            .snapshot
+            .as_ref()
+            .filter(|snapshot| !is_hidden(snapshot, self.presentation_focus))
+        {
             self.margin = panel_margin(
                 snapshot,
                 self.requested_size,
@@ -921,7 +937,11 @@ impl Backend {
 
     fn create_surface(&mut self, qh: &QueueHandle<Self>) -> Result<(), String> {
         self.update_output_geometry();
-        if let Some(snapshot) = &self.snapshot {
+        if let Some(snapshot) = self
+            .snapshot
+            .as_ref()
+            .filter(|snapshot| !is_hidden(snapshot, self.presentation_focus))
+        {
             self.margin = panel_margin(
                 snapshot,
                 self.requested_size,
@@ -929,7 +949,10 @@ impl Backend {
                 self.game_anchor(snapshot),
             );
         }
-        let input_passthrough = self.snapshot.as_deref().is_some_and(is_hidden);
+        let input_passthrough = self
+            .snapshot
+            .as_deref()
+            .is_some_and(|snapshot| is_hidden(snapshot, self.presentation_focus));
         let layer = create_layer(
             &self.compositor,
             &self.layer_shell,
@@ -1073,7 +1096,7 @@ impl Backend {
         let ctx = self.egui_ctx.clone();
         let mut full_output = ctx.run_ui(raw_input, |ctx| {
             if let Some(snapshot) = &self.snapshot {
-                if !is_hidden(snapshot) && !is_degraded(snapshot) {
+                if !is_hidden(snapshot, self.presentation_focus) && !is_degraded(snapshot) {
                     egui::Panel::bottom("linux_overlay_controls")
                         .exact_size(CONTROLS_HEIGHT * snapshot.scale)
                         .frame(egui::Frame::NONE)
@@ -1097,7 +1120,7 @@ impl Backend {
                 .frame(egui::Frame::NONE)
                 .show(ctx, |ui| {
                     if let Some(snapshot) = &self.snapshot {
-                        if !is_hidden(snapshot) {
+                        if !is_hidden(snapshot, self.presentation_focus) {
                             ui.set_opacity(snapshot.opacity.clamp(0.0, 1.0));
                             actions = if is_degraded(snapshot) {
                                 draw_degraded(ui, snapshot)
@@ -1512,8 +1535,8 @@ fn is_degraded(snapshot: &LinuxOverlaySnapshot) -> bool {
     snapshot.capture_fatal.is_some() || snapshot.window_snapshot.is_none()
 }
 
-fn is_hidden(snapshot: &LinuxOverlaySnapshot) -> bool {
-    if snapshot.overlay_visible_override == Some(false) {
+fn is_hidden(snapshot: &LinuxOverlaySnapshot, presentation_focus: Option<bool>) -> bool {
+    if snapshot.overlay_visible_override == Some(false) || presentation_focus == Some(false) {
         return true;
     }
     snapshot.capture_fatal.is_none()
@@ -1545,8 +1568,12 @@ fn panel_size(snapshot: Option<&LinuxOverlaySnapshot>) -> (u32, u32) {
     )
 }
 
-fn retained_panel_size(current: (u32, u32), snapshot: &LinuxOverlaySnapshot) -> (u32, u32) {
-    if is_hidden(snapshot) {
+fn retained_panel_size(
+    current: (u32, u32),
+    snapshot: &LinuxOverlaySnapshot,
+    presentation_focus: Option<bool>,
+) -> (u32, u32) {
+    if is_hidden(snapshot, presentation_focus) {
         current
     } else {
         panel_size(Some(snapshot))
@@ -2259,30 +2286,55 @@ mod tests {
             fullscreen: true,
         });
         assert_eq!(panel_size(Some(&background)), (360, 406));
-        assert_eq!(retained_panel_size((420, 240), &background), (420, 240));
+        assert_eq!(
+            retained_panel_size((420, 240), &background, None),
+            (420, 240)
+        );
         background.window_snapshot.as_mut().unwrap().foreground = true;
-        assert_eq!(retained_panel_size((420, 240), &background), (420, 240));
+        assert_eq!(
+            retained_panel_size((420, 240), &background, None),
+            (420, 240)
+        );
         background.state.scene = SceneType::Freestyle;
         assert_eq!(panel_size(Some(&background)), (360, 406));
-        assert_eq!(retained_panel_size((420, 240), &background), (360, 406));
+        assert_eq!(
+            retained_panel_size((420, 240), &background, None),
+            (360, 406)
+        );
         for scene in [SceneType::Gameplay, SceneType::Paused] {
             background.state.scene = scene;
-            assert!(super::is_hidden(&background));
+            assert!(super::is_hidden(&background, None));
             background.always_visible = true;
-            assert!(!super::is_hidden(&background));
+            assert!(!super::is_hidden(&background, None));
             background.always_visible = false;
         }
         // IPC set_overlay_visibility(false) 는 씬 상태와 무관하게 숨긴다.
         background.state.scene = SceneType::Freestyle;
         background.always_visible = true;
         background.window_snapshot.as_mut().unwrap().foreground = true;
-        assert!(!super::is_hidden(&background));
+        assert!(!super::is_hidden(&background, None));
         background.overlay_visible_override = Some(false);
-        assert!(super::is_hidden(&background));
+        assert!(super::is_hidden(&background, None));
         background.overlay_visible_override = Some(true);
-        assert!(!super::is_hidden(&background));
+        assert!(!super::is_hidden(&background, None));
         background.overlay_visible_override = None;
-        assert!(!super::is_hidden(&background));
+        assert!(!super::is_hidden(&background, None));
+
+        // Foreign-toplevel Done can precede the worker's debounced snapshot.
+        // A stale foreground snapshot (even always_visible / IPC show) must hide.
+        background.overlay_visible_override = Some(true);
+        for always_visible in [false, true] {
+            background.always_visible = always_visible;
+            assert!(super::is_hidden(&background, Some(false)));
+        }
+        // Returning focus must still wait for the worker's foreground snapshot.
+        background.window_snapshot.as_mut().unwrap().foreground = false;
+        assert!(super::is_hidden(&background, Some(true)));
+        background.window_snapshot.as_mut().unwrap().foreground = true;
+        assert!(!super::is_hidden(&background, Some(true)));
+        // Missing / ambiguous foreign-toplevel state retains the existing fallback.
+        assert!(!super::is_hidden(&background, None));
+        background.overlay_visible_override = None;
         background.state.scene = SceneType::Freestyle;
         background.window_snapshot.as_mut().unwrap().fullscreen = false;
         background.snap = "bottom_right".to_string();

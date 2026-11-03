@@ -75,14 +75,13 @@ impl StreamState {
         &mut self,
         title: &str,
         outputs: &HashMap<String, Value>,
-        layers: &[Value],
     ) -> Option<ResolvedGeometry> {
         let mut matching = self.windows.values().filter(|window| {
             window.get("title").and_then(Value::as_str) == Some(title)
                 || window.get("app_id").and_then(Value::as_str) == Some(title)
         });
         let window = matching.next().filter(|_| matching.next().is_none());
-        let resolved = resolve_geometry(title, self, outputs, layers);
+        let resolved = resolve_geometry(title, self, outputs);
         if let (Some(window), Some(geometry)) = (window, resolved) {
             self.last_geometry = Some(LastGeometry {
                 window: window.clone(),
@@ -117,11 +116,6 @@ impl StreamState {
                         .get(&last.geometry.output)
                         .and_then(|output| output.get("logical"))
                         == Some(&last.output_logical)
-                    && !layers.iter().any(|layer| {
-                        layer.get("output").and_then(Value::as_str)
-                            == Some(last.geometry.output.as_str())
-                            && layer.get("namespace").and_then(Value::as_str) != Some("overmax")
-                    })
             })
             .map(|(_, last)| last.geometry.clone());
         if retained.is_none() {
@@ -318,15 +312,13 @@ fn refresh_geometry(
     generation: &mut u64,
     on_change: &Arc<dyn Fn() + Send + Sync>,
 ) -> Result<(), String> {
-    let (outputs, layers) = query_compositor_metadata(socket)?;
-    let geometry = state.resolve_update(title, &outputs, &layers);
+    let outputs = query_compositor_metadata(socket)?;
+    let geometry = state.resolve_update(title, &outputs);
     publish_geometry(sink, geometry, generation, on_change);
     Ok(())
 }
 
-fn query_compositor_metadata(
-    socket: &Path,
-) -> Result<(HashMap<String, Value>, Vec<Value>), String> {
+fn query_compositor_metadata(socket: &Path) -> Result<HashMap<String, Value>, String> {
     let outputs = request(socket, b"\"Outputs\"\n")?;
     let outputs = outputs
         .get("Ok")
@@ -337,14 +329,7 @@ fn query_compositor_metadata(
         .map(|(name, output)| (name.clone(), output.clone()))
         .collect();
 
-    let layers = request(socket, b"\"Layers\"\n")?;
-    let layers = layers
-        .get("Ok")
-        .and_then(|reply| reply.get("Layers"))
-        .and_then(Value::as_array)
-        .cloned()
-        .ok_or_else(|| "Niri Layers reply has an unexpected shape".to_string())?;
-    Ok((outputs, layers))
+    Ok(outputs)
 }
 
 fn request(socket: &Path, request: &[u8]) -> Result<Value, String> {
@@ -398,7 +383,6 @@ fn resolve_geometry(
     title: &str,
     state: &StreamState,
     outputs: &HashMap<String, Value>,
-    layers: &[Value],
 ) -> Option<ResolvedGeometry> {
     let mut matching_windows = state.windows.values().filter(|window| {
         window.get("title").and_then(Value::as_str) == Some(title)
@@ -418,13 +402,7 @@ fn resolve_geometry(
         return None;
     }
     let output_name = workspace.get("output")?.as_str()?;
-    // Niri's Layers reply omits exclusive-zone geometry, which can shift the workspace origin.
-    if output_name.is_empty()
-        || layers.iter().any(|layer| {
-            layer.get("output").and_then(Value::as_str) == Some(output_name)
-                && layer.get("namespace").and_then(Value::as_str) != Some("overmax")
-        })
-    {
+    if output_name.is_empty() {
         return None;
     }
 
@@ -538,26 +516,20 @@ mod tests {
         "name":"DP-1",
         "logical":{"x":-1920,"y":0,"width":1536,"height":864,"scale":1.25,"transform":"Normal"}
     }"#;
-    const LAYERS: &str = r#"[
-        {"namespace":"overmax","output":"DP-1","layer":"Overlay","keyboard_interactivity":"None"}
-    ]"#;
-
-    fn fixture() -> (StreamState, HashMap<String, Value>, Vec<Value>) {
+    fn fixture() -> (StreamState, HashMap<String, Value>) {
         let window: Value = serde_json::from_str(WINDOW).unwrap();
         let workspace: Value = serde_json::from_str(WORKSPACE).unwrap();
         let output: Value = serde_json::from_str(OUTPUT).unwrap();
-        let layers: Vec<Value> = serde_json::from_str(LAYERS).unwrap();
         let mut state = StreamState::default();
         state.windows.insert(42, window);
         state.workspaces.insert(7, workspace);
-        (state, HashMap::from([("DP-1".to_string(), output)]), layers)
+        (state, HashMap::from([("DP-1".to_string(), output)]))
     }
 
     // Exercise the same metadata refresh and publication path as the IPC worker.
     fn refresh_fixture(
         state: &mut StreamState,
         outputs: &HashMap<String, Value>,
-        layers: &[Value],
         sink: &super::SharedGameGeometry,
         generation: &mut u64,
     ) {
@@ -570,20 +542,19 @@ mod tests {
             NEXT_SOCKET.fetch_add(1, Ordering::Relaxed)
         ));
         let listener = UnixListener::bind(&path).unwrap();
-        let replies = [
-            serde_json::json!({"Ok":{"Outputs":outputs}}),
-            serde_json::json!({"Ok":{"Layers":layers}}),
-        ];
+        let reply = serde_json::json!({"Ok":{"Outputs":outputs}});
         let server = std::thread::spawn(move || {
             use std::io::BufRead;
-            for reply in replies {
-                let (mut stream, _) = listener.accept().unwrap();
-                let mut request = String::new();
-                BufReader::new(stream.try_clone().unwrap())
-                    .read_line(&mut request)
-                    .unwrap();
-                writeln!(stream, "{reply}").unwrap();
-            }
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = String::new();
+            BufReader::new(stream.try_clone().unwrap())
+                .read_line(&mut request)
+                .unwrap();
+            assert_eq!(request.trim(), "\"Outputs\"");
+            // Close the listener before replying: any additional Layers query fails,
+            // rather than leaving the fixture waiting for a second connection.
+            drop(listener);
+            writeln!(stream, "{reply}").unwrap();
         });
         let on_change: super::super::GeometryChangedCallback = std::sync::Arc::new(|| {});
         super::refresh_geometry(
@@ -612,10 +583,10 @@ mod tests {
 
     #[test]
     fn retains_published_geometry_during_drag_and_updates_on_drop() {
-        let (mut state, outputs, layers) = fixture();
+        let (mut state, outputs) = fixture();
         let sink = std::sync::Arc::new(std::sync::Mutex::new(None));
         let mut generation = 0;
-        refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+        refresh_fixture(&mut state, &outputs, &sink, &mut generation);
         let before = sink.lock().unwrap().clone().unwrap();
         // niri 26.04 emits this before withdrawing the dragged window's workspace/layout.
         state
@@ -623,11 +594,11 @@ mod tests {
                 "WorkspaceActiveWindowChanged":{"workspace_id":7,"active_window_id":99}
             }))
             .unwrap();
-        refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+        refresh_fixture(&mut state, &outputs, &sink, &mut generation);
         assert_eq!(*sink.lock().unwrap(), Some(before.clone()));
         begin_drag(&mut state);
         for _ in 0..2 {
-            refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+            refresh_fixture(&mut state, &outputs, &sink, &mut generation);
             assert_eq!(
                 *sink.lock().unwrap(),
                 Some(before.clone()),
@@ -640,12 +611,12 @@ mod tests {
                 "WorkspaceActiveWindowChanged":{"workspace_id":7,"active_window_id":42}
             }))
             .unwrap();
-        refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+        refresh_fixture(&mut state, &outputs, &sink, &mut generation);
         assert_eq!(*sink.lock().unwrap(), Some(before.clone()));
         let window = state.windows.get_mut(&42).unwrap();
         window["workspace_id"] = Value::from(7);
         window["layout"]["tile_pos_in_workspace_view"] = serde_json::json!([500.0, 200.0]);
-        refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+        refresh_fixture(&mut state, &outputs, &sink, &mut generation);
         let after = sink.lock().unwrap().clone().unwrap();
         assert_eq!(after.rect.left, -1418);
         assert_eq!(after.rect.top, 201);
@@ -654,11 +625,11 @@ mod tests {
 
     #[test]
     fn drag_without_previous_valid_geometry_stays_unavailable() {
-        let (mut state, outputs, layers) = fixture();
+        let (mut state, outputs) = fixture();
         begin_drag(&mut state);
         let sink = std::sync::Arc::new(std::sync::Mutex::new(None));
         let mut generation = 0;
-        refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+        refresh_fixture(&mut state, &outputs, &sink, &mut generation);
         assert!(sink.lock().unwrap().is_none());
         assert_eq!(generation, 0);
     }
@@ -676,16 +647,15 @@ mod tests {
             "output_removed",
             "output_moved",
             "scale_changed",
-            "layer_added",
             "resized",
             "missing_workspace_field",
             "missing_position_field",
             "close_reopen",
         ] {
-            let (mut state, mut outputs, mut layers) = fixture();
+            let (mut state, mut outputs) = fixture();
             let sink = std::sync::Arc::new(std::sync::Mutex::new(None));
             let mut generation = 0;
-            refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+            refresh_fixture(&mut state, &outputs, &sink, &mut generation);
             begin_drag(&mut state);
             match case {
                 "closed" => {
@@ -722,9 +692,6 @@ mod tests {
                 "scale_changed" => {
                     outputs.get_mut("DP-1").unwrap()["logical"]["scale"] = Value::from(2.0);
                 }
-                "layer_added" => {
-                    layers.push(serde_json::json!({"namespace":"waybar","output":"DP-1"}));
-                }
                 "resized" => {
                     state.windows.get_mut(&42).unwrap()["layout"]["window_size"] =
                         serde_json::json!([640, 480]);
@@ -757,7 +724,7 @@ mod tests {
                 }
                 _ => unreachable!(),
             }
-            refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+            refresh_fixture(&mut state, &outputs, &sink, &mut generation);
             assert!(
                 sink.lock().unwrap().is_none(),
                 "must clear stale geometry: {case}"
@@ -771,8 +738,8 @@ mod tests {
 
     #[test]
     fn resolves_active_window_from_output_and_workspace_logical_coordinates() {
-        let (state, outputs, layers) = fixture();
-        let geometry = resolve_geometry("DJMAX RESPECT V", &state, &outputs, &layers).unwrap();
+        let (state, outputs) = fixture();
+        let geometry = resolve_geometry("DJMAX RESPECT V", &state, &outputs).unwrap();
         assert_eq!(geometry.output, "DP-1");
         assert_eq!(geometry.rect.left, -1578);
         assert_eq!(geometry.rect.top, 102);
@@ -782,32 +749,84 @@ mod tests {
 
     #[test]
     fn keeps_manual_placement_for_hidden_ambiguous_or_unmapped_windows() {
-        let (mut state, outputs, layers) = fixture();
+        let (mut state, outputs) = fixture();
         state.workspaces.get_mut(&7).unwrap()["is_active"] = Value::Bool(false);
-        assert!(resolve_geometry("DJMAX RESPECT V", &state, &outputs, &layers).is_none());
+        assert!(resolve_geometry("DJMAX RESPECT V", &state, &outputs).is_none());
 
-        let (mut state, outputs, layers) = fixture();
+        let (mut state, outputs) = fixture();
         state.windows.insert(
             43,
             serde_json::from_str(&WINDOW.replace("42", "43")).unwrap(),
         );
-        assert!(resolve_geometry("DJMAX RESPECT V", &state, &outputs, &layers).is_none());
+        assert!(resolve_geometry("DJMAX RESPECT V", &state, &outputs).is_none());
 
-        let (mut state, outputs, layers) = fixture();
+        let (mut state, outputs) = fixture();
         state.workspaces.get_mut(&7).unwrap()["active_window_id"] = Value::from(41);
-        assert!(resolve_geometry("DJMAX RESPECT V", &state, &outputs, &layers).is_none());
+        assert!(resolve_geometry("DJMAX RESPECT V", &state, &outputs).is_none());
     }
 
     #[test]
-    fn keeps_manual_placement_when_external_layer_surfaces_make_work_area_unknown() {
-        let (state, outputs, mut layers) = fixture();
-        layers.push(serde_json::json!({
-            "namespace": "waybar",
-            "output": "DP-1",
-            "layer": "Top",
-            "keyboard_interactivity": "None"
-        }));
-        assert!(resolve_geometry("DJMAX RESPECT V", &state, &outputs, &layers).is_none());
+    fn publishes_geometry_when_only_outputs_metadata_is_available() {
+        let (mut state, outputs) = fixture();
+        let sink = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let mut generation = 0;
+        refresh_fixture(&mut state, &outputs, &sink, &mut generation);
+        let geometry = sink.lock().unwrap().clone().unwrap();
+        assert_eq!(geometry.rect.left, -1578);
+        assert_eq!(geometry.rect.top, 102);
+        assert_eq!(generation, 1);
+    }
+
+    #[test]
+    fn rejects_unmapped_outputs_and_invalid_coordinates() {
+        for case in [
+            "empty_output",
+            "other_output",
+            "removed_output",
+            "missing_position",
+            "invalid_position",
+            "overflow",
+            "zero_size",
+            "zero_output",
+            "off_output",
+        ] {
+            let (mut state, mut outputs) = fixture();
+            match case {
+                "empty_output" => state.workspaces.get_mut(&7).unwrap()["output"] = Value::from(""),
+                "other_output" => {
+                    state.workspaces.get_mut(&7).unwrap()["output"] = Value::from("DP-2")
+                }
+                "removed_output" => outputs.clear(),
+                "missing_position" => {
+                    state.windows.get_mut(&42).unwrap()["layout"]["tile_pos_in_workspace_view"] =
+                        Value::Null
+                }
+                "invalid_position" => {
+                    state.windows.get_mut(&42).unwrap()["layout"]["tile_pos_in_workspace_view"] =
+                        serde_json::json!(["invalid", 0])
+                }
+                "overflow" => {
+                    state.windows.get_mut(&42).unwrap()["layout"]["tile_pos_in_workspace_view"] =
+                        serde_json::json!([1e20, 0])
+                }
+                "zero_size" => {
+                    state.windows.get_mut(&42).unwrap()["layout"]["window_size"] =
+                        serde_json::json!([0, 720])
+                }
+                "zero_output" => {
+                    outputs.get_mut("DP-1").unwrap()["logical"]["width"] = Value::from(0)
+                }
+                "off_output" => {
+                    state.windows.get_mut(&42).unwrap()["layout"]["tile_pos_in_workspace_view"] =
+                        serde_json::json!([5000, 0])
+                }
+                _ => unreachable!(),
+            }
+            assert!(
+                resolve_geometry("DJMAX RESPECT V", &state, &outputs).is_none(),
+                "{case}"
+            );
+        }
     }
 
     #[test]

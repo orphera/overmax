@@ -57,13 +57,79 @@ impl GameGeometrySource for NiriGeometrySource {
     }
 }
 
+struct LastGeometry {
+    window: Value,
+    output_logical: Value,
+    geometry: ResolvedGeometry,
+}
+
 #[derive(Default)]
 struct StreamState {
     windows: HashMap<u64, Value>,
     workspaces: HashMap<u64, Value>,
+    last_geometry: Option<LastGeometry>,
 }
 
 impl StreamState {
+    fn resolve_update(
+        &mut self,
+        title: &str,
+        outputs: &HashMap<String, Value>,
+        layers: &[Value],
+    ) -> Option<ResolvedGeometry> {
+        let mut matching = self.windows.values().filter(|window| {
+            window.get("title").and_then(Value::as_str) == Some(title)
+                || window.get("app_id").and_then(Value::as_str) == Some(title)
+        });
+        let window = matching.next().filter(|_| matching.next().is_none());
+        let resolved = resolve_geometry(title, self, outputs, layers);
+        if let (Some(window), Some(geometry)) = (window, resolved) {
+            self.last_geometry = Some(LastGeometry {
+                window: window.clone(),
+                output_logical: outputs[&geometry.output]["logical"].clone(),
+                geometry: geometry.clone(),
+            });
+            return Some(geometry);
+        }
+
+        // niri withdraws both fields during an interactive floating-window move.
+        // Retain only this window's last validated geometry in an unchanged work area.
+        let retained = window
+            .zip(self.last_geometry.as_ref())
+            .filter(|(window, last)| {
+                let workspace = json_u64(last.window.get("workspace_id"))
+                    .and_then(|id| self.workspaces.get(&id));
+                window.get("id") == last.window.get("id")
+                    && ((window.get("workspace_id") == Some(&Value::Null)
+                        && window["layout"].get("tile_pos_in_workspace_view") == Some(&Value::Null))
+                        // WorkspaceActiveWindowChanged arrives before the window update.
+                        || (window.get("workspace_id") == last.window.get("workspace_id")
+                            && window.get("layout") == last.window.get("layout")))
+                    && window.get("is_floating").and_then(Value::as_bool) == Some(true)
+                    && window.get("is_focused").and_then(Value::as_bool) == Some(true)
+                    && window["layout"]["window_size"] == last.window["layout"]["window_size"]
+                    && workspace.is_some_and(|workspace| {
+                        workspace.get("is_active").and_then(Value::as_bool) == Some(true)
+                            && workspace.get("output").and_then(Value::as_str)
+                                == Some(last.geometry.output.as_str())
+                    })
+                    && outputs
+                        .get(&last.geometry.output)
+                        .and_then(|output| output.get("logical"))
+                        == Some(&last.output_logical)
+                    && !layers.iter().any(|layer| {
+                        layer.get("output").and_then(Value::as_str)
+                            == Some(last.geometry.output.as_str())
+                            && layer.get("namespace").and_then(Value::as_str) != Some("overmax")
+                    })
+            })
+            .map(|(_, last)| last.geometry.clone());
+        if retained.is_none() {
+            self.last_geometry = None;
+        }
+        retained
+    }
+
     fn apply_event(&mut self, event: &Value) -> Result<bool, String> {
         let Some(event) = event.as_object() else {
             return Err("Niri event is not a JSON object".to_string());
@@ -86,10 +152,24 @@ impl StreamState {
                 self.windows.insert(id, window.clone());
                 Ok(true)
             }
+            "WindowFocusChanged" => {
+                let focused_id = json_u64(body.get("id"));
+                for (id, window) in &mut self.windows {
+                    window["is_focused"] = Value::Bool(Some(*id) == focused_id);
+                }
+                Ok(true)
+            }
             "WindowClosed" => {
                 let id = json_u64(body.get("id"))
                     .ok_or_else(|| "WindowClosed has no valid id".to_string())?;
                 self.windows.remove(&id);
+                if self
+                    .last_geometry
+                    .as_ref()
+                    .is_some_and(|last| json_u64(last.window.get("id")) == Some(id))
+                {
+                    self.last_geometry = None;
+                }
                 Ok(true)
             }
             "WindowLayoutsChanged" => {
@@ -211,7 +291,7 @@ fn run_connection(
                     .map_err(|error| format!("invalid Niri event JSON: {error}"))?;
                 let state_changed = state.apply_event(&event)?;
                 if state_changed || last_metadata_refresh.elapsed() >= METADATA_REFRESH_INTERVAL {
-                    refresh_geometry(socket, title, &state, sink, generation, on_change)?;
+                    refresh_geometry(socket, title, &mut state, sink, generation, on_change)?;
                     last_metadata_refresh = Instant::now();
                 }
                 line.clear();
@@ -222,7 +302,7 @@ fn run_connection(
                     io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
                 ) =>
             {
-                refresh_geometry(socket, title, &state, sink, generation, on_change)?;
+                refresh_geometry(socket, title, &mut state, sink, generation, on_change)?;
                 last_metadata_refresh = Instant::now();
             }
             Err(error) => return Err(format!("read Niri event stream: {error}")),
@@ -233,13 +313,13 @@ fn run_connection(
 fn refresh_geometry(
     socket: &Path,
     title: &str,
-    state: &StreamState,
+    state: &mut StreamState,
     sink: &SharedGameGeometry,
     generation: &mut u64,
     on_change: &Arc<dyn Fn() + Send + Sync>,
 ) -> Result<(), String> {
     let (outputs, layers) = query_compositor_metadata(socket)?;
-    let geometry = resolve_geometry(title, state, &outputs, &layers);
+    let geometry = state.resolve_update(title, &outputs, &layers);
     publish_geometry(sink, geometry, generation, on_change);
     Ok(())
 }
@@ -471,6 +551,222 @@ mod tests {
         state.windows.insert(42, window);
         state.workspaces.insert(7, workspace);
         (state, HashMap::from([("DP-1".to_string(), output)]), layers)
+    }
+
+    // Exercise the same metadata refresh and publication path as the IPC worker.
+    fn refresh_fixture(
+        state: &mut StreamState,
+        outputs: &HashMap<String, Value>,
+        layers: &[Value],
+        sink: &super::SharedGameGeometry,
+        generation: &mut u64,
+    ) {
+        use std::os::unix::net::UnixListener;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT_SOCKET: AtomicU64 = AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "overmax-niri-test-{}-{}.sock",
+            std::process::id(),
+            NEXT_SOCKET.fetch_add(1, Ordering::Relaxed)
+        ));
+        let listener = UnixListener::bind(&path).unwrap();
+        let replies = [
+            serde_json::json!({"Ok":{"Outputs":outputs}}),
+            serde_json::json!({"Ok":{"Layers":layers}}),
+        ];
+        let server = std::thread::spawn(move || {
+            use std::io::BufRead;
+            for reply in replies {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = String::new();
+                BufReader::new(stream.try_clone().unwrap())
+                    .read_line(&mut request)
+                    .unwrap();
+                writeln!(stream, "{reply}").unwrap();
+            }
+        });
+        let on_change: super::super::GeometryChangedCallback = std::sync::Arc::new(|| {});
+        super::refresh_geometry(
+            &path,
+            "DJMAX RESPECT V",
+            state,
+            sink,
+            generation,
+            &on_change,
+        )
+        .unwrap();
+        server.join().unwrap();
+        std::fs::remove_file(path).unwrap();
+    }
+
+    fn begin_drag(state: &mut StreamState) {
+        let mut window = state.windows[&42].clone();
+        window["workspace_id"] = Value::Null;
+        window["layout"]["tile_pos_in_workspace_view"] = Value::Null;
+        state
+            .apply_event(&serde_json::json!({
+                "WindowOpenedOrChanged":{"window":window}
+            }))
+            .unwrap();
+    }
+
+    #[test]
+    fn retains_published_geometry_during_drag_and_updates_on_drop() {
+        let (mut state, outputs, layers) = fixture();
+        let sink = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let mut generation = 0;
+        refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+        let before = sink.lock().unwrap().clone().unwrap();
+        // niri 26.04 emits this before withdrawing the dragged window's workspace/layout.
+        state
+            .apply_event(&serde_json::json!({
+                "WorkspaceActiveWindowChanged":{"workspace_id":7,"active_window_id":99}
+            }))
+            .unwrap();
+        refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+        assert_eq!(*sink.lock().unwrap(), Some(before.clone()));
+        begin_drag(&mut state);
+        for _ in 0..2 {
+            refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+            assert_eq!(
+                *sink.lock().unwrap(),
+                Some(before.clone()),
+                "drag must retain the published position instead of falling back to (40, 40)"
+            );
+            assert_eq!(generation, before.generation);
+        }
+        state
+            .apply_event(&serde_json::json!({
+                "WorkspaceActiveWindowChanged":{"workspace_id":7,"active_window_id":42}
+            }))
+            .unwrap();
+        refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+        assert_eq!(*sink.lock().unwrap(), Some(before.clone()));
+        let window = state.windows.get_mut(&42).unwrap();
+        window["workspace_id"] = Value::from(7);
+        window["layout"]["tile_pos_in_workspace_view"] = serde_json::json!([500.0, 200.0]);
+        refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+        let after = sink.lock().unwrap().clone().unwrap();
+        assert_eq!(after.rect.left, -1418);
+        assert_eq!(after.rect.top, 201);
+        assert_eq!(generation, before.generation + 1);
+    }
+
+    #[test]
+    fn drag_without_previous_valid_geometry_stays_unavailable() {
+        let (mut state, outputs, layers) = fixture();
+        begin_drag(&mut state);
+        let sink = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let mut generation = 0;
+        refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+        assert!(sink.lock().unwrap().is_none());
+        assert_eq!(generation, 0);
+    }
+
+    #[test]
+    fn invalid_drag_context_clears_geometry_instead_of_retaining_stale_position() {
+        for case in [
+            "closed",
+            "duplicate",
+            "replacement",
+            "tiled",
+            "unfocused",
+            "inactive",
+            "focus_event",
+            "output_removed",
+            "output_moved",
+            "scale_changed",
+            "layer_added",
+            "resized",
+            "missing_workspace_field",
+            "missing_position_field",
+            "close_reopen",
+        ] {
+            let (mut state, mut outputs, mut layers) = fixture();
+            let sink = std::sync::Arc::new(std::sync::Mutex::new(None));
+            let mut generation = 0;
+            refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+            begin_drag(&mut state);
+            match case {
+                "closed" => {
+                    state
+                        .apply_event(&serde_json::json!({"WindowClosed":{"id":42}}))
+                        .unwrap();
+                }
+                "duplicate" => {
+                    state.windows.insert(43, state.windows[&42].clone());
+                }
+                "replacement" => {
+                    state.windows.get_mut(&42).unwrap()["id"] = Value::from(43);
+                }
+                "tiled" => {
+                    state.windows.get_mut(&42).unwrap()["is_floating"] = Value::Bool(false);
+                }
+                "unfocused" => {
+                    state.windows.get_mut(&42).unwrap()["is_focused"] = Value::Bool(false);
+                }
+                "inactive" => {
+                    state.workspaces.get_mut(&7).unwrap()["is_active"] = Value::Bool(false);
+                }
+                "focus_event" => {
+                    state
+                        .apply_event(&serde_json::json!({"WindowFocusChanged":{"id":99}}))
+                        .unwrap();
+                }
+                "output_removed" => {
+                    outputs.clear();
+                }
+                "output_moved" => {
+                    outputs.get_mut("DP-1").unwrap()["logical"]["x"] = Value::from(0);
+                }
+                "scale_changed" => {
+                    outputs.get_mut("DP-1").unwrap()["logical"]["scale"] = Value::from(2.0);
+                }
+                "layer_added" => {
+                    layers.push(serde_json::json!({"namespace":"waybar","output":"DP-1"}));
+                }
+                "resized" => {
+                    state.windows.get_mut(&42).unwrap()["layout"]["window_size"] =
+                        serde_json::json!([640, 480]);
+                }
+                "missing_workspace_field" => {
+                    state
+                        .windows
+                        .get_mut(&42)
+                        .unwrap()
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("workspace_id");
+                }
+                "missing_position_field" => {
+                    state.windows.get_mut(&42).unwrap()["layout"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("tile_pos_in_workspace_view");
+                }
+                "close_reopen" => {
+                    let window = state.windows[&42].clone();
+                    state
+                        .apply_event(&serde_json::json!({"WindowClosed":{"id":42}}))
+                        .unwrap();
+                    state
+                        .apply_event(
+                            &serde_json::json!({"WindowOpenedOrChanged":{"window":window}}),
+                        )
+                        .unwrap();
+                }
+                _ => unreachable!(),
+            }
+            refresh_fixture(&mut state, &outputs, &layers, &sink, &mut generation);
+            assert!(
+                sink.lock().unwrap().is_none(),
+                "must clear stale geometry: {case}"
+            );
+            assert!(
+                state.last_geometry.is_none(),
+                "must invalidate retained history: {case}"
+            );
+        }
     }
 
     #[test]

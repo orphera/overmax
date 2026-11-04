@@ -74,6 +74,7 @@ self_update = { version = "0.44.0", features = [
 default = []
 store = []
 telemetry = ["overmax-engine/telemetry"]
+portal-capture = ["overmax-engine/portal-capture"]
 
 
 

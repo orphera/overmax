@@ -13,6 +13,8 @@ pub mod overlay_recommend_ui;
 pub mod overlay_theme;
 pub mod overlay_ui;
 pub mod platform;
+#[cfg(all(target_os = "linux", feature = "portal-capture"))]
+mod portal_capture_ui;
 pub mod settings_ui;
 pub mod sync_ui;
 #[cfg(target_os = "windows")]

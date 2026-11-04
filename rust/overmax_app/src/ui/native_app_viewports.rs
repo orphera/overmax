@@ -204,6 +204,8 @@ impl NativeApp {
         let merged = self.settings.merged.clone();
 
         let settings_ctx = settings_ui::SettingsUiContext {
+            #[cfg(all(target_os = "linux", feature = "portal-capture"))]
+            portal: self.portal.clone(),
             root: self.root.clone(),
             paths: paths.clone(),
             current_steam_id: self
@@ -662,6 +664,23 @@ impl NativeApp {
                 session_initial_record: self.runtime.session_initial_record(),
                 toast: self.toast.clone(),
                 window_snapshot: self.window_snapshot,
+                portal_presentation: {
+                    #[cfg(feature = "portal-capture")]
+                    {
+                        self.portal.view().presentation.and_then(|confirmed| {
+                            self.platform
+                                .presentation_observation()
+                                .lock()
+                                .ok()
+                                .and_then(|value| *value)
+                                .filter(|current| current.target_epoch == confirmed.target_epoch)
+                        })
+                    }
+                    #[cfg(not(feature = "portal-capture"))]
+                    {
+                        None
+                    }
+                },
                 game_geometry: overmax_core::lock_or_recover(&self.platform.game_geometry).clone(),
                 capture_fatal: self.capture_fatal.clone(),
                 overlay_visible_override: self.overlay_visible_override,

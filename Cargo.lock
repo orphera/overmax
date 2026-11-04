@@ -3004,17 +3004,21 @@ dependencies = [
 name = "overmax-engine"
 version = "0.4.2"
 dependencies = [
+ "futures-util",
  "image",
  "memmap2",
  "overmax-core",
  "overmax-data",
  "overmax_cv",
  "pipewire",
+ "serde",
  "serde_json",
+ "tokio",
  "windows",
  "windows-future",
  "windows-sys 0.61.2",
  "x11rb",
+ "zbus",
 ]
 
 [[package]]
@@ -4272,8 +4276,22 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
+ "tokio-macros",
+ "tracing",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "385a6cb71ab9ab790c5fe8d67f1645e6c450a7ce006a33de03daa956cf70a496"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -5557,6 +5575,7 @@ dependencies = [
  "rustix 1.1.4",
  "serde",
  "serde_repr",
+ "tokio",
  "tracing",
  "uds_windows",
  "uuid",

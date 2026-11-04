@@ -21,12 +21,16 @@ image = { version = "0.25.10", default-features = false, features = ["png", "ico
 [target.'cfg(target_os = "linux")'.dependencies]
 memmap2 = "0.9"
 pipewire = { version = "0.10.1", optional = true }
+zbus = { version = "5.16", default-features = false, features = ["tokio"], optional = true }
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"], optional = true }
+futures-util = { version = "0.3", optional = true }
+serde = { version = "1", optional = true }
 x11rb = { version = "0.13", features = ["composite", "shm"] }
 
 [features]
 default = []
 telemetry = []
-portal-capture = ["dep:pipewire"]
+portal-capture = ["dep:pipewire", "dep:zbus", "dep:tokio", "dep:futures-util", "dep:serde"]
 
 
 [target.'cfg(windows)'.dependencies]

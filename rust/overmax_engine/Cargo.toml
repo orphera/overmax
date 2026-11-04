@@ -20,11 +20,13 @@ image = { version = "0.25.10", default-features = false, features = ["png", "ico
 
 [target.'cfg(target_os = "linux")'.dependencies]
 memmap2 = "0.9"
+pipewire = { version = "0.10.1", optional = true }
 x11rb = { version = "0.13", features = ["composite", "shm"] }
 
 [features]
 default = []
 telemetry = []
+portal-capture = ["dep:pipewire"]
 
 
 [target.'cfg(windows)'.dependencies]

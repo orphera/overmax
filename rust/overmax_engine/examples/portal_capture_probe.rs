@@ -1,5 +1,6 @@
 //! Manual smoke test: choose a window, receive three fresh frames, then close.
-//! No images or restore tokens are written. --cancel tests picker cancellation.
+//! No images or restore tokens are written. --cancel tests picker cancellation;
+//! --pause-resume requires three more fresh frames from the same paused session.
 #[cfg(all(target_os = "linux", feature = "portal-capture"))]
 fn main() -> Result<(), String> {
     use overmax_engine::capture::{
@@ -8,7 +9,9 @@ fn main() -> Result<(), String> {
     };
     use std::time::{Duration, Instant};
     let cancel = std::env::args().any(|arg| arg == "--cancel");
-    let capture = PortalCapture::start(10)?;
+    let pause_resume = std::env::args().any(|arg| arg == "--pause-resume");
+    let expected = if pause_resume { 6 } else { 3 };
+    let mut capture = PortalCapture::start(10)?;
     let start = Instant::now();
     let mut frame = CapturedFrame::default();
     let mut received = 0;
@@ -27,7 +30,12 @@ fn main() -> Result<(), String> {
                 frame.bgra.len()
             );
             received += 1;
-            if received == 3 {
+            if pause_resume && received == 3 {
+                eprintln!("Pausing capture for 3 seconds, then resuming the same session.");
+                capture.set_active(false);
+                std::thread::sleep(Duration::from_secs(3));
+                capture.set_active(true);
+            } else if received == expected {
                 break;
             }
             capture.request_frame();
@@ -42,8 +50,8 @@ fn main() -> Result<(), String> {
     let close_started = Instant::now();
     drop(capture);
     eprintln!("Session released in {:?}", close_started.elapsed());
-    if !cancel && received != 3 {
-        return Err("Timed out waiting for three frames".into());
+    if !cancel && received != expected {
+        return Err("Timed out waiting for fresh frames".into());
     }
     Ok(())
 }

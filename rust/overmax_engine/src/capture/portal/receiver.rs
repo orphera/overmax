@@ -112,6 +112,31 @@ impl ReceiverState {
         }
     }
 
+    fn accept_header(&mut self, sequence: u64, flags: MetaHeaderFlags) -> bool {
+        let recoverable = MetaHeaderFlags::DISCONT | MetaHeaderFlags::CORRUPTED;
+        if flags.bits() & !recoverable.bits() != 0 {
+            self.fail(format!("unsupported PipeWire frame metadata: {flags:?}"));
+            return false;
+        }
+        let corrupt = flags.contains(MetaHeaderFlags::CORRUPTED);
+        if !corrupt && self.sequence == Some(sequence) {
+            return false;
+        }
+        if flags.intersects(recoverable) {
+            self.sequence = None;
+            let mut shared = self.shared.lock().unwrap_or_else(|p| p.into_inner());
+            shared.invalidate();
+            shared.format_generation += 1;
+        }
+        // The producer can return an unfinished buffer when capture is paused.
+        // Reject its pixels and queued history, keeping the same session alive.
+        if corrupt {
+            return false;
+        }
+        self.sequence = Some(sequence);
+        true
+    }
+
     fn process(&mut self, stream: &pw::stream::Stream) {
         // Retain only the most recent dequeued buffer. Buffer::drop returns all
         // buffers, including every early/error return below, to PipeWire.
@@ -128,22 +153,9 @@ impl ReceiverState {
             self.fail("PipeWire omitted required frame sequence metadata");
             return;
         };
-        let sequence = header.seq();
-        let flags = header.flags();
-        if self.sequence == Some(sequence) {
+        if !self.accept_header(header.seq(), header.flags()) {
             return;
         }
-        if !(flags & !MetaHeaderFlags::DISCONT).is_empty() {
-            self.fail("unsupported or corrupt PipeWire frame metadata");
-            return;
-        }
-        if flags.contains(MetaHeaderFlags::DISCONT) {
-            self.sequence = None;
-            let mut shared = self.shared.lock().unwrap_or_else(|p| p.into_inner());
-            shared.invalidate();
-            shared.format_generation += 1;
-        }
-        self.sequence = Some(sequence);
         if !self.demand.swap(false, Ordering::AcqRel) {
             return;
         }
@@ -337,4 +349,77 @@ pub(super) fn run(
     mainloop.run();
     let result = error.borrow_mut().take().map_or(Ok(()), Err);
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn receiver() -> ReceiverState {
+        pw::init();
+        ReceiverState {
+            format: None,
+            sequence: Some(20),
+            scratch: CapturedFrame::default(),
+            shared: Arc::new(Mutex::new(Mailbox::new())),
+            demand: Arc::new(AtomicBool::new(true)),
+            mainloop: pw::main_loop::MainLoopRc::new(None).unwrap(),
+            error: Rc::new(RefCell::new(None)),
+        }
+    }
+
+    #[test]
+    fn corrupt_resume_frame_is_dropped_without_ending_the_session() {
+        // A bad buffer must invalidate a queued frame even if its sequence repeats.
+        for sequence in [21, 20] {
+            let mut receiver = receiver();
+            {
+                let mut mailbox = receiver.shared.lock().unwrap();
+                mailbox.status = PortalStatus::Streaming;
+                mailbox.ready = true;
+                mailbox.received = Some(Instant::now());
+                mailbox.format_generation = 4;
+            }
+            assert!(!receiver.accept_header(sequence, MetaHeaderFlags::CORRUPTED));
+            assert!(
+                receiver.error.borrow().is_none(),
+                "one bad frame must not end the session"
+            );
+            {
+                let mailbox = receiver.shared.lock().unwrap();
+                assert!(!mailbox.ready && mailbox.received.is_none());
+                assert_eq!(mailbox.status, PortalStatus::Streaming);
+                assert!(mailbox.format_generation > 4);
+            }
+            assert!(receiver.demand.load(Ordering::Acquire));
+            assert!(receiver.accept_header(22, MetaHeaderFlags::empty()));
+            assert!(!receiver.accept_header(22, MetaHeaderFlags::empty()));
+            assert!(receiver.error.borrow().is_none());
+        }
+    }
+
+    #[test]
+    fn unsupported_header_flags_still_end_the_session() {
+        for flags in [
+            MetaHeaderFlags::HEADER,
+            MetaHeaderFlags::DELTA_UNIT,
+            MetaHeaderFlags::from_bits_retain(1 << 31),
+        ] {
+            let mut receiver = receiver();
+            assert!(!receiver.accept_header(21, flags));
+            assert!(receiver.error.borrow().is_some());
+        }
+    }
+
+    #[test]
+    fn duplicate_discontinuity_is_not_a_new_observation() {
+        let mut receiver = receiver();
+        assert!(receiver.accept_header(21, MetaHeaderFlags::DISCONT));
+        let generation = receiver.shared.lock().unwrap().format_generation;
+        assert!(!receiver.accept_header(21, MetaHeaderFlags::DISCONT));
+        assert_eq!(
+            receiver.shared.lock().unwrap().format_generation,
+            generation
+        );
+    }
 }

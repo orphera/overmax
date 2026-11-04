@@ -1,6 +1,7 @@
 //! Explicitly started ScreenCast sessions. No X11 target or global coordinates
 //! are fabricated: frames describe only the selected stream's pixel dimensions.
 
+pub mod connection;
 mod pixels;
 mod receiver;
 mod session;

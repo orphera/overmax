@@ -1437,6 +1437,7 @@ mod tests {
     fn wayland_focus_overrides_x11_fallback() {
         let x11 = focus(FocusState::Background, 4);
         let presentation = PresentationObservation {
+            target_epoch: 1,
             focus: FocusState::Focused,
             fullscreen: Some(true),
             generation: 7,

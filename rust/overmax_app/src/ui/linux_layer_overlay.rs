@@ -266,8 +266,11 @@ pub fn spawn(
                 wake_reader,
                 ready_tx,
                 thread_telemetry,
-                thread_presentation,
+                thread_presentation.clone(),
             );
+            if let Ok(mut observation) = thread_presentation.lock() {
+                *observation = None;
+            }
             if let Err(error) = result {
                 eprintln!("[LinuxOverlay] {error}");
                 if let Ok(mut failure) = thread_failure.lock() {
@@ -394,6 +397,7 @@ fn drain_wake_socket(stream: &UnixStream) -> bool {
 
 #[derive(Clone, Default)]
 struct ForeignToplevelSnapshot {
+    identity: u64,
     title: Option<String>,
     activated: bool,
     fullscreen: Option<bool>,
@@ -409,6 +413,22 @@ struct ForeignToplevelState {
 struct ForeignToplevel {
     handle: ZwlrForeignToplevelHandleV1,
     state: ForeignToplevelState,
+}
+
+#[derive(Default)]
+struct PresentationTarget {
+    identity: Option<u64>,
+    epoch: u64,
+}
+
+impl PresentationTarget {
+    fn observe(&mut self, identity: Option<u64>) -> u64 {
+        if self.identity != identity {
+            self.identity = identity;
+            self.epoch += 1;
+        }
+        self.epoch
+    }
 }
 
 fn parse_foreign_toplevel_states(raw: &[u8], supports_fullscreen: bool) -> (bool, Option<bool>) {
@@ -476,6 +496,8 @@ struct Backend {
     game_window_title: String,
     presentation_observation: SharedPresentationObservation,
     presentation_generation: u64,
+    presentation_target: PresentationTarget,
+    next_toplevel_identity: u64,
     connection: Connection,
     layer: Option<LayerSurface>,
     viewport: Option<WpViewport>,
@@ -623,6 +645,8 @@ impl Backend {
                 game_window_title,
                 presentation_observation,
                 presentation_generation: 0,
+                presentation_target: PresentationTarget::default(),
+                next_toplevel_identity: 0,
                 connection,
                 layer: Some(layer),
                 viewport,
@@ -674,9 +698,13 @@ impl Backend {
                 .iter()
                 .map(|toplevel| &toplevel.state),
         )
-        .map(|target| (target.activated, target.fullscreen));
+        .map(|target| (target.identity, target.activated, target.fullscreen));
+        let target_epoch = self
+            .presentation_target
+            .observe(target.map(|value| value.0));
         self.presentation_generation = self.presentation_generation.wrapping_add(1);
-        let observation = target.map(|(activated, fullscreen)| PresentationObservation {
+        let observation = target.map(|(_, activated, fullscreen)| PresentationObservation {
+            target_epoch,
             focus: if activated {
                 FocusState::Focused
             } else {
@@ -686,8 +714,18 @@ impl Backend {
             generation: self.presentation_generation,
             committed_at: Instant::now(),
         });
-        if let Ok(mut shared) = self.presentation_observation.lock() {
+        let changed = if let Ok(mut shared) = self.presentation_observation.lock() {
+            let state = |value: Option<PresentationObservation>| {
+                value.map(|value| (value.target_epoch, value.focus, value.fullscreen))
+            };
+            let changed = state(*shared) != state(observation);
             *shared = observation;
+            changed
+        } else {
+            false
+        };
+        if changed {
+            (self.app_repaint)();
         }
     }
 
@@ -1951,9 +1989,16 @@ impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for Backend {
     ) {
         match event {
             zwlr_foreign_toplevel_manager_v1::Event::Toplevel { toplevel } => {
+                state.next_toplevel_identity += 1;
                 state.foreign_toplevels.push(ForeignToplevel {
                     handle: toplevel,
-                    state: ForeignToplevelState::default(),
+                    state: ForeignToplevelState {
+                        pending: ForeignToplevelSnapshot {
+                            identity: state.next_toplevel_identity,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
                 });
             }
             zwlr_foreign_toplevel_manager_v1::Event::Finished => {
@@ -2182,6 +2227,17 @@ mod tests {
             unique_matching_toplevel("DJMAX RESPECT V", [&target, &duplicate].into_iter())
                 .is_none()
         );
+    }
+
+    #[test]
+    fn presentation_epoch_survives_focus_events_but_not_lost_or_replaced_targets() {
+        let mut target = super::PresentationTarget::default();
+        let first = target.observe(Some(1));
+        assert_eq!(target.observe(Some(1)), first);
+        target.observe(None); // Even if the worker never sees this intermediate state.
+        let restored = target.observe(Some(1));
+        assert_ne!(restored, first);
+        assert_ne!(target.observe(Some(2)), restored);
     }
 
     #[test]

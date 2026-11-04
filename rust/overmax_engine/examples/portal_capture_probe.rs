@@ -2,7 +2,10 @@
 //! No images or restore tokens are written. --cancel tests picker cancellation.
 #[cfg(all(target_os = "linux", feature = "portal-capture"))]
 fn main() -> Result<(), String> {
-    use overmax_engine::capture::{frame::CapturedFrame, portal::{PortalCapture, PortalStatus}};
+    use overmax_engine::capture::{
+        frame::CapturedFrame,
+        portal::{PortalCapture, PortalStatus},
+    };
     use std::time::{Duration, Instant};
     let cancel = std::env::args().any(|arg| arg == "--cancel");
     let capture = PortalCapture::start(10)?;
@@ -11,11 +14,22 @@ fn main() -> Result<(), String> {
     let mut received = 0;
     eprintln!("Choose one window in the Portal picker (timeout: 30 seconds).");
     while start.elapsed() < Duration::from_secs(30) {
-        if cancel && start.elapsed() >= Duration::from_secs(1) { break; }
+        if cancel && start.elapsed() >= Duration::from_secs(1) {
+            break;
+        }
         if let Some(stamp) = capture.take_frame(&mut frame) {
-            eprintln!("frame={} generation={} size={}x{} bytes={}", stamp.sequence, stamp.format_generation, frame.width, frame.height, frame.bgra.len());
+            eprintln!(
+                "frame={} generation={} size={}x{} bytes={}",
+                stamp.sequence,
+                stamp.format_generation,
+                frame.width,
+                frame.height,
+                frame.bgra.len()
+            );
             received += 1;
-            if received == 3 { break; }
+            if received == 3 {
+                break;
+            }
             capture.request_frame();
         }
         match capture.status() {
@@ -28,7 +42,9 @@ fn main() -> Result<(), String> {
     let close_started = Instant::now();
     drop(capture);
     eprintln!("Session released in {:?}", close_started.elapsed());
-    if !cancel && received != 3 { return Err("Timed out waiting for three frames".into()); }
+    if !cancel && received != 3 {
+        return Err("Timed out waiting for three frames".into());
+    }
     Ok(())
 }
 

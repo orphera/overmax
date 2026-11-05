@@ -28,7 +28,7 @@ Linux support for Overmax is still in its early stages. It is not as broadly sup
 ### Overlay Placement Scope
 
 - The current supported combination is a Proton/XWayland game in the same Wayland session, a `wlr-layer-shell` overlay, and borderless fullscreen. In this mode, the overlay is positioned relative to the selected output.
-- Capture and recognition may work in windowed mode, but automatic placement that follows the game window is not supported. Place the overlay manually; this remains the limitation until compositor-specific geometry sources are implemented and verified.
+- Automatic windowed placement is undergoing compositor-specific validation. On niri, valid window, workspace, and output coordinates allow automatic placement even with external layers such as waybar; unavailable coordinates fall back to manual placement. During a drag, the last valid position is retained and updated on drop. The overlay hides when the game loses focus and reappears when focus returns, including with Always Visible enabled. Multiple panels, mixed scales, and windowed placement across multiple outputs remain unverified.
 - Native Wayland games, Gamescope sessions, GNOME, and X11 desktop sessions are outside the supported scope.
 
 ## Verified Environments

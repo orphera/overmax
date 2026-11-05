@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 const LOG_INTERVAL: Duration = Duration::from_secs(3);
 #[cfg(all(target_os = "linux", feature = "portal-capture"))]
 use crate::capture::portal::{
-    connection::{PortalConnection, PortalControl},
+    connection::{PortalConnection, PortalControl, ResetScope},
     PortalCapture,
 };
 
@@ -599,12 +599,23 @@ impl DetectionWorker {
                 &mut self.frame_buffer,
                 Instant::now(),
             );
-            if poll.reset {
+            if let Some(reset) = poll.reset {
                 self.window_snapshot = None;
                 self.focus_observation = None;
                 self.focus_policy.reset();
                 self.window_scheduler = WindowQueryScheduler::new(true);
-                self.on_capture_interrupted(pipeline, "native Wayland capture state changed");
+                match reset {
+                    ResetScope::Observations => {
+                        pipeline.suspend();
+                        self.publish_capture_interruption("native Wayland capture paused");
+                    }
+                    ResetScope::Session => {
+                        self.on_capture_interrupted(
+                            pipeline,
+                            "native Wayland capture state changed",
+                        );
+                    }
+                }
                 if !poll.handling {
                     self.was_found = false;
                 }
@@ -624,10 +635,18 @@ impl DetectionWorker {
                         value.target_epoch == observed.target_epoch
                             && value.focus == FocusState::Focused
                     }) {
-                        self.on_capture_interrupted(
-                            pipeline,
-                            "native Wayland target changed during frame delivery",
-                        );
+                        if current.is_some_and(|value| {
+                            value.target_epoch == observed.target_epoch
+                                && value.focus == FocusState::Background
+                        }) {
+                            pipeline.suspend();
+                            self.publish_capture_interruption("native Wayland capture paused");
+                        } else {
+                            self.on_capture_interrupted(
+                                pipeline,
+                                "native Wayland target changed during frame delivery",
+                            );
+                        }
                         self.is_foreground = false;
                         return LinuxTickResult::Continue;
                     }
@@ -890,6 +909,11 @@ impl DetectionWorker {
     #[cfg(target_os = "linux")]
     fn on_capture_interrupted(&mut self, pipeline: &mut DetectionPipeline, reason: &str) {
         pipeline.reset();
+        self.publish_capture_interruption(reason);
+    }
+
+    #[cfg(target_os = "linux")]
+    fn publish_capture_interruption(&mut self, reason: &str) {
         if self.capture_failure_active {
             return;
         }

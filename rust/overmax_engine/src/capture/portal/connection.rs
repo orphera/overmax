@@ -88,9 +88,17 @@ impl PortalControl {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResetScope {
+    /// The same confirmed session and target; all visual evidence is stale.
+    Observations,
+    /// Confirmation or target/session continuity ended; discard completion state too.
+    Session,
+}
+
 pub struct Poll {
     pub handling: bool,
-    pub reset: bool,
+    pub reset: Option<ResetScope>,
     pub changed: bool,
     pub frame: Option<(FrameStamp, PresentationObservation)>,
 }
@@ -157,6 +165,7 @@ impl PortalConnection {
         let old_status = self.view.status.clone();
         let old_presentation = self.view.presentation;
         let old_confirmation = self.view.confirmation;
+        let old_binding = self.binding.filter(|_| self.confirmed);
         let mut reset = false;
         let mut connect = false;
         let mut confirm = None;
@@ -317,7 +326,13 @@ impl PortalConnection {
         }
         Poll {
             handling: self.capture.is_some(),
-            reset,
+            reset: reset.then_some(
+                if old_binding.is_some() && old_binding == self.binding.filter(|_| self.confirmed) {
+                    ResetScope::Observations
+                } else {
+                    ResetScope::Session
+                },
+            ),
             changed,
             frame,
         }
@@ -406,6 +421,7 @@ mod tests {
             Instant::now(),
         );
         assert!(preview.handling && preview.frame.is_none());
+        assert_eq!(preview.reset, Some(ResetScope::Session));
         let view = control.view();
         assert_eq!(view.status, ConnectionStatus::Preview);
         assert_eq!(view.preview.unwrap().rgba, [3, 2, 1, 255]);
@@ -425,13 +441,14 @@ mod tests {
         assert_eq!(control.view().status, ConnectionStatus::Preview);
 
         control.confirm(ticket);
-        connection.poll(
+        let confirmed = connection.poll(
             || Ok(false),
             || panic!(),
             Some(observed(1, false)),
             &mut output,
             Instant::now(),
         );
+        assert_eq!(confirmed.reset, Some(ResetScope::Session));
         assert_eq!(control.view().status, ConnectionStatus::Paused);
         assert!(control.view().preview.is_none());
         connection.poll(
@@ -460,7 +477,7 @@ mod tests {
             )
             .frame
             .is_none());
-        assert!(
+        assert_eq!(
             connection
                 .poll(
                     || Ok(false),
@@ -469,7 +486,8 @@ mod tests {
                     &mut output,
                     Instant::now()
                 )
-                .reset
+                .reset,
+            Some(ResetScope::Observations)
         );
         connection.poll(
             || Ok(false),
@@ -486,7 +504,8 @@ mod tests {
             &mut output,
             Instant::now(),
         );
-        assert!(resized.reset && resized.frame.is_some());
+        assert_eq!(resized.reset, Some(ResetScope::Observations));
+        assert!(resized.frame.is_some());
         assert_eq!(control.view().status, ConnectionStatus::Connected);
 
         let replaced = connection.poll(
@@ -496,7 +515,8 @@ mod tests {
             &mut output,
             Instant::now(),
         );
-        assert!(replaced.reset && !replaced.handling && replaced.frame.is_none());
+        assert_eq!(replaced.reset, Some(ResetScope::Session));
+        assert!(!replaced.handling && replaced.frame.is_none());
         assert_eq!(control.view().status, ConnectionStatus::TargetChanged);
         control.confirm(ticket);
         assert!(
@@ -538,7 +558,8 @@ mod tests {
                 &mut output,
                 Instant::now(),
             );
-            assert!(poll.reset && !poll.handling && poll.frame.is_none());
+            assert_eq!(poll.reset, Some(ResetScope::Session));
+            assert!(!poll.handling && poll.frame.is_none());
             assert!(control.view().preview.is_none());
             assert!(control.view().presentation.is_none());
         }
@@ -582,7 +603,8 @@ mod tests {
             &mut output,
             received + Duration::from_secs(3),
         );
-        assert!(stalled.handling && stalled.reset && stalled.frame.is_none());
+        assert_eq!(stalled.reset, Some(ResetScope::Observations));
+        assert!(stalled.handling && stalled.frame.is_none());
         assert_eq!(control.view().status, ConnectionStatus::WaitingForFrame);
         assert!(control.view().confirmation.is_none());
         deliver(&shared, 3, 1);
@@ -653,7 +675,7 @@ mod tests {
             Instant::now(),
         );
         assert!(!poll.handling);
-        assert!(poll.reset);
+        assert_eq!(poll.reset, Some(ResetScope::Session));
         assert_eq!(control.view().status, ConnectionStatus::Idle);
     }
 
@@ -680,7 +702,8 @@ mod tests {
             &mut output,
             now + Duration::from_secs(1),
         );
-        assert!(switched.reset && !switched.handling && switched.frame.is_none());
+        assert_eq!(switched.reset, Some(ResetScope::Session));
+        assert!(!switched.handling && switched.frame.is_none());
         assert_eq!(control.view().status, ConnectionStatus::XWayland);
         assert!(control.view().preview.is_none());
         assert!(control.view().presentation.is_none());

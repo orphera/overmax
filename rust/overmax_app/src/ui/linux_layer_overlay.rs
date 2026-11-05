@@ -88,6 +88,8 @@ pub struct LinuxOverlaySnapshot {
     pub session_initial_record: Option<RecordValue>,
     pub toast: Option<ToastMessage>,
     pub window_snapshot: Option<WindowSnapshot>,
+    /// Confirmed Portal target presentation; contains no fabricated X11 geometry.
+    pub portal_presentation: Option<PresentationObservation>,
     /// 컴포지터 좌표의 게임 창 위치 (`GameGeometrySource`). 창 모드 스냅 기준으로만 쓴다.
     pub game_geometry: Option<GameGeometry>,
     pub capture_fatal: Option<String>,
@@ -226,6 +228,7 @@ fn same_display_snapshot(
         && previous.session_initial_record == next.session_initial_record
         && previous.toast == next.toast
         && previous.window_snapshot == next.window_snapshot
+        && previous.portal_presentation == next.portal_presentation
         && previous.game_geometry == next.game_geometry
         && previous.capture_fatal == next.capture_fatal
         && previous.overlay_visible_override == next.overlay_visible_override
@@ -266,8 +269,11 @@ pub fn spawn(
                 wake_reader,
                 ready_tx,
                 thread_telemetry,
-                thread_presentation,
+                thread_presentation.clone(),
             );
+            if let Ok(mut observation) = thread_presentation.lock() {
+                *observation = None;
+            }
             if let Err(error) = result {
                 eprintln!("[LinuxOverlay] {error}");
                 if let Ok(mut failure) = thread_failure.lock() {
@@ -394,6 +400,7 @@ fn drain_wake_socket(stream: &UnixStream) -> bool {
 
 #[derive(Clone, Default)]
 struct ForeignToplevelSnapshot {
+    identity: u64,
     title: Option<String>,
     activated: bool,
     fullscreen: Option<bool>,
@@ -409,6 +416,22 @@ struct ForeignToplevelState {
 struct ForeignToplevel {
     handle: ZwlrForeignToplevelHandleV1,
     state: ForeignToplevelState,
+}
+
+#[derive(Default)]
+struct PresentationTarget {
+    identity: Option<u64>,
+    epoch: u64,
+}
+
+impl PresentationTarget {
+    fn observe(&mut self, identity: Option<u64>) -> u64 {
+        if self.identity != identity {
+            self.identity = identity;
+            self.epoch += 1;
+        }
+        self.epoch
+    }
 }
 
 fn parse_foreign_toplevel_states(raw: &[u8], supports_fullscreen: bool) -> (bool, Option<bool>) {
@@ -476,6 +499,8 @@ struct Backend {
     game_window_title: String,
     presentation_observation: SharedPresentationObservation,
     presentation_generation: u64,
+    presentation_target: PresentationTarget,
+    next_toplevel_identity: u64,
     connection: Connection,
     layer: Option<LayerSurface>,
     viewport: Option<WpViewport>,
@@ -623,6 +648,8 @@ impl Backend {
                 game_window_title,
                 presentation_observation,
                 presentation_generation: 0,
+                presentation_target: PresentationTarget::default(),
+                next_toplevel_identity: 0,
                 connection,
                 layer: Some(layer),
                 viewport,
@@ -674,9 +701,13 @@ impl Backend {
                 .iter()
                 .map(|toplevel| &toplevel.state),
         )
-        .map(|target| (target.activated, target.fullscreen));
+        .map(|target| (target.identity, target.activated, target.fullscreen));
+        let target_epoch = self
+            .presentation_target
+            .observe(target.map(|value| value.0));
         self.presentation_generation = self.presentation_generation.wrapping_add(1);
-        let observation = target.map(|(activated, fullscreen)| PresentationObservation {
+        let observation = target.map(|(_, activated, fullscreen)| PresentationObservation {
+            target_epoch,
             focus: if activated {
                 FocusState::Focused
             } else {
@@ -686,8 +717,18 @@ impl Backend {
             generation: self.presentation_generation,
             committed_at: Instant::now(),
         });
-        if let Ok(mut shared) = self.presentation_observation.lock() {
+        let changed = if let Ok(mut shared) = self.presentation_observation.lock() {
+            let state = |value: Option<PresentationObservation>| {
+                value.map(|value| (value.target_epoch, value.focus, value.fullscreen))
+            };
+            let changed = state(*shared) != state(observation);
             *shared = observation;
+            changed
+        } else {
+            false
+        };
+        if changed {
+            (self.app_repaint)();
         }
     }
 
@@ -750,6 +791,7 @@ impl Backend {
             previous.snap != snapshot.snap
                 || previous.position != snapshot.position
                 || previous.window_snapshot != snapshot.window_snapshot
+                || capture_presentation(previous) != capture_presentation(&snapshot)
                 || previous.game_geometry != snapshot.game_geometry
                 || size_changed
         });
@@ -1497,7 +1539,21 @@ fn degraded_message(snapshot: &LinuxOverlaySnapshot) -> &str {
 }
 
 fn is_degraded(snapshot: &LinuxOverlaySnapshot) -> bool {
-    snapshot.capture_fatal.is_some() || snapshot.window_snapshot.is_none()
+    snapshot.capture_fatal.is_some() || capture_presentation(snapshot).is_none()
+}
+
+fn capture_presentation(snapshot: &LinuxOverlaySnapshot) -> Option<(bool, bool)> {
+    snapshot
+        .window_snapshot
+        .map(|window| (window.foreground, window.fullscreen))
+        .or_else(|| {
+            snapshot.portal_presentation.map(|value| {
+                (
+                    value.focus == FocusState::Focused,
+                    value.fullscreen.unwrap_or(false),
+                )
+            })
+        })
 }
 
 fn is_hidden(snapshot: &LinuxOverlaySnapshot) -> bool {
@@ -1505,8 +1561,8 @@ fn is_hidden(snapshot: &LinuxOverlaySnapshot) -> bool {
         return true;
     }
     snapshot.capture_fatal.is_none()
-        && snapshot.window_snapshot.is_some_and(|window| {
-            !window.foreground
+        && capture_presentation(snapshot).is_some_and(|(foreground, _)| {
+            !foreground
                 || (!snapshot.always_visible
                     && (snapshot.state.scene == overmax_core::SceneType::Unknown
                         || snapshot.state.scene.is_ingame()))
@@ -1543,9 +1599,7 @@ fn retained_panel_size(current: (u32, u32), snapshot: &LinuxOverlaySnapshot) -> 
 
 fn uses_manual_position(snapshot: &LinuxOverlaySnapshot) -> bool {
     snapshot.snap == "manual"
-        || snapshot
-            .window_snapshot
-            .is_some_and(|window| !window.fullscreen)
+        || capture_presentation(snapshot).is_some_and(|(_, fullscreen)| !fullscreen)
 }
 
 fn game_anchor_on_output(
@@ -1567,9 +1621,7 @@ fn panel_margin(
     output_logical_size: Option<(i32, i32)>,
     game_anchor: Option<WindowRect>,
 ) -> (i32, i32) {
-    let windowed = snapshot
-        .window_snapshot
-        .is_some_and(|window| !window.fullscreen);
+    let windowed = capture_presentation(snapshot).is_some_and(|(_, fullscreen)| !fullscreen);
     if windowed && snapshot.snap != "manual" {
         if let Some(rect) = game_anchor {
             return calculate_margin(&snapshot.snap, snapshot.position, Some(rect), size);
@@ -1951,9 +2003,16 @@ impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for Backend {
     ) {
         match event {
             zwlr_foreign_toplevel_manager_v1::Event::Toplevel { toplevel } => {
+                state.next_toplevel_identity += 1;
                 state.foreign_toplevels.push(ForeignToplevel {
                     handle: toplevel,
-                    state: ForeignToplevelState::default(),
+                    state: ForeignToplevelState {
+                        pending: ForeignToplevelSnapshot {
+                            identity: state.next_toplevel_identity,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
                 });
             }
             zwlr_foreign_toplevel_manager_v1::Event::Finished => {
@@ -2059,7 +2118,9 @@ mod tests {
     };
     use overmax_core::{GameSessionState, SceneType};
     use overmax_data::{RecommendResult, RecordDB, RecordManager};
-    use overmax_engine::capture::window_tracker::{GameGeometry, WindowRect, WindowSnapshot};
+    use overmax_engine::capture::window_tracker::{
+        FocusState, GameGeometry, PresentationObservation, WindowRect, WindowSnapshot,
+    };
     use std::io::Read as _;
     use std::os::unix::net::UnixStream;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -2185,6 +2246,17 @@ mod tests {
     }
 
     #[test]
+    fn presentation_epoch_survives_focus_events_but_not_lost_or_replaced_targets() {
+        let mut target = super::PresentationTarget::default();
+        let first = target.observe(Some(1));
+        assert_eq!(target.observe(Some(1)), first);
+        target.observe(None); // Even if the worker never sees this intermediate state.
+        let restored = target.observe(Some(1));
+        assert_ne!(restored, first);
+        assert_ne!(target.observe(Some(2)), restored);
+    }
+
+    #[test]
     fn parses_v1_focus_and_v2_fullscreen_states() {
         let raw = [2u32.to_ne_bytes(), 3u32.to_ne_bytes(), 99u32.to_ne_bytes()].concat();
         assert_eq!(parse_foreign_toplevel_states(&raw, false), (true, None));
@@ -2220,6 +2292,7 @@ mod tests {
             session_initial_record: None,
             toast: None,
             window_snapshot: None,
+            portal_presentation: None,
             game_geometry: None,
             capture_fatal: None,
             overlay_visible_override: None,
@@ -2227,6 +2300,27 @@ mod tests {
             delivery_telemetry: None,
         };
         assert_eq!(panel_size(Some(&snapshot)), (320, 116));
+        let mut native = snapshot.clone();
+        native.portal_presentation = Some(PresentationObservation {
+            target_epoch: 1,
+            focus: FocusState::Focused,
+            fullscreen: Some(true),
+            generation: 1,
+            committed_at: Instant::now(),
+        });
+        native.state.scene = SceneType::Freestyle;
+        native.snap = "bottom_right".into();
+        assert!(native.window_snapshot.is_none());
+        assert!(!super::is_degraded(&native));
+        assert!(!super::is_hidden(&native));
+        assert_eq!(panel_size(Some(&native)), (360, 406));
+        assert!(!uses_manual_position(&native));
+        native.portal_presentation.as_mut().unwrap().focus = FocusState::Background;
+        assert!(super::is_hidden(&native));
+        native.portal_presentation.as_mut().unwrap().fullscreen = Some(false);
+        assert!(uses_manual_position(&native));
+        native.portal_presentation = None;
+        assert!(super::is_degraded(&native));
         let mut background = snapshot.clone();
         background.window_snapshot = Some(WindowSnapshot {
             window: 7,

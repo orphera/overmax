@@ -17,6 +17,8 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 pub struct SettingsUiContext {
+    #[cfg(all(target_os = "linux", feature = "portal-capture"))]
+    pub portal: overmax_engine::capture::portal::connection::PortalControl,
     pub root: Arc<std::path::PathBuf>,
     pub paths: Arc<overmax_data::AppPaths>,
     pub current_steam_id: String,
@@ -641,6 +643,8 @@ fn advanced_tab(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContext) {
         debug_section(ui, draft, ctx);
     });
     section_card(ui, crate::t!("settings-screen-capture"), |ui| {
+        #[cfg(all(target_os = "linux", feature = "portal-capture"))]
+        crate::ui::portal_capture_ui::render(ui, &ctx.portal);
         capture_section(ui, draft);
     });
     section_card(ui, crate::t!("settings-update-section"), |ui| {

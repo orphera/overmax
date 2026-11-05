@@ -271,6 +271,8 @@ impl AppStateTracker {
 }
 
 pub struct NativeApp {
+    #[cfg(all(target_os = "linux", feature = "portal-capture"))]
+    pub(crate) portal: overmax_engine::capture::portal::connection::PortalControl,
     pub(crate) paths: Arc<AppPaths>,
     pub(crate) root: Arc<std::path::PathBuf>,
     pub(crate) settings: SharedSettings,
@@ -456,7 +458,7 @@ impl NativeApp {
         let presentation_observation = platform.presentation_observation();
 
         let (image_index_reload_tx, image_index_reload_rx) = mpsc::channel();
-        detection_worker::spawn(
+        let _worker_control = detection_worker::spawn(
             paths.data_dir().to_path_buf(),
             app_settings.clone(),
             merged_settings.clone(),
@@ -534,6 +536,8 @@ impl NativeApp {
         };
 
         let mut app = Self {
+            #[cfg(all(target_os = "linux", feature = "portal-capture"))]
+            portal: _worker_control.portal,
             paths,
             root,
             settings,

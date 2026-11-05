@@ -21,6 +21,16 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const LOG_INTERVAL: Duration = Duration::from_secs(3);
+#[cfg(all(target_os = "linux", feature = "portal-capture"))]
+use crate::capture::portal::{
+    connection::{PortalConnection, PortalControl, ResetScope},
+    PortalCapture,
+};
+
+pub struct WorkerControl {
+    #[cfg(all(target_os = "linux", feature = "portal-capture"))]
+    pub portal: PortalControl,
+}
 #[cfg(target_os = "linux")]
 const BACKGROUND_DEBOUNCE: Duration = Duration::from_millis(300);
 #[cfg(target_os = "linux")]
@@ -130,7 +140,9 @@ pub fn spawn(
     presentation_observation: SharedPresentationObservation,
     repaint_callback: Box<dyn Fn() + Send + Sync + 'static>,
     image_index_reload_rx: Receiver<()>,
-) {
+) -> WorkerControl {
+    #[cfg(all(target_os = "linux", feature = "portal-capture"))]
+    let (portal_control, portal) = PortalConnection::new();
     std::thread::spawn(move || {
         initialize_winrt(&log_tx);
         let mut worker = DetectionWorker::new(
@@ -145,8 +157,16 @@ pub fn spawn(
             repaint_callback,
         )
         .with_image_index_reload(image_index_reload_rx);
+        #[cfg(all(target_os = "linux", feature = "portal-capture"))]
+        {
+            worker.portal = Some(portal);
+        }
         worker.run();
     });
+    WorkerControl {
+        #[cfg(all(target_os = "linux", feature = "portal-capture"))]
+        portal: portal_control,
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -189,6 +209,8 @@ impl From<&DetectionOutput> for RepaintFingerprint {
 }
 
 struct DetectionWorker {
+    #[cfg(all(target_os = "linux", feature = "portal-capture"))]
+    portal: Option<PortalConnection>,
     root: PathBuf,
     telemetry_log_path: PathBuf,
     settings: Settings,
@@ -245,6 +267,8 @@ impl DetectionWorker {
         #[cfg(not(any(debug_assertions, feature = "telemetry")))]
         let _ = runtime_telemetry;
         Self {
+            #[cfg(all(target_os = "linux", feature = "portal-capture"))]
+            portal: None,
             root,
             telemetry_log_path,
             settings,
@@ -315,6 +339,8 @@ impl DetectionWorker {
         let mut capturer: Box<dyn CaptureEngine> = Box::new(capturer_adaptive);
         let mut pipeline = self.build_pipeline();
         self.log("[Detection] Pure Rust Native Engine initialized".to_string());
+        #[cfg(all(target_os = "linux", feature = "portal-capture"))]
+        let mut portal = self.portal.take();
 
         loop {
             #[cfg(any(debug_assertions, feature = "telemetry"))]
@@ -326,7 +352,13 @@ impl DetectionWorker {
             #[cfg(target_os = "windows")]
             self.tick(&tracker, &mut capturer, &mut pipeline);
             #[cfg(target_os = "linux")]
-            match self.tick_linux(&tracker, &mut capturer, &mut pipeline) {
+            match self.tick_linux(
+                &tracker,
+                &mut capturer,
+                &mut pipeline,
+                #[cfg(feature = "portal-capture")]
+                &mut portal,
+            ) {
                 LinuxTickResult::Continue => {}
                 LinuxTickResult::Stop => return,
                 LinuxTickResult::Reconnect => {
@@ -546,7 +578,93 @@ impl DetectionWorker {
         tracker: &WindowTracker,
         capturer: &mut Box<dyn CaptureEngine>,
         pipeline: &mut DetectionPipeline,
+        #[cfg(feature = "portal-capture")] portal: &mut Option<PortalConnection>,
     ) -> LinuxTickResult {
+        #[cfg(feature = "portal-capture")]
+        if let Some(portal) = portal {
+            let observation = self
+                .presentation_observation
+                .lock()
+                .ok()
+                .and_then(|value| *value);
+            let fps =
+                (1000 / self.settings.screen_capture().active_sleep_ms.max(1)).clamp(1, 30) as u32;
+            let poll = portal.poll(
+                || tracker.game_snapshot().map(|value| value.is_some()),
+                || {
+                    capturer.set_target(None)?;
+                    PortalCapture::start(fps)
+                },
+                observation,
+                &mut self.frame_buffer,
+                Instant::now(),
+            );
+            if let Some(reset) = poll.reset {
+                self.window_snapshot = None;
+                self.focus_observation = None;
+                self.focus_policy.reset();
+                self.window_scheduler = WindowQueryScheduler::new(true);
+                match reset {
+                    ResetScope::Observations => {
+                        pipeline.suspend();
+                        self.publish_capture_interruption("native Wayland capture paused");
+                    }
+                    ResetScope::Session => {
+                        self.on_capture_interrupted(
+                            pipeline,
+                            "native Wayland capture state changed",
+                        );
+                    }
+                }
+                if !poll.handling {
+                    self.was_found = false;
+                }
+                self.is_foreground = false;
+            }
+            if poll.changed {
+                self.request_repaint();
+            }
+            if poll.handling {
+                if let Some((_stamp, observed)) = poll.frame {
+                    let current = self
+                        .presentation_observation
+                        .lock()
+                        .ok()
+                        .and_then(|value| *value);
+                    if !current.is_some_and(|value| {
+                        value.target_epoch == observed.target_epoch
+                            && value.focus == FocusState::Focused
+                    }) {
+                        if current.is_some_and(|value| {
+                            value.target_epoch == observed.target_epoch
+                                && value.focus == FocusState::Background
+                        }) {
+                            pipeline.suspend();
+                            self.publish_capture_interruption("native Wayland capture paused");
+                        } else {
+                            self.on_capture_interrupted(
+                                pipeline,
+                                "native Wayland target changed during frame delivery",
+                            );
+                        }
+                        self.is_foreground = false;
+                        return LinuxTickResult::Continue;
+                    }
+                    if !self.was_found {
+                        let _ = self.game_found_tx.send(());
+                    }
+                    self.was_found = true;
+                    self.is_foreground = true;
+                    self.process_linux_frame(
+                        pipeline,
+                        None,
+                        observed.fullscreen.unwrap_or(false),
+                        poll.changed,
+                    );
+                }
+                return LinuxTickResult::Continue;
+            }
+        }
         let previous_snapshot = self.window_snapshot;
         let queried = self.window_scheduler.should_query();
         let mut target_changed = false;
@@ -667,36 +785,12 @@ impl DetectionWorker {
                 if let Some(telemetry) = &self.runtime_telemetry {
                     telemetry.record_capture_success(cap_elapsed);
                 }
-                self.capture_failure_active = false;
-                let detect_start = Instant::now();
-                let mut out =
-                    pipeline.detect(&self.frame_buffer, self.start.elapsed().as_secs_f64());
-                let detect_elapsed = detect_start.elapsed().as_micros() as u64;
-                pipeline.stats.detect.update(detect_elapsed);
-
-                out.telemetry_snapshot = pipeline.stats.maybe_take_snapshot(5.0);
-                if let Some(ref snap) = out.telemetry_snapshot {
-                    self.log_telemetry_snapshot(snap);
-                }
-                out.game_rect = Some(snapshot.rect);
-                out.window_snapshot = Some(snapshot);
-                out.state.is_fullscreen = snapshot.fullscreen;
-                self.log_detection_summary(&out);
-                self.check_and_log_scene_transition(&out);
-                self.log_verified_event(&out);
-
-                let fingerprint = RepaintFingerprint::from(&out);
-
-                let state_changed = self.last_fingerprint.as_ref() != Some(&fingerprint);
-                if state_changed {
-                    self.last_fingerprint = Some(fingerprint);
-                }
-
-                self.last_sleep_hint = out.sleep_hint;
-                self.send_detection_output(out);
-                if state_changed || overlay_snapshot_changed {
-                    self.request_repaint();
-                }
+                self.process_linux_frame(
+                    pipeline,
+                    Some(snapshot),
+                    snapshot.fullscreen,
+                    overlay_snapshot_changed,
+                );
             }
             Err(error) => {
                 #[cfg(any(debug_assertions, feature = "telemetry"))]
@@ -707,6 +801,43 @@ impl DetectionWorker {
             }
         }
         LinuxTickResult::Continue
+    }
+
+    #[cfg(target_os = "linux")]
+    fn process_linux_frame(
+        &mut self,
+        pipeline: &mut DetectionPipeline,
+        snapshot: Option<WindowSnapshot>,
+        fullscreen: bool,
+        overlay_changed: bool,
+    ) {
+        self.capture_failure_active = false;
+        let detect_start = Instant::now();
+        let mut out = pipeline.detect(&self.frame_buffer, self.start.elapsed().as_secs_f64());
+        pipeline
+            .stats
+            .detect
+            .update(detect_start.elapsed().as_micros() as u64);
+        out.telemetry_snapshot = pipeline.stats.maybe_take_snapshot(5.0);
+        if let Some(ref snap) = out.telemetry_snapshot {
+            self.log_telemetry_snapshot(snap);
+        }
+        out.game_rect = snapshot.map(|value| value.rect);
+        out.window_snapshot = snapshot;
+        out.state.is_fullscreen = fullscreen;
+        self.log_detection_summary(&out);
+        self.check_and_log_scene_transition(&out);
+        self.log_verified_event(&out);
+        let fingerprint = RepaintFingerprint::from(&out);
+        let state_changed = self.last_fingerprint.as_ref() != Some(&fingerprint);
+        if state_changed {
+            self.last_fingerprint = Some(fingerprint);
+        }
+        self.last_sleep_hint = out.sleep_hint;
+        self.send_detection_output(out);
+        if state_changed || overlay_changed {
+            self.request_repaint();
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -778,6 +909,11 @@ impl DetectionWorker {
     #[cfg(target_os = "linux")]
     fn on_capture_interrupted(&mut self, pipeline: &mut DetectionPipeline, reason: &str) {
         pipeline.reset();
+        self.publish_capture_interruption(reason);
+    }
+
+    #[cfg(target_os = "linux")]
+    fn publish_capture_interruption(&mut self, reason: &str) {
         if self.capture_failure_active {
             return;
         }
@@ -1437,6 +1573,7 @@ mod tests {
     fn wayland_focus_overrides_x11_fallback() {
         let x11 = focus(FocusState::Background, 4);
         let presentation = PresentationObservation {
+            target_epoch: 1,
             focus: FocusState::Focused,
             fullscreen: Some(true),
             generation: 7,

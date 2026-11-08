@@ -99,6 +99,7 @@ pub struct DetectionPipeline {
     pending_scene: SceneType,
     unknown_since: Option<f64>,
     last_top_jacket_similarity: Option<f32>,
+    recovering_from_suspension: bool,
 }
 
 impl DetectionPipeline {
@@ -121,6 +122,7 @@ impl DetectionPipeline {
             pending_scene: SceneType::Unknown,
             unknown_since: None,
             last_top_jacket_similarity: None,
+            recovering_from_suspension: false,
         }
     }
 
@@ -141,6 +143,7 @@ impl DetectionPipeline {
     pub fn suspend(&mut self) {
         self.reset_tracking();
         self.play_state.suspend();
+        self.recovering_from_suspension = true;
     }
 
     fn reset_tracking(&mut self) {
@@ -155,6 +158,7 @@ impl DetectionPipeline {
         self.pending_scene = SceneType::Unknown;
         self.unknown_since = None;
         self.last_top_jacket_similarity = None;
+        self.recovering_from_suspension = false;
         self.hysteresis.reset();
         self.rois.set_scene(SceneType::Unknown);
     }
@@ -196,6 +200,11 @@ impl DetectionPipeline {
         now: f64,
     ) -> DetectionOutput {
         self.rois.update_window_size(frame.width, frame.height);
+
+        if scene != SceneType::Unknown {
+            // Once a scene is reacquired, later Unknown exits delimit plays again.
+            self.recovering_from_suspension = false;
+        }
 
         let scene_detected = scene.is_record_scene();
         if scene_detected {
@@ -471,11 +480,12 @@ impl DetectionPipeline {
     fn reset_on_screen_exit(&mut self) {
         self.current_song_id = None;
         self.last_top_jacket_similarity = None;
-        if self.last_scene == SceneType::Unknown {
-            // Includes the first frames while reacquiring a suspended result.
+        if self.recovering_from_suspension && self.last_scene == SceneType::Unknown {
+            // Preserve only across explicit suspension recovery, including the
+            // first result candidate before its second scene inspection.
             self.play_state.suspend();
         } else {
-            // A positively observed non-result scene ends the previous play.
+            // Ordinary exits also delimit plays when gameplay is unrecognized.
             self.play_state.reset();
         }
         // 재진입 시 이전 자켓과 동일한 곡이어도 즉시 매칭이 실행되도록 초기화.
@@ -919,7 +929,16 @@ mod tests {
         rate: f32,
         is_max_combo: bool,
     ) -> Vec<overmax_core::VerifiedPlayEvent> {
-        let frame = blank_frame();
+        replay_result_observations_with_frame(pipeline, &blank_frame(), now, rate, is_max_combo)
+    }
+
+    fn replay_result_observations_with_frame(
+        pipeline: &mut DetectionPipeline,
+        frame: &CapturedFrame,
+        now: f64,
+        rate: f32,
+        is_max_combo: bool,
+    ) -> Vec<overmax_core::VerifiedPlayEvent> {
         let mut events = Vec::new();
         for tick in 0..10 {
             let scene = pipeline.commit_scene(overmax_core::SceneType::ResultFreestyle);
@@ -929,7 +948,7 @@ mod tests {
                     .seed_result_observation_for_test(rate, is_max_combo);
             }
             pipeline.current_song_id = Some(7);
-            let out = pipeline.process_frame_with_scene(&frame, scene, now + f64::from(tick));
+            let out = pipeline.process_frame_with_scene(frame, scene, now + f64::from(tick));
             if let Some(event) = out.event {
                 assert!(out.state.is_stable);
                 assert_eq!(out.stable_hits, 5);
@@ -937,6 +956,67 @@ mod tests {
             }
         }
         events
+    }
+
+    #[test]
+    fn repeat_play_after_unknown_gameplay_emits_another_completion() {
+        let frame = CapturedFrame {
+            width: 2560,
+            height: 1440,
+            bgra: vec![0; 2560 * 1440 * 4],
+        };
+        assert!(!crate::detector::templates::gameplay_scene::supports_frame(
+            &frame
+        ));
+        for resume_before_replay in [false, true] {
+            for (rate, is_max_combo) in [(99.86, true), (99.5, false)] {
+                let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+                assert_eq!(
+                    replay_result_observations_with_frame(&mut pipeline, &frame, 10.0, 99.86, true)
+                        .len(),
+                    1
+                );
+
+                if resume_before_replay {
+                    pipeline.suspend();
+                    pipeline.detect(&frame, 160.0);
+                    assert!(replay_result_observations_with_frame(
+                        &mut pipeline,
+                        &frame,
+                        170.0,
+                        99.86,
+                        true
+                    )
+                    .is_empty());
+                    assert_eq!(pipeline.play_state.stable_hits(), 5);
+                }
+
+                // F5 from a result skips selection. Unsupported gameplay stays
+                // Unknown, but sustained misses still close the previous play.
+                for now in [200.0, 202.0, 204.0, 206.0] {
+                    let output = pipeline.detect(&frame, now);
+                    assert_eq!(pipeline.last_scene, overmax_core::SceneType::Unknown);
+                    assert!(output.event.is_none());
+                }
+                assert!(!pipeline.hysteresis.is_active);
+                assert_eq!(pipeline.play_state.stable_hits(), 0);
+
+                let events = replay_result_observations_with_frame(
+                    &mut pipeline,
+                    &frame,
+                    370.0,
+                    rate,
+                    is_max_combo,
+                );
+                assert_eq!(
+                    events.len(),
+                    1,
+                    "a repeat play must emit even without an improvement (resumed: {resume_before_replay})"
+                );
+                assert_eq!(events[0].rate, rate);
+                assert_eq!(events[0].is_max_combo, is_max_combo);
+            }
+        }
     }
 
     #[test]

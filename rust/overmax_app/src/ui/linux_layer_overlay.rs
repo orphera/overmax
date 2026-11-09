@@ -1643,9 +1643,7 @@ fn uses_manual_position(snapshot: &LinuxOverlaySnapshot) -> bool {
 
 fn should_switch_drag_to_manual_snap(snapshot: &LinuxOverlaySnapshot) -> bool {
     snapshot.snap != "manual"
-        && snapshot
-            .window_snapshot
-            .is_some_and(|window| !window.fullscreen)
+        && capture_presentation(snapshot).is_some_and(|(_, fullscreen)| !fullscreen)
 }
 
 fn game_anchor_on_output(
@@ -2361,10 +2359,13 @@ mod tests {
         assert!(!super::is_hidden(&native, None));
         assert_eq!(panel_size(Some(&native)), (360, 406));
         assert!(!uses_manual_position(&native));
+        assert!(!super::should_switch_drag_to_manual_snap(&native));
         native.portal_presentation.as_mut().unwrap().focus = FocusState::Background;
         assert!(super::is_hidden(&native, None));
         native.portal_presentation.as_mut().unwrap().fullscreen = Some(false);
         assert!(uses_manual_position(&native));
+        // A windowed Portal drag must persist manual snap like the XWayland path.
+        assert!(super::should_switch_drag_to_manual_snap(&native));
         native.portal_presentation = None;
         assert!(super::is_degraded(&native));
         let mut background = snapshot.clone();

@@ -5,10 +5,11 @@ use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const MAX_REPLY_BYTES: u64 = 4 * 1024 * 1024;
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(3);
+const POLL_INTERVAL: Duration = Duration::from_secs(1);
 const RECONNECT_DELAY: Duration = Duration::from_secs(3);
 
 pub(super) struct HyprlandGeometrySource {
@@ -74,19 +75,37 @@ fn run_connection(
 ) -> Result<(), String> {
     let event_stream = UnixStream::connect(event_socket)
         .map_err(|error| format!("connect event socket {}: {error}", event_socket.display()))?;
+    // socket2 has no event for floating move/resize, so also poll on an idle timeout.
+    event_stream
+        .set_read_timeout(Some(POLL_INTERVAL))
+        .map_err(|error| error.to_string())?;
     let mut event_stream = std::io::BufReader::new(event_stream);
     refresh_geometry(command_socket, title, sink, generation, on_change)?;
+    let mut last_refresh = Instant::now();
 
     let mut line = String::new();
     loop {
-        line.clear();
-        let bytes = std::io::BufRead::read_line(&mut event_stream, &mut line)
-            .map_err(|error| format!("read event socket: {error}"))?;
-        if bytes == 0 {
-            return Err("event socket closed".to_string());
-        }
-        if relevant_event(&line) {
+        let refresh = match std::io::BufRead::read_line(&mut event_stream, &mut line) {
+            Ok(0) => return Err("event socket closed".to_string()),
+            Ok(_) => {
+                let relevant = relevant_event(&line);
+                line.clear();
+                relevant || last_refresh.elapsed() >= POLL_INTERVAL
+            }
+            // A partial line stays in `line` and is completed by the next read.
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                ) =>
+            {
+                true
+            }
+            Err(error) => return Err(format!("read event socket: {error}")),
+        };
+        if refresh {
             refresh_geometry(command_socket, title, sink, generation, on_change)?;
+            last_refresh = Instant::now();
         }
     }
 }

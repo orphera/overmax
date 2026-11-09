@@ -186,14 +186,18 @@ fn collect_matches<'a>(
         _ => ancestors_visible && node.get("visible").and_then(Value::as_bool).unwrap_or(true),
     };
 
-    if node_type == "con" && matches_title(node, title) {
+    // Floating windows are `floating_con` nodes under a workspace's `floating_nodes`.
+    if matches!(node_type, "con" | "floating_con") && matches_title(node, title) {
         let geometry = output.and_then(|output| {
+            // `rect` is absolute and includes borders; `window_rect` is the client
+            // area relative to the node.
             let rect = node.get("rect")?;
+            let content = node.get("window_rect")?;
             let rect = WindowRect {
-                left: json_i32(rect.get("x")?)?,
-                top: json_i32(rect.get("y")?)?,
-                width: json_i32(rect.get("width")?)?,
-                height: json_i32(rect.get("height")?)?,
+                left: json_i32(rect.get("x")?)?.checked_add(json_i32(content.get("x")?)?)?,
+                top: json_i32(rect.get("y")?)?.checked_add(json_i32(content.get("y")?)?)?,
+                width: json_i32(content.get("width")?)?,
+                height: json_i32(content.get("height")?)?,
             };
             rect.is_valid().then(|| ResolvedGeometry {
                 output: output.to_string(),
@@ -248,7 +252,8 @@ mod tests {
                     "name":"DJMAX RESPECT V",
                     "window":42,
                     "visible":true,
-                    "rect":{"x":320,"y":180,"width":1280,"height":720},
+                    "rect":{"x":318,"y":178,"width":1284,"height":724},
+                    "window_rect":{"x":2,"y":2,"width":1280,"height":720},
                     "nodes":[]
                 }]
             }]
@@ -281,6 +286,16 @@ mod tests {
         assert!(parse_tree("DJMAX RESPECT V", duplicate.as_bytes())
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn parses_floating_window_client_area() {
+        let floating = TREE.replace("\"type\":\"con\"", "\"type\":\"floating_con\"");
+        let geometry = parse_tree("DJMAX RESPECT V", floating.as_bytes())
+            .unwrap()
+            .unwrap();
+        assert_eq!((geometry.rect.left, geometry.rect.top), (320, 180));
+        assert_eq!((geometry.rect.width, geometry.rect.height), (1280, 720));
     }
 
     #[test]

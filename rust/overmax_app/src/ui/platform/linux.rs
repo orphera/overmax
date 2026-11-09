@@ -121,12 +121,15 @@ impl PlatformState {
         let linux_overlay = crate::ui::linux_layer_overlay::spawn(
             game_window_title.to_string(),
             command_tx.clone(),
-            repaint,
+            repaint.clone(),
             runtime_telemetry,
         )?;
 
         let (game_geometry, geometry_source) =
-            overmax_engine::capture::window_tracker::spawn_game_geometry_source(game_window_title);
+            overmax_engine::capture::window_tracker::spawn_game_geometry_source(
+                game_window_title,
+                repaint,
+            );
         if let Err(error) = geometry_source {
             eprintln!("[LinuxOverlay] geometry source failed: {error}");
         }

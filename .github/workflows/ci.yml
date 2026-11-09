@@ -129,11 +129,14 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Install X11 test stack
+      - name: Install capture test stack
         run: |
           sudo apt-get update
-          sudo apt-get install --yes openbox xauth xvfb
-          dpkg-query --show openbox xvfb
+          sudo apt-get install --yes openbox xauth xvfb libpipewire-0.3-dev libclang-dev
+          dpkg-query --show openbox xvfb libpipewire-0.3-dev libclang-dev
+
+      - name: Test optional Portal capture and native connection
+        run: cargo test --workspace --locked --features overmax-app/portal-capture
 
       - name: Test X11 tracker and capture lifecycle
         run: bash .github/scripts/linux-vertical-slice-lifecycle.sh

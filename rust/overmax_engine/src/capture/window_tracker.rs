@@ -33,6 +33,9 @@ pub struct FocusObservation {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PresentationObservation {
+    /// Local observation lifetime, not a Portal, X11 or cross-client window ID.
+    /// Changes when the unique target changes or becomes unavailable/ambiguous.
+    pub target_epoch: u64,
     pub focus: FocusState,
     pub fullscreen: Option<bool>,
     pub generation: u64,

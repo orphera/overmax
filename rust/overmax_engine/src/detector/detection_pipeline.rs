@@ -99,6 +99,7 @@ pub struct DetectionPipeline {
     pending_scene: SceneType,
     unknown_since: Option<f64>,
     last_top_jacket_similarity: Option<f32>,
+    recovering_from_suspension: bool,
 }
 
 impl DetectionPipeline {
@@ -121,6 +122,7 @@ impl DetectionPipeline {
             pending_scene: SceneType::Unknown,
             unknown_since: None,
             last_top_jacket_similarity: None,
+            recovering_from_suspension: false,
         }
     }
 
@@ -131,6 +133,20 @@ impl DetectionPipeline {
     }
 
     pub fn reset(&mut self) {
+        self.reset_tracking();
+        self.play_state.reset();
+        self.play_state.clear_detected_cache();
+    }
+
+    /// Invalidate every visual observation while retaining completion deduplication
+    /// for the same capture session and target. A new target must use `reset`.
+    pub fn suspend(&mut self) {
+        self.reset_tracking();
+        self.play_state.suspend();
+        self.recovering_from_suspension = true;
+    }
+
+    fn reset_tracking(&mut self) {
         self.stats.reset();
         self.current_song_id = None;
         self.last_scene_check_ts = 0.0;
@@ -141,9 +157,9 @@ impl DetectionPipeline {
         self.scene_streak = 0;
         self.pending_scene = SceneType::Unknown;
         self.unknown_since = None;
+        self.last_top_jacket_similarity = None;
+        self.recovering_from_suspension = false;
         self.hysteresis.reset();
-        self.play_state.reset();
-        self.play_state.clear_detected_cache();
         self.rois.set_scene(SceneType::Unknown);
     }
 
@@ -184,6 +200,11 @@ impl DetectionPipeline {
         now: f64,
     ) -> DetectionOutput {
         self.rois.update_window_size(frame.width, frame.height);
+
+        if scene != SceneType::Unknown {
+            // Once a scene is reacquired, later Unknown exits delimit plays again.
+            self.recovering_from_suspension = false;
+        }
 
         let scene_detected = scene.is_record_scene();
         if scene_detected {
@@ -459,7 +480,14 @@ impl DetectionPipeline {
     fn reset_on_screen_exit(&mut self) {
         self.current_song_id = None;
         self.last_top_jacket_similarity = None;
-        self.play_state.reset();
+        if self.recovering_from_suspension && self.last_scene == SceneType::Unknown {
+            // Preserve only across explicit suspension recovery, including the
+            // first result candidate before its second scene inspection.
+            self.play_state.suspend();
+        } else {
+            // Ordinary exits also delimit plays when gameplay is unrecognized.
+            self.play_state.reset();
+        }
         // 재진입 시 이전 자켓과 동일한 곡이어도 즉시 매칭이 실행되도록 초기화.
         self.last_jacket_thumb = None;
         self.last_jacket_match_ts = 0.0;
@@ -894,6 +922,179 @@ mod tests {
     use super::{DetectionPipeline, JacketMatchStatus, SleepHint};
     use crate::capture::frame::CapturedFrame;
     use overmax_data::ImageIndexDb;
+
+    fn replay_result_observations(
+        pipeline: &mut DetectionPipeline,
+        now: f64,
+        rate: f32,
+        is_max_combo: bool,
+    ) -> Vec<overmax_core::VerifiedPlayEvent> {
+        replay_result_observations_with_frame(pipeline, &blank_frame(), now, rate, is_max_combo)
+    }
+
+    fn replay_result_observations_with_frame(
+        pipeline: &mut DetectionPipeline,
+        frame: &CapturedFrame,
+        now: f64,
+        rate: f32,
+        is_max_combo: bool,
+    ) -> Vec<overmax_core::VerifiedPlayEvent> {
+        let mut events = Vec::new();
+        for tick in 0..10 {
+            let scene = pipeline.commit_scene(overmax_core::SceneType::ResultFreestyle);
+            if scene.is_result() {
+                pipeline
+                    .play_state
+                    .seed_result_observation_for_test(rate, is_max_combo);
+            }
+            pipeline.current_song_id = Some(7);
+            let out = pipeline.process_frame_with_scene(frame, scene, now + f64::from(tick));
+            if let Some(event) = out.event {
+                assert!(out.state.is_stable);
+                assert_eq!(out.stable_hits, 5);
+                events.push(event);
+            }
+        }
+        events
+    }
+
+    #[test]
+    fn repeat_play_after_unknown_gameplay_emits_another_completion() {
+        let frame = CapturedFrame {
+            width: 2560,
+            height: 1440,
+            bgra: vec![0; 2560 * 1440 * 4],
+        };
+        assert!(!crate::detector::templates::gameplay_scene::supports_frame(
+            &frame
+        ));
+        for resume_before_replay in [false, true] {
+            for (rate, is_max_combo) in [(99.86, true), (99.5, false)] {
+                let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+                assert_eq!(
+                    replay_result_observations_with_frame(&mut pipeline, &frame, 10.0, 99.86, true)
+                        .len(),
+                    1
+                );
+
+                if resume_before_replay {
+                    pipeline.suspend();
+                    pipeline.detect(&frame, 160.0);
+                    assert!(replay_result_observations_with_frame(
+                        &mut pipeline,
+                        &frame,
+                        170.0,
+                        99.86,
+                        true
+                    )
+                    .is_empty());
+                    assert_eq!(pipeline.play_state.stable_hits(), 5);
+                }
+
+                // F5 from a result skips selection. Unsupported gameplay stays
+                // Unknown, but sustained misses still close the previous play.
+                for now in [200.0, 202.0, 204.0, 206.0] {
+                    let output = pipeline.detect(&frame, now);
+                    assert_eq!(pipeline.last_scene, overmax_core::SceneType::Unknown);
+                    assert!(output.event.is_none());
+                }
+                assert!(!pipeline.hysteresis.is_active);
+                assert_eq!(pipeline.play_state.stable_hits(), 0);
+
+                let events = replay_result_observations_with_frame(
+                    &mut pipeline,
+                    &frame,
+                    370.0,
+                    rate,
+                    is_max_combo,
+                );
+                assert_eq!(
+                    events.len(),
+                    1,
+                    "a repeat play must emit even without an improvement (resumed: {resume_before_replay})"
+                );
+                assert_eq!(events[0].rate, rate);
+                assert_eq!(events[0].is_max_combo, is_max_combo);
+            }
+        }
+    }
+
+    #[test]
+    fn result_resume_revalidates_without_emitting_a_second_completion() {
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        assert_eq!(
+            replay_result_observations(&mut pipeline, 10.0, 99.86, true).len(),
+            1
+        );
+
+        pipeline.suspend();
+        assert_eq!(pipeline.play_state.stable_hits(), 0);
+        assert!(pipeline.play_state.detected_cache_is_empty_for_test());
+        assert!(pipeline.current_song_id.is_none());
+        let unknown = pipeline.detect(&blank_frame(), 160.0);
+        assert!(!unknown.state.is_stable);
+        assert!(unknown.state.context.is_none());
+        assert!(unknown.event.is_none());
+
+        let events = replay_result_observations(&mut pipeline, 170.0, 99.86, true);
+        assert!(
+            events.is_empty(),
+            "the same result after Alt-Tab is not a second play"
+        );
+        assert_eq!(pipeline.play_state.stable_hits(), 5);
+    }
+
+    #[test]
+    fn result_completion_rearms_after_a_new_play_or_target_reset() {
+        use overmax_core::SceneType;
+        for boundary in [
+            SceneType::Gameplay,
+            SceneType::Freestyle,
+            SceneType::Unknown,
+        ] {
+            let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+            assert_eq!(
+                replay_result_observations(&mut pipeline, 10.0, 99.86, true).len(),
+                1
+            );
+            pipeline.suspend();
+            if boundary == SceneType::Unknown {
+                // A new capture session/target invalidates the completed event too.
+                pipeline.reset();
+            } else {
+                for tick in 0..4 {
+                    let scene = pipeline.commit_scene(boundary);
+                    pipeline.process_frame_with_scene(
+                        &blank_frame(),
+                        scene,
+                        160.0 + f64::from(tick),
+                    );
+                }
+            }
+            assert_eq!(
+                replay_result_observations(&mut pipeline, 170.0, 99.86, true).len(),
+                1,
+                "the same score from a new play/target must still be recorded: {boundary:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn result_resume_still_emits_verified_rate_and_max_combo_improvements() {
+        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        assert_eq!(
+            replay_result_observations(&mut pipeline, 10.0, 99.5, false).len(),
+            1
+        );
+        for (now, rate, is_max_combo) in [(170.0, 99.86, false), (330.0, 99.86, true)] {
+            pipeline.suspend();
+            pipeline.detect(&blank_frame(), now - 10.0);
+            let events = replay_result_observations(&mut pipeline, now, rate, is_max_combo);
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0].rate, rate);
+            assert_eq!(events[0].is_max_combo, is_max_combo);
+        }
+    }
 
     #[test]
     fn replace_image_db_keeps_recognition_history() {

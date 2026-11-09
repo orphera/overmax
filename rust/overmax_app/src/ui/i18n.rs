@@ -85,6 +85,54 @@ macro_rules! t_select {
 /// Single top-level SSOT i18n macro for static keys, dynamic formatters, and domain metas.
 #[macro_export]
 macro_rules! t {
+    // Native Wayland capture connection.
+    ("portal-native-hint") => {
+        $crate::t_select!(
+        Ko => "XWayland 게임은 자동으로 연결됩니다. native Wayland로 실행했다면 게임 창을 선택해 연결하세요.",
+        En => "XWayland games connect automatically. For a native Wayland game, select its window below.",
+        Ja => "XWaylandのゲームは自動で接続します。native Waylandで起動した場合は、ゲームのウィンドウを選択してください。"
+    )
+    };
+    ("portal-native-idle") => {
+        $crate::t_select!(Ko => "연결 대기", En => "Ready to connect", Ja => "接続待機中")
+    };
+    ("portal-native-selecting") => {
+        $crate::t_select!(Ko => "창을 선택하고 미리보기를 기다려 주세요.", En => "Select a window and wait for its preview.", Ja => "ウィンドウを選び、プレビューをお待ちください。")
+    };
+    ("portal-native-preview") => {
+        $crate::t_select!(Ko => "아래 화면이 DJMAX 게임 창인지 확인해 주세요.", En => "Confirm that the preview shows your DJMAX game window.", Ja => "プレビューがDJMAXのゲーム画面であることを確認してください。")
+    };
+    ("portal-native-connected") => {
+        $crate::t_select!(Ko => "연결됨 — 게임 화면 인식 중", En => "Connected — recognizing the game", Ja => "接続済み — ゲーム画面を認識中")
+    };
+    ("portal-native-waiting") => {
+        $crate::t_select!(Ko => "연결됨 — 게임 화면을 기다리는 중", En => "Connected — waiting for a game frame", Ja => "接続済み — ゲーム画面を待機中")
+    };
+    ("portal-native-paused") => {
+        $crate::t_select!(Ko => "연결 유지 — 게임으로 돌아가면 인식을 재개합니다.", En => "Connected — recognition resumes when you return to the game.", Ja => "接続を維持しています。ゲームに戻ると認識を再開します。")
+    };
+    ("portal-native-xwayland") => {
+        $crate::t_select!(Ko => "XWayland 게임 창이 있어 기존 자동 연결을 사용합니다.", En => "An XWayland game window is present; automatic capture is used.", Ja => "XWaylandのゲームウィンドウには既存の自動接続を使用します。")
+    };
+    ("portal-native-target-unavailable") => {
+        $crate::t_select!(Ko => "게임 창의 포커스를 확인할 수 없습니다. DJMAX 창을 하나만 열고 다시 시도해 주세요.", En => "Game focus is unavailable. Keep one DJMAX window open and try again.", Ja => "ゲームのフォーカスを確認できません。DJMAXのウィンドウを1つだけ開き、再試行してください。")
+    };
+    ("portal-native-target-changed") => {
+        $crate::t_select!(Ko => "게임 창이 바뀌거나 추적이 끊겼습니다. 다시 연결해 주세요.", En => "The game window changed or tracking was lost. Connect again.", Ja => "ゲームウィンドウが変わったか、追跡が途切れました。再接続してください。")
+    };
+    ("portal-native-stopped") => {
+        $crate::t_select!(Ko => "화면 공유가 종료되었습니다.", En => "Screen sharing has ended.", Ja => "画面共有が終了しました。")
+    };
+    ("portal-native-confirm") => {
+        $crate::t_select!(Ko => "DJMAX 창 확인", En => "Confirm DJMAX window", Ja => "DJMAXのウィンドウを確認")
+    };
+    ("portal-native-connect") => {
+        $crate::t_select!(Ko => "native Wayland 게임 연결", En => "Connect native Wayland game", Ja => "native Waylandのゲームに接続")
+    };
+    ("portal-native-disconnect") => {
+        $crate::t_select!(Ko => "연결 취소 / 해제", En => "Cancel / disconnect", Ja => "キャンセル / 切断")
+    };
+
     // 1) Domain Meta Direct Matchers
     (gold = $meta:expr) => {
         match $meta {

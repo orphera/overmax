@@ -352,12 +352,26 @@ impl PlayStateDetector {
     }
 
     pub fn reset(&mut self) {
+        self.clear_observations();
+        // 결과창 진입 시 복구용 래치(result_mode_diff)는 reset 시에도 보존합니다.
+        self.last_emitted_event = None;
+    }
+
+    /// A gap in observations is not evidence of another completed play.
+    /// Retain only event deduplication, never visual evidence or a stable context.
+    pub fn suspend(&mut self) {
+        self.clear_observations();
+        self.result_mode_diff.clear();
+        self.last_emitted_event = self
+            .last_emitted_event
+            .filter(|event| event.is_result_screen);
+    }
+
+    fn clear_observations(&mut self) {
         self.history.clear();
         self.mode_diff_cache.clear();
         self.rate_cache.clear();
-        // 결과창 진입 시 복구용 래치(result_mode_diff)는 reset 시에도 보존합니다.
         self.result_rate_window.clear();
-        self.last_emitted_event = None;
     }
 
     pub fn clear_detected_cache(&mut self) {
@@ -371,6 +385,17 @@ impl PlayStateDetector {
     pub(crate) fn seed_detected_cache_for_test(&mut self) {
         self.result_mode_diff.mode.update(Some(Mode::B4));
         self.result_mode_diff.diff.update(Some(Difficulty::NM));
+    }
+
+    /// Inject successful CV observations; history and event emission still run normally.
+    #[cfg(test)]
+    pub(crate) fn seed_result_observation_for_test(&mut self, rate: f32, is_max_combo: bool) {
+        self.seed_detected_cache_for_test();
+        self.rate_cache.set(
+            Some(PatternRecord::Played { rate, is_max_combo }),
+            None,
+            0.0,
+        );
     }
 
     #[cfg(test)]

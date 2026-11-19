@@ -1,7 +1,6 @@
 //! Runtime detection worker: window tracking -> capture -> pipeline -> UI state.
 
 use crate::capture::capture_engine::{AdaptiveCaptureEngine, CaptureEngine, CaptureErrorAction};
-use crate::frame::CapturedFrame;
 #[cfg(target_os = "linux")]
 use crate::capture::window_tracker::{
     FocusObservation, FocusSource, FocusState, PresentationObservation,
@@ -13,6 +12,7 @@ use crate::detector::detection_pipeline::{
     DetectionOutput, DetectionPipeline, JacketMatchStatus, SleepHint,
 };
 use crate::detector::telemetry::RuntimeTelemetry;
+use crate::frame::CapturedFrame;
 use overmax_core::GameSessionState;
 use overmax_data::{DataCompatibility, ImageIndexDb, Settings};
 use std::path::{Path, PathBuf};
@@ -1317,12 +1317,12 @@ mod tests {
     #[cfg(target_os = "linux")]
     use crate::capture::capture_engine::{CaptureEngine, CaptureErrorAction};
     #[cfg(target_os = "linux")]
-    use crate::frame::CapturedFrame;
-    #[cfg(target_os = "linux")]
     use crate::capture::window_tracker::{
         FocusObservation, FocusSource, FocusState, PresentationObservation,
     };
     use crate::capture::window_tracker::{WindowRect, WindowSnapshot};
+    #[cfg(target_os = "linux")]
+    use crate::frame::CapturedFrame;
     use overmax_core::{Difficulty, GameSessionState, Mode, PlayContext, SceneType};
     #[cfg(target_os = "linux")]
     use overmax_data::ImageIndexDb;

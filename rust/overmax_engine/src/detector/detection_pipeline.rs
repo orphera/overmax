@@ -1,10 +1,10 @@
-use crate::frame::CapturedFrame;
-use crate::frame::utils::{make_thumbnail, mean_abs_diff, thumbnail_changed};
-use crate::frame::window::WindowSnapshot;
 use crate::detector::hysteresis::HysteresisBuffer;
 use crate::detector::play_state::PlayStateDetector;
 use crate::detector::roi::RoiManager;
 use crate::detector::telemetry::{PipelineStatsCollector, PipelineTelemetrySnapshot};
+use crate::frame::utils::{make_thumbnail, mean_abs_diff, thumbnail_changed};
+use crate::frame::window::WindowSnapshot;
+use crate::frame::CapturedFrame;
 use overmax_core::{GameSessionState, SceneType, VerifiedPlayEvent};
 use overmax_data::ImageIndexDb;
 use std::time::Instant;
@@ -1643,9 +1643,9 @@ mod tests {
     /// 엣지를 읽는다. 아틀라스 모드에서도 그 마진은 이웃 슬롯이 아닌 실제 화면 픽셀이어야 한다.
     #[test]
     fn open_match_player_panel_edge_margin_is_identical_in_atlas() {
-        use crate::frame::utils::crop_roi;
-        use crate::frame::atlas_layout::build_virtual_atlas;
         use crate::detector::roi::RoiManager;
+        use crate::frame::atlas_layout::build_virtual_atlas;
+        use crate::frame::utils::crop_roi;
         use overmax_core::SceneType;
 
         let (w, h) = (1920usize, 1080usize);

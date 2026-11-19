@@ -1,7 +1,7 @@
-use crate::frame::CapturedFrame;
-use crate::frame::utils::{compute_pixel_checksum, region_mean_bgr};
 use crate::detector::roi::RoiManager;
 use crate::detector::templates;
+use crate::frame::utils::{compute_pixel_checksum, region_mean_bgr};
+use crate::frame::CapturedFrame;
 use overmax_core::{
     Changed, Difficulty, GameSessionState, Mode, PatternRecord, PlayContext, RecordKey,
     VerifiedPlayEvent,
@@ -817,8 +817,8 @@ mod tests {
     use super::{
         detect_button_mode, paint_song_select_rate_zero, PlayStateDetector, RateInputChecksums,
     };
-    use crate::frame::CapturedFrame;
     use crate::detector::roi::RoiManager;
+    use crate::frame::CapturedFrame;
     use overmax_core::{PatternRecord, SceneType};
     use overmax_cv::Bgr;
 

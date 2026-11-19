@@ -1,6 +1,6 @@
 use crate::capture::capture_engine::CaptureEngine;
-use crate::frame::CapturedFrame;
 use crate::capture::window_tracker::WindowRect;
+use crate::frame::CapturedFrame;
 use std::ptr::null_mut;
 use windows_sys::Win32::Graphics::Gdi::{
     BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC,

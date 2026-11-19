@@ -2,7 +2,7 @@ use egui::{ColorImage, TextureHandle, TextureOptions};
 use overmax_capture::{Confirmation, ConnectionStatus, PortalControl};
 use std::time::Duration;
 
-pub(super) fn render(ui: &mut egui::Ui, control: &PortalControl) {
+pub(crate) fn render(ui: &mut egui::Ui, control: &PortalControl) {
     let view = control.view();
     ui.label(crate::t!("portal-native-hint"));
     let status = match &view.status {

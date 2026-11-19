@@ -1,5 +1,5 @@
-use crate::capture::frame::CapturedFrame;
-use crate::detector::roi_config::RawRoiRect;
+use crate::frame::CapturedFrame;
+use crate::frame::RawRoiRect;
 use overmax_core::SceneType;
 
 /// GPU 아틀라스 텍스처 규격 (512x512 RGBA8, 1 MB)
@@ -990,8 +990,8 @@ mod tests {
 
     #[test]
     fn test_virtual_atlas_pixel_perfect_identity() {
-        use crate::capture::frame_utils::crop_roi;
         use crate::detector::atlas_translator::AtlasTranslator;
+        use crate::frame::utils::crop_roi;
 
         // 1. 패턴 데이터로 채워진 1920x1080 테스트 프레임 생성
         let w = 1920;
@@ -1050,9 +1050,9 @@ mod tests {
 
     #[test]
     fn test_virtual_atlas_diff_panel_pixel_perfect_identity() {
-        use crate::capture::frame_utils::crop_roi;
         use crate::detector::atlas_translator::AtlasTranslator;
         use crate::detector::roi::RoiManager;
+        use crate::frame::utils::crop_roi;
 
         let w = 1920;
         let h = 1080;

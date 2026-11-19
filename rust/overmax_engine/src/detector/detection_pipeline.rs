@@ -1,10 +1,10 @@
-use crate::capture::frame::CapturedFrame;
-use crate::capture::frame_utils::{make_thumbnail, mean_abs_diff, thumbnail_changed};
-use crate::capture::window_tracker::WindowSnapshot;
 use crate::detector::hysteresis::HysteresisBuffer;
 use crate::detector::play_state::PlayStateDetector;
 use crate::detector::roi::RoiManager;
 use crate::detector::telemetry::{PipelineStatsCollector, PipelineTelemetrySnapshot};
+use crate::frame::utils::{make_thumbnail, mean_abs_diff, thumbnail_changed};
+use crate::frame::window::WindowSnapshot;
+use crate::frame::CapturedFrame;
 use overmax_core::{GameSessionState, SceneType, VerifiedPlayEvent};
 use overmax_data::ImageIndexDb;
 use std::time::Instant;
@@ -44,7 +44,7 @@ pub struct DetectionOutput {
     pub current_song_id: Option<i32>,
     pub image_db_ready: bool,
     pub jacket_status: JacketMatchStatus,
-    pub game_rect: Option<crate::capture::window_tracker::WindowRect>,
+    pub game_rect: Option<crate::frame::window::WindowRect>,
     pub window_snapshot: Option<WindowSnapshot>,
     pub capture_fatal: Option<String>,
     pub top_jacket_similarity: Option<f32>,
@@ -445,7 +445,7 @@ impl DetectionPipeline {
 
     fn apply_jacket_match(
         &mut self,
-        jacket: &crate::capture::frame_utils::ImageRegion,
+        jacket: &crate::frame::utils::ImageRegion,
     ) -> JacketMatchStatus {
         self.stats.record_match_jacket();
         let Some(result) = self.jacket_matcher.match_jacket(
@@ -603,7 +603,7 @@ fn detect_result_scene_via_edge(
     // ResultFreestyle, ResultOpen3, ResultOpen2 재킷 ROI는 같은 위치를 공유함
     let jacket_roi = rois.get_roi_for_scene("jacket", SceneType::ResultFreestyle)?;
     let colorbar_roi = rois.get_roi_for_scene("mode_colorbar", SceneType::ResultFreestyle)?;
-    let mean = crate::capture::frame_utils::region_mean_bgr(frame, colorbar_roi);
+    let mean = crate::frame::utils::region_mean_bgr(frame, colorbar_roi);
 
     let is_freestyle_result = detect_freestyle_result_colorbar_match(mean);
     let open_match_scene = check_open_match_badge(frame, rois);
@@ -829,7 +829,7 @@ pub fn detect_static_scene(
         .unwrap_or(SceneType::Unknown)
 }
 
-fn detect_rect_edges(frame: &CapturedFrame, roi: crate::detector::roi::RoiRect) -> Option<f32> {
+fn detect_rect_edges(frame: &CapturedFrame, roi: crate::frame::RoiRect) -> Option<f32> {
     let margin = 8;
     roi.with_margin(margin)
         .and_then(frame, |ext_img| ext_img.detect_edges(margin as usize).ok())
@@ -837,11 +837,11 @@ fn detect_rect_edges(frame: &CapturedFrame, roi: crate::detector::roi::RoiRect) 
 
 fn check_category_band_solid(
     frame: &CapturedFrame,
-    jacket_roi: crate::detector::roi::RoiRect,
+    jacket_roi: crate::frame::RoiRect,
     scale: f32,
 ) -> bool {
     let width = ((4.0 * scale).round() as i32).max(4);
-    let band_roi = crate::detector::roi::RoiRect {
+    let band_roi = crate::frame::RoiRect {
         x1: jacket_roi.x2,
         y1: jacket_roi.y1,
         x2: jacket_roi.x2 + width,
@@ -920,7 +920,7 @@ fn check_category_band_solid(
 #[cfg(test)]
 mod tests {
     use super::{DetectionPipeline, JacketMatchStatus, SleepHint};
-    use crate::capture::frame::CapturedFrame;
+    use crate::frame::CapturedFrame;
     use overmax_data::ImageIndexDb;
 
     fn replay_result_observations(
@@ -1417,7 +1417,7 @@ mod tests {
 
     #[test]
     fn song_select_emits_verified_event_once_across_stable_frames() {
-        use crate::detector::roi::RoiRect;
+        use crate::frame::RoiRect;
         use overmax_core::SceneType;
 
         let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
@@ -1479,7 +1479,7 @@ mod tests {
     #[test]
     #[ignore]
     fn test_scratch_images() {
-        use crate::capture::frame_utils::crop_roi;
+        use crate::frame::utils::crop_roi;
         use image::GenericImageView;
         use overmax_core::SceneType;
 
@@ -1643,9 +1643,9 @@ mod tests {
     /// 엣지를 읽는다. 아틀라스 모드에서도 그 마진은 이웃 슬롯이 아닌 실제 화면 픽셀이어야 한다.
     #[test]
     fn open_match_player_panel_edge_margin_is_identical_in_atlas() {
-        use crate::capture::frame_utils::crop_roi;
-        use crate::detector::atlas_layout::build_virtual_atlas;
         use crate::detector::roi::RoiManager;
+        use crate::frame::atlas_layout::build_virtual_atlas;
+        use crate::frame::utils::crop_roi;
         use overmax_core::SceneType;
 
         let (w, h) = (1920usize, 1080usize);

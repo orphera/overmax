@@ -1,10 +1,4 @@
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct WindowRect {
-    pub left: i32,
-    pub top: i32,
-    pub width: i32,
-    pub height: i32,
-}
+pub use crate::frame::window::{WindowRect, WindowSnapshot};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FocusState {
@@ -44,20 +38,6 @@ pub struct PresentationObservation {
 
 pub type SharedPresentationObservation =
     std::sync::Arc<std::sync::Mutex<Option<PresentationObservation>>>;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct WindowSnapshot {
-    pub window: u64,
-    pub rect: WindowRect,
-    pub foreground: bool,
-    pub fullscreen: bool,
-}
-
-impl WindowRect {
-    pub fn is_valid(self) -> bool {
-        self.width > 0 && self.height > 0
-    }
-}
 
 #[cfg(target_os = "linux")]
 mod geometry_source;

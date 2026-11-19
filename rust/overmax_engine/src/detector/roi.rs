@@ -1,72 +1,12 @@
-use crate::capture::frame::CapturedFrame;
-use crate::capture::frame_utils::{crop_roi, ImageView};
-use crate::detector::roi_config::{GlobalRoiConfig, RawRoiRect};
+use crate::detector::roi_config::GlobalRoiConfig;
+pub use crate::frame::roi_rect::RoiRect;
+use crate::frame::utils::ImageView;
+use crate::frame::CapturedFrame;
 use overmax_core::{Difficulty, SceneType};
 
 const REF_WIDTH: i32 = 1920;
 const REF_HEIGHT: i32 = 1080;
 const REF_ASPECT: f32 = REF_WIDTH as f32 / REF_HEIGHT as f32;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct RoiRect {
-    pub x1: i32,
-    pub y1: i32,
-    pub x2: i32,
-    pub y2: i32,
-}
-
-impl RoiRect {
-    pub const fn from_raw(rect: RawRoiRect) -> Self {
-        Self {
-            x1: rect.x,
-            y1: rect.y,
-            x2: rect.x + rect.width,
-            y2: rect.y + rect.height,
-        }
-    }
-
-    #[inline]
-    pub const fn width(&self) -> i32 {
-        self.x2 - self.x1
-    }
-
-    #[inline]
-    pub const fn height(&self) -> i32 {
-        self.y2 - self.y1
-    }
-
-    pub fn crop<'a>(&self, frame: &'a CapturedFrame) -> Option<ImageView<'a>> {
-        crop_roi(frame, *self)
-    }
-
-    pub fn and_then<'a, T>(
-        &self,
-        frame: &'a CapturedFrame,
-        f: impl FnOnce(&ImageView<'a>) -> Option<T>,
-    ) -> Option<T> {
-        self.crop(frame).as_ref().and_then(f)
-    }
-
-    pub fn with_margin(&self, margin: i32) -> Self {
-        Self {
-            x1: self.x1 - margin,
-            y1: self.y1 - margin,
-            x2: self.x2 + margin,
-            y2: self.y2 + margin,
-        }
-    }
-}
-
-impl From<RawRoiRect> for RoiRect {
-    fn from(rect: RawRoiRect) -> Self {
-        Self {
-            x1: rect.x,
-            y1: rect.y,
-            x2: rect.x + rect.width,
-            y2: rect.y + rect.height,
-        }
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct RoiManager {

@@ -1,6 +1,6 @@
-use crate::capture::frame::CapturedFrame;
-use crate::capture::frame_utils::{crop_roi, ImageView};
-use crate::detector::roi::RoiRect;
+use crate::frame::utils::{crop_roi, ImageView};
+use crate::frame::CapturedFrame;
+use crate::frame::RoiRect;
 use overmax_core::{Difficulty, SceneType};
 
 /// 컴파일 타임에 100% 결정되는 제로 코스트 O(1) 아틀라스 트랜슬레이터 (Zero Runtime Overhead)
@@ -447,8 +447,8 @@ impl AtlasTranslator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::detector::atlas_layout::{ATLAS_HEIGHT, ATLAS_SLOTS, ATLAS_WIDTH};
     use crate::detector::roi::RoiManager;
+    use crate::frame::atlas_layout::{ATLAS_HEIGHT, ATLAS_SLOTS, ATLAS_WIDTH};
 
     #[test]
     fn test_all_slots_resolvable_via_translator() {

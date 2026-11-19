@@ -147,3 +147,24 @@ app이 쓰는 engine 내부 경로(약 40곳)를 각 crate의 루트 re-export(`
 | Linux 빌드·동작 깨짐 (개발 환경은 WSL뿐) | 매 커밋 WSL 빌드, 단계 5 Xvfb 게이트, 실환경은 사용자 확인 |
 | 이동과 수정이 섞여 리뷰 불가 | 이동 커밋 규칙, 커밋 메시지에 `move-only` 표기 |
 | 장기 브랜치 충돌 | 단계 단위로 짧게 머지 (§6-3) |
+
+## 8. 단계별 기록
+
+### 단계 1 — engine 내부 capture ↔ detector 순환 끊기 (2026-11-19)
+
+`overmax_engine` 안에 새 `frame` 모듈을 만들고, capture와 detector가 함께 쓰던 타입을 그쪽으로 옮겼다. 옛 경로(`capture::frame`, `capture::frame_utils`, `detector::atlas_layout`, `detector::roi::RoiRect`, `detector::roi_config::RawRoiRect`, `capture::window_tracker::{WindowRect, WindowSnapshot}`)는 `pub use` re-export로 남겨 `overmax_app`과 외부 테스트는 바뀌지 않았다 (경로 정리는 단계 4).
+
+| 옮긴 것 | 전 → 후 | 이유 |
+| :--- | :--- | :--- |
+| `CapturedFrame` | `capture/frame.rs` → `frame/captured_frame.rs` | 캡처 출력이자 감지 입력. 양쪽이 공유 |
+| `RoiRect`, `RawRoiRect` | `detector/roi.rs`, `detector/roi_config.rs` → `frame/roi_rect.rs` (타입 분리) | `frame_utils::crop_roi`와 GPU 아틀라스가 쓰는 단순 사각형. `RoiManager`·`GlobalRoiConfig`는 detector에 남김 |
+| `frame_utils` (`ImageView`, `ImageRegion`, `crop_roi`, `region_mean_bgr` 등) | `capture/frame_utils.rs` → `frame/utils.rs` | 감지 쪽이 주로 쓰는 프레임 연산 |
+| 아틀라스 슬롯 표 (`ATLAS_SLOTS` 등, `build_virtual_atlas`) | `detector/atlas_layout.rs` → `frame/atlas_layout.rs` | DXGI GPU 아틀라스(capture)와 아틀라스 해석(detector)이 공유 |
+| `WindowRect`, `WindowSnapshot` | `capture/window_tracker.rs` → `frame/window.rs` (타입 분리) | `detection_pipeline`이 필요로 하는 단순 기하 타입. 추적 로직(`WindowTracker` 등)은 capture에 남김 |
+
+남긴 것:
+
+- `detection_worker.rs`는 캡처와 감지를 묶는 조립 지점이라 `capture::capture_engine`, `capture::portal`, `capture::window_tracker`를 계속 직접 쓴다. 단계 3에서 crate를 나눌 때 worker의 위치(runtime 쪽 등)를 다시 정한다.
+- `frame/atlas_layout.rs`의 `#[cfg(test)]` 테스트 일부가 `detector::{roi_config, roi, atlas_translator}`를 쓴다 (아틀라스와 ROI 정합성 검사). 제품 코드 의존은 아니지만, 단계 3에서 `overmax_frame`을 별도 crate로 뺄 때 이 테스트들은 detector 쪽으로 옮겨야 한다.
+
+결과: 제품 코드 기준 `capture → detector` 참조 0, `detector → capture` 참조는 `detection_worker.rs`에만 남음. 커밋마다 `cargo test --workspace` (249 통과 · 2 ignored), `cargo clippy --all-targets` (경고 0), WSL `cargo clippy -p overmax-engine --all-targets --features telemetry` (경고 0) 통과. WSL에 PipeWire 개발 패키지가 없어 `portal-capture` 기능 빌드는 확인하지 못했다. 단계 게이트: `verify_pipeline` 109건 결과가 단계 0 기준선과 바이트 단위로 같음.

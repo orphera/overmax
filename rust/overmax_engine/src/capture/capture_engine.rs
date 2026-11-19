@@ -1,5 +1,5 @@
-use crate::capture::frame::CapturedFrame;
 use crate::capture::window_tracker::{WindowRect, WindowSnapshot};
+use crate::frame::CapturedFrame;
 
 #[cfg(target_os = "linux")]
 mod linux;

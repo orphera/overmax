@@ -8,7 +8,7 @@ mod session;
 
 pub use pixels::copy_mapped_frame;
 
-use crate::capture::frame::CapturedFrame;
+use crate::frame::CapturedFrame;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,

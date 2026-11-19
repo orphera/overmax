@@ -1,4 +1,4 @@
-pub mod atlas_layout;
+pub use crate::frame::atlas_layout;
 pub mod atlas_translator;
 pub mod detection_pipeline;
 pub mod detection_worker;

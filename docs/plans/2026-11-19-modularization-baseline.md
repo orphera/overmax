@@ -122,6 +122,14 @@ diff --strip-trailing-cr <worktree>/docs/plans/2026-11-19-modularization-baselin
 
 관찰: 선곡·결과 화면에서 release 빌드가 코어 1개를 거의 다 쓴다 (debug 실행의 28.8%·21.6%보다 높음). 원인은 이 단계에서 조사하지 않았다 (동작 불변 원칙). 인게임 플레이 중에는 debug·release 모두 0.3%로, 인게임 성능 영향은 작다.
 
+#### 알려진 문제: 선곡·결과 화면의 높은 release CPU ([orphera/overmax#44](https://github.com/orphera/overmax/issues/44))
+
+- 감지 워커 때문이 아니다. `--features telemetry` release 빌드(`scratch/modularization_baseline/telemetry_diag.log`, 18:51~18:53)와 debug 실행 모두 선곡 화면에서 초당 약 8회, 회당 약 0.5ms 캡처라 워커는 코어 1개의 1% 미만을 쓴다. 두 빌드의 데이터 경로·설정은 같다. 이 진단 실행에서는 CPU CSV를 수집하지 않았다.
+- 앱 코드에서 무조건 매 프레임 리페인트하는 곳은 찾지 못했다. Windows에서는 텔레메트리 `present`가 항상 0이라 UI 프레임률이 기록되지 않는다.
+- 추정 원인: 선곡·결과 화면에서 UI 스레드(`native_app_viewports.rs` 주변 egui 프레임 루프)가 계속 리페인트함. 고치지 않았고 #44에서 추적한다.
+- 인게임 CPU는 0.3%이고 단계 7은 같은 빌드·절차로 비교하므로 모듈화를 막지 않는다 (사용자 결정).
+- 단계 7은 위 (1) 표와 같은 숫자를 기준으로 비교한다. 리팩터링 뒤 선곡 화면 CPU가 달라지면, 회귀인지 개선인지 판단하기 전에 #44의 상태와 먼저 대조한다.
+
 #### (2) debug 실행 — 캡처 시간·CPU 참고값
 
 - 측정: 2026-11-19 18:22~18:28, 같은 코드의 **debug 빌드** (텔레메트리 헤더 `build=debug`). 원본: `scratch/modularization_baseline/telemetry.log`, `cpu_baseline_debug.csv`. 집계 스크립트: `scratch/mb_parse.py`.

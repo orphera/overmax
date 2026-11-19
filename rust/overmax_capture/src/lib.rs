@@ -1,7 +1,7 @@
-pub mod capture_engine;
+mod capture_engine;
 #[cfg(all(target_os = "linux", feature = "portal-capture"))]
-pub mod portal;
-pub mod window_tracker;
+mod portal;
+mod window_tracker;
 
 #[cfg(target_os = "windows")]
 pub use capture_engine::{windows::hdr_pipeline, PreferredCaptureEngine};

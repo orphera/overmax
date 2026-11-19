@@ -21,4 +21,14 @@ pub mod templates;
 
 pub use atlas_layout::{AtlasSlot, ATLAS_HEIGHT, ATLAS_SLOTS, ATLAS_SLOT_COUNT, ATLAS_WIDTH};
 pub use atlas_translator::AtlasTranslator;
-pub use telemetry::{PipelineStatsCollector, PipelineTelemetrySnapshot, TimingAggregator};
+pub use detection_pipeline::{
+    check_open_match_badge, detect_freestyle_result_colorbar_match, detect_static_scene,
+    DetectionOutput, DetectionPipeline, JacketMatchStatus, SleepHint,
+};
+pub use jacket_index::{JacketHit, JacketIndex};
+pub use play_state::{detect_button_mode, detect_difficulty, detect_max_combo, MIN_VALID_RATE};
+pub use roi::RoiManager;
+pub use telemetry::{
+    current_timestamp_str, format_duration_us, DetectionDeliveryTelemetry, PipelineStatsCollector,
+    PipelineTelemetrySnapshot, RuntimeTelemetry, TimingAggregator,
+};

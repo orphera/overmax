@@ -6,7 +6,6 @@ macro_rules! debug_println {
     };
 }
 
-pub use overmax_frame::atlas_layout;
 #[cfg(test)]
 mod atlas_layout_tests;
 pub mod atlas_translator;
@@ -19,7 +18,6 @@ pub mod roi_config;
 pub mod telemetry;
 pub mod templates;
 
-pub use atlas_layout::{AtlasSlot, ATLAS_HEIGHT, ATLAS_SLOTS, ATLAS_SLOT_COUNT, ATLAS_WIDTH};
 pub use atlas_translator::AtlasTranslator;
 pub use detection_pipeline::{
     check_open_match_badge, detect_freestyle_result_colorbar_match, detect_static_scene,

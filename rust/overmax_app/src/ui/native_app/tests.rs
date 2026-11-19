@@ -1,4 +1,4 @@
-use super::upload_result_message;
+use super::sync::upload_result_message;
 use crate::ui::platform::native_options;
 use overmax_runtime::varchive_jobs::{UploadCacheError, UploadOutcome};
 

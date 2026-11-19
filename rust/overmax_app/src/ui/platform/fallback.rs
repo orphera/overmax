@@ -36,14 +36,12 @@ impl PlatformState {
         _command_tx: &Sender<UiCommand>,
         _initial_hwnd: Option<isize>,
         _game_window_title: &str,
-        _runtime_telemetry: Option<Arc<overmax_engine::detector::telemetry::RuntimeTelemetry>>,
+        _runtime_telemetry: Option<Arc<overmax_detect::RuntimeTelemetry>>,
     ) -> Result<Self, String> {
         Ok(Self)
     }
 
-    pub fn presentation_observation(
-        &self,
-    ) -> overmax_engine::capture::window_tracker::SharedPresentationObservation {
+    pub fn presentation_observation(&self) -> overmax_capture::SharedPresentationObservation {
         std::sync::Arc::new(std::sync::Mutex::new(None))
     }
 }

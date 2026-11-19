@@ -1,4 +1,4 @@
-use overmax_frame::utils::ImageView;
+use overmax_frame::ImageView;
 use overmax_core::{Difficulty, Mode};
 
 /// Rate 영역을 Pure Rust CV 템플릿 매칭으로 감지합니다.

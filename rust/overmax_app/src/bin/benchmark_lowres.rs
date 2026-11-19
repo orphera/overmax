@@ -1,9 +1,9 @@
 use image::GenericImageView;
 use overmax_core::SceneType;
-use overmax_engine::capture::frame::CapturedFrame;
-use overmax_engine::capture::frame_utils::crop_roi;
-use overmax_engine::detector::roi::RoiManager;
-use overmax_engine::detector::templates::matching::{detect_rate, detect_score};
+use overmax_detect::templates::{detect_rate, detect_score};
+use overmax_detect::RoiManager;
+use overmax_frame::crop_roi;
+use overmax_frame::CapturedFrame;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;

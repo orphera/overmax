@@ -1,8 +1,8 @@
 //! Gameplay/Paused pixel templates and matching, integrated with detector templates.
 use crate::roi::RoiManager;
 use overmax_core::SceneType;
-use overmax_frame::utils::ImageView;
 use overmax_frame::CapturedFrame;
+use overmax_frame::ImageView;
 
 const TITLE_MIN: f64 = 0.95;
 const INTERIOR_RANGE_MIN: u8 = 15;

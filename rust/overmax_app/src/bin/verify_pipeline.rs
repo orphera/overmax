@@ -1,9 +1,9 @@
 use overmax_app::bin_utils::load_frame;
 use overmax_core::SceneType;
 use overmax_data::ImageIndexDb;
-use overmax_engine::capture::frame::CapturedFrame;
-use overmax_engine::detector::atlas_layout::build_virtual_atlas;
-use overmax_engine::detector::detection_pipeline::DetectionPipeline;
+use overmax_engine::DetectionPipeline;
+use overmax_frame::build_virtual_atlas;
+use overmax_frame::CapturedFrame;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;

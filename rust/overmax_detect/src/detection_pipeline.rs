@@ -4,9 +4,9 @@ use crate::play_state::PlayStateDetector;
 use crate::roi::RoiManager;
 use crate::telemetry::{PipelineStatsCollector, PipelineTelemetrySnapshot};
 use overmax_core::{GameSessionState, SceneType, VerifiedPlayEvent};
-use overmax_frame::utils::{make_thumbnail, mean_abs_diff, thumbnail_changed};
-use overmax_frame::window::WindowSnapshot;
 use overmax_frame::CapturedFrame;
+use overmax_frame::WindowSnapshot;
+use overmax_frame::{make_thumbnail, mean_abs_diff, thumbnail_changed};
 use std::time::Instant;
 
 const JACKET_MATCH_INTERVAL: f64 = 0.25;
@@ -44,7 +44,7 @@ pub struct DetectionOutput {
     pub current_song_id: Option<i32>,
     pub image_db_ready: bool,
     pub jacket_status: JacketMatchStatus,
-    pub game_rect: Option<overmax_frame::window::WindowRect>,
+    pub game_rect: Option<overmax_frame::WindowRect>,
     pub window_snapshot: Option<WindowSnapshot>,
     pub capture_fatal: Option<String>,
     pub top_jacket_similarity: Option<f32>,
@@ -443,10 +443,7 @@ impl<J: JacketIndex> DetectionPipeline<J> {
         self.apply_jacket_match(&jacket_region)
     }
 
-    fn apply_jacket_match(
-        &mut self,
-        jacket: &overmax_frame::utils::ImageRegion,
-    ) -> JacketMatchStatus {
+    fn apply_jacket_match(&mut self, jacket: &overmax_frame::ImageRegion) -> JacketMatchStatus {
         self.stats.record_match_jacket();
         let Some(result) = self.jacket_index.match_jacket(
             &jacket.bgra,
@@ -603,7 +600,7 @@ fn detect_result_scene_via_edge(
     // ResultFreestyle, ResultOpen3, ResultOpen2 재킷 ROI는 같은 위치를 공유함
     let jacket_roi = rois.get_roi_for_scene("jacket", SceneType::ResultFreestyle)?;
     let colorbar_roi = rois.get_roi_for_scene("mode_colorbar", SceneType::ResultFreestyle)?;
-    let mean = overmax_frame::utils::region_mean_bgr(frame, colorbar_roi);
+    let mean = overmax_frame::region_mean_bgr(frame, colorbar_roi);
 
     let is_freestyle_result = detect_freestyle_result_colorbar_match(mean);
     let open_match_scene = check_open_match_badge(frame, rois);
@@ -1511,7 +1508,7 @@ mod tests {
     fn test_scratch_images() {
         use image::GenericImageView;
         use overmax_core::SceneType;
-        use overmax_frame::utils::crop_roi;
+        use overmax_frame::crop_roi;
 
         let scratch_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scratch");
         let images = [
@@ -1675,8 +1672,8 @@ mod tests {
     fn open_match_player_panel_edge_margin_is_identical_in_atlas() {
         use crate::roi::RoiManager;
         use overmax_core::SceneType;
-        use overmax_frame::atlas_layout::build_virtual_atlas;
-        use overmax_frame::utils::crop_roi;
+        use overmax_frame::build_virtual_atlas;
+        use overmax_frame::crop_roi;
 
         let (w, h) = (1920usize, 1080usize);
         let mut bgra = Vec::with_capacity(w * h * 4);

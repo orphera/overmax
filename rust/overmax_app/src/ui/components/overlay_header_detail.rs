@@ -95,7 +95,7 @@ impl<'a> OverlayHeaderDetail<'a> {
                 let mut prev_mc = false;
 
                 if let Some((r, mc)) = self.session_initial_record {
-                    if r >= overmax_engine::detector::play_state::MIN_VALID_RATE {
+                    if r >= overmax_detect::MIN_VALID_RATE {
                         prev_rate = Some(r);
                         prev_mc = mc;
                     }

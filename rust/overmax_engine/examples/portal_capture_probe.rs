@@ -3,10 +3,8 @@
 //! --pause-resume requires three more fresh frames from the same paused session.
 #[cfg(all(target_os = "linux", feature = "portal-capture"))]
 fn main() -> Result<(), String> {
-    use overmax_engine::capture::{
-        frame::CapturedFrame,
-        portal::{PortalCapture, PortalStatus},
-    };
+    use overmax_capture::{PortalCapture, PortalStatus};
+    use overmax_frame::CapturedFrame;
     use std::time::{Duration, Instant};
     let cancel = std::env::args().any(|arg| arg == "--cancel");
     let pause_resume = std::env::args().any(|arg| arg == "--pause-resume");

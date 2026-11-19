@@ -25,8 +25,8 @@ use eframe::egui;
 use overmax_data::config::varchive_account::{
     account_path_for_steam, first_steam_from_settings, is_account_configured, varchive_user_id,
 };
-use overmax_engine::detector::detection_pipeline::DetectionOutput;
-use overmax_engine::detector::detection_worker;
+use overmax_detect::DetectionOutput;
+use overmax_engine::detection_worker;
 use overmax_runtime::varchive_jobs::{UploadCacheError, UploadOutcome};
 
 pub fn run_native_app() -> eframe::Result<()> {
@@ -272,7 +272,7 @@ impl AppStateTracker {
 
 pub struct NativeApp {
     #[cfg(all(target_os = "linux", feature = "portal-capture"))]
-    pub(crate) portal: overmax_engine::capture::portal::connection::PortalControl,
+    pub(crate) portal: overmax_capture::PortalControl,
     pub(crate) paths: Arc<AppPaths>,
     pub(crate) root: Arc<std::path::PathBuf>,
     pub(crate) settings: SharedSettings,
@@ -281,8 +281,8 @@ pub struct NativeApp {
     pub(crate) upload_history: upload_history_ui::SharedUploadHistory,
     pub(crate) sync_state: SharedSyncState,
     pub(crate) log_rx: Option<Receiver<String>>,
-    pub(crate) game_rect: Arc<Mutex<Option<overmax_engine::capture::window_tracker::WindowRect>>>,
-    pub(crate) window_snapshot: Option<overmax_engine::capture::window_tracker::WindowSnapshot>,
+    pub(crate) game_rect: Arc<Mutex<Option<overmax_frame::WindowRect>>>,
+    pub(crate) window_snapshot: Option<overmax_frame::WindowSnapshot>,
     pub(crate) capture_fatal: Option<String>,
     pub(crate) session: GameSessionState,
     pub(crate) confidence: f32,
@@ -311,11 +311,9 @@ pub struct NativeApp {
     pub(crate) platform: platform::PlatformState,
     pub(crate) toast: Option<crate::ui::components::ToastMessage>,
     pub(crate) last_detection_output: Option<DetectionOutput>,
-    pub(crate) last_telemetry_snapshot:
-        Option<overmax_engine::detector::telemetry::PipelineTelemetrySnapshot>,
+    pub(crate) last_telemetry_snapshot: Option<overmax_detect::PipelineTelemetrySnapshot>,
     #[cfg(any(debug_assertions, feature = "telemetry"))]
-    pub(crate) runtime_telemetry:
-        Option<Arc<overmax_engine::detector::telemetry::RuntimeTelemetry>>,
+    pub(crate) runtime_telemetry: Option<Arc<overmax_detect::RuntimeTelemetry>>,
     pub(crate) ipc_bound_port: crate::system::ipc_server::BoundPortSlot,
     pub(crate) ipc_handle: crate::system::ipc_server::IpcServerHandle,
     pub(crate) ipc_cmd_rx: Receiver<crate::system::ipc_server::IpcCommand>,
@@ -330,16 +328,12 @@ impl NativeApp {
     ) -> Result<Self, String> {
         let root = Arc::new(paths.data_dir().to_path_buf());
         #[cfg(any(debug_assertions, feature = "telemetry"))]
-        let runtime_telemetry = Some(Arc::new(
-            overmax_engine::detector::telemetry::RuntimeTelemetry::new(
-                paths.data_dir(),
-                env!("CARGO_PKG_VERSION"),
-            ),
-        ));
+        let runtime_telemetry = Some(Arc::new(overmax_detect::RuntimeTelemetry::new(
+            paths.data_dir(),
+            env!("CARGO_PKG_VERSION"),
+        )));
         #[cfg(not(any(debug_assertions, feature = "telemetry")))]
-        let runtime_telemetry: Option<
-            Arc<overmax_engine::detector::telemetry::RuntimeTelemetry>,
-        > = None;
+        let runtime_telemetry: Option<Arc<overmax_detect::RuntimeTelemetry>> = None;
         let defaults: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../settings.json"

@@ -1,8 +1,8 @@
 //! `overmax_data`의 이미지 인덱스(`ImageIndexDb` + `JacketMatcher`)를
 //! 감지 쪽 `JacketIndex` 경계에 연결하는 어댑터.
 
-use crate::detector::jacket_index::{JacketHit, JacketIndex};
 use overmax_data::{ImageIndexDb, JacketMatcher};
+use overmax_detect::{JacketHit, JacketIndex};
 
 pub struct ImageIndexJacket {
     db: ImageIndexDb,

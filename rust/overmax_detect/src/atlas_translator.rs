@@ -1,7 +1,7 @@
 use overmax_core::{Difficulty, SceneType};
-use overmax_frame::utils::{crop_roi, ImageView};
 use overmax_frame::CapturedFrame;
 use overmax_frame::RoiRect;
+use overmax_frame::{crop_roi, ImageView};
 
 /// 컴파일 타임에 100% 결정되는 제로 코스트 O(1) 아틀라스 트랜슬레이터 (Zero Runtime Overhead)
 pub struct AtlasTranslator;
@@ -448,7 +448,7 @@ impl AtlasTranslator {
 mod tests {
     use super::*;
     use crate::roi::RoiManager;
-    use overmax_frame::atlas_layout::{ATLAS_HEIGHT, ATLAS_SLOTS, ATLAS_WIDTH};
+    use overmax_frame::{ATLAS_HEIGHT, ATLAS_SLOTS, ATLAS_WIDTH};
 
     #[test]
     fn test_all_slots_resolvable_via_translator() {

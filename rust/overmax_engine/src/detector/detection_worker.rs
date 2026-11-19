@@ -1,20 +1,16 @@
 //! Runtime detection worker: window tracking -> capture -> pipeline -> UI state.
 
-use crate::capture::capture_engine::{AdaptiveCaptureEngine, CaptureEngine, CaptureErrorAction};
+use crate::DetectionPipeline;
+use overmax_capture::{AdaptiveCaptureEngine, CaptureEngine, CaptureErrorAction};
 #[cfg(target_os = "linux")]
-use crate::capture::window_tracker::{
-    FocusObservation, FocusSource, FocusState, PresentationObservation,
-};
-use crate::capture::window_tracker::{
-    SharedPresentationObservation, WindowRect, WindowSnapshot, WindowTracker,
-};
-use crate::detector::detection_pipeline::{
-    DetectionOutput, DetectionPipeline, JacketMatchStatus, SleepHint,
-};
-use crate::detector::telemetry::RuntimeTelemetry;
-use crate::frame::CapturedFrame;
+use overmax_capture::{FocusObservation, FocusSource, FocusState, PresentationObservation};
+use overmax_capture::{SharedPresentationObservation, WindowTracker};
 use overmax_core::GameSessionState;
 use overmax_data::{DataCompatibility, ImageIndexDb, Settings};
+use overmax_detect::RuntimeTelemetry;
+use overmax_detect::{DetectionOutput, JacketMatchStatus, SleepHint};
+use overmax_frame::CapturedFrame;
+use overmax_frame::{WindowRect, WindowSnapshot};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -22,7 +18,7 @@ use std::time::{Duration, Instant};
 
 const LOG_INTERVAL: Duration = Duration::from_secs(3);
 #[cfg(all(target_os = "linux", feature = "portal-capture"))]
-use crate::capture::portal::{
+use overmax_capture::{
     connection::{PortalConnection, PortalControl, ResetScope},
     PortalCapture,
 };
@@ -383,18 +379,17 @@ impl DetectionWorker {
             if let Ok(new_settings) = serde_json::from_value::<Settings>(guard.clone()) {
                 #[cfg(target_os = "windows")]
                 {
-                    let old_pref: crate::capture::capture_engine::PreferredCaptureEngine = self
+                    let old_pref: overmax_capture::PreferredCaptureEngine = self
                         .settings
                         .screen_capture()
                         .engine
                         .parse()
                         .unwrap_or_default();
-                    let new_pref: crate::capture::capture_engine::PreferredCaptureEngine =
-                        new_settings
-                            .screen_capture()
-                            .engine
-                            .parse()
-                            .unwrap_or_default();
+                    let new_pref: overmax_capture::PreferredCaptureEngine = new_settings
+                        .screen_capture()
+                        .engine
+                        .parse()
+                        .unwrap_or_default();
                     if old_pref != new_pref {
                         self.log(format!(
                             "[Detection] capture backend updated: {old_pref:?} -> {new_pref:?}"
@@ -951,11 +946,7 @@ impl DetectionWorker {
         }
     }
 
-    fn on_window_found(
-        &mut self,
-        rect: crate::capture::window_tracker::WindowRect,
-        foreground: bool,
-    ) -> bool {
+    fn on_window_found(&mut self, rect: overmax_frame::WindowRect, foreground: bool) -> bool {
         if !self.was_found {
             self.roll_telemetry_log();
             #[cfg(any(debug_assertions, feature = "telemetry"))]
@@ -1041,8 +1032,8 @@ impl DetectionWorker {
         }
     }
 
-    fn log_telemetry_snapshot(&self, snap: &crate::detector::telemetry::PipelineTelemetrySnapshot) {
-        use crate::detector::telemetry::format_duration_us;
+    fn log_telemetry_snapshot(&self, snap: &overmax_detect::PipelineTelemetrySnapshot) {
+        use overmax_detect::format_duration_us;
         let msg = format!(
             "[Telemetry] 5s snap ({:.1}s): capture={}(max {}) detect={}(max {}) [scene={}(max {}), jacket={}(max {}), play={}(max {})] | active={} unknown={} match_hits={} miss={} maxdiff={:.1} cg={} band={} minsim={:.3}",
             snap.period_sec,
@@ -1133,7 +1124,7 @@ impl DetectionWorker {
             .append(true)
             .open(&self.telemetry_log_path)
         {
-            let ts = crate::detector::telemetry::current_timestamp_str();
+            let ts = overmax_detect::current_timestamp_str();
             let _ = writeln!(f, "[{ts}] {line}");
         }
     }
@@ -1240,7 +1231,7 @@ fn margin_threshold(settings: &Settings) -> f32 {
 
 struct WindowQueryScheduler {
     last_query_ts: Instant,
-    cached_rect: Option<crate::capture::window_tracker::WindowRect>,
+    cached_rect: Option<overmax_frame::WindowRect>,
     cached_foreground: bool,
     /// rect/foreground 와 같은 조회 주기로 갱신한다. `is_fullscreen` 은 Win32 호출을
     /// 최대 5회 수행하므로 매 프레임 호출하지 않는다(Linux 는 `WindowSnapshot` 사용).
@@ -1282,11 +1273,7 @@ impl WindowQueryScheduler {
         self.last_query_ts.elapsed() >= self.get_query_interval()
     }
 
-    fn update(
-        &mut self,
-        rect: Option<crate::capture::window_tracker::WindowRect>,
-        foreground: bool,
-    ) {
+    fn update(&mut self, rect: Option<overmax_frame::WindowRect>, foreground: bool) {
         if !self.enabled {
             self.cached_rect = rect;
             self.cached_foreground = foreground;
@@ -1315,18 +1302,16 @@ mod tests {
     };
     use super::{DetectionWorker, JacketMatchStatus, RepaintFingerprint};
     #[cfg(target_os = "linux")]
-    use crate::capture::capture_engine::{CaptureEngine, CaptureErrorAction};
+    use overmax_capture::{CaptureEngine, CaptureErrorAction};
     #[cfg(target_os = "linux")]
-    use crate::capture::window_tracker::{
-        FocusObservation, FocusSource, FocusState, PresentationObservation,
-    };
-    use crate::capture::window_tracker::{WindowRect, WindowSnapshot};
-    #[cfg(target_os = "linux")]
-    use crate::frame::CapturedFrame;
+    use overmax_capture::{FocusObservation, FocusSource, FocusState, PresentationObservation};
     use overmax_core::{Difficulty, GameSessionState, Mode, PlayContext, SceneType};
     #[cfg(target_os = "linux")]
     use overmax_data::ImageIndexDb;
     use overmax_data::Settings;
+    #[cfg(target_os = "linux")]
+    use overmax_frame::CapturedFrame;
+    use overmax_frame::{WindowRect, WindowSnapshot};
     use std::sync::mpsc;
 
     #[cfg(target_os = "linux")]

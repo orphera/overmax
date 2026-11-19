@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 
 pub struct SettingsUiContext {
     #[cfg(all(target_os = "linux", feature = "portal-capture"))]
-    pub portal: overmax_engine::capture::portal::connection::PortalControl,
+    pub portal: overmax_capture::PortalControl,
     pub root: Arc<std::path::PathBuf>,
     pub paths: Arc<overmax_data::AppPaths>,
     pub current_steam_id: String,

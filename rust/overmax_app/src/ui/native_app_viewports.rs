@@ -17,7 +17,6 @@ use crate::ui::platform;
 use crate::ui::settings_ui;
 use crate::ui::sync_ui;
 use crate::ui::upload_history_ui;
-use overmax_engine::capture::window_tracker;
 
 fn game_window_title(settings: &overmax_data::Settings) -> &str {
     settings
@@ -716,7 +715,7 @@ impl NativeApp {
             || (sync_open_changed && !sync_on)
         {
             let settings = self.settings.get_merged();
-            window_tracker::restore_foreground_by_title(game_window_title(&settings));
+            overmax_capture::restore_foreground_by_title(game_window_title(&settings));
         }
 
         self.start_log_pump(ctx);
@@ -760,7 +759,7 @@ impl NativeApp {
         scale: f32,
         height: f32,
         snap_position: &str,
-        game_rect_val: Option<overmax_engine::capture::window_tracker::WindowRect>,
+        game_rect_val: Option<overmax_frame::WindowRect>,
         overlay_on: bool,
         overlay_on_changed: bool,
     ) -> bool {
@@ -998,7 +997,7 @@ impl NativeApp {
 
         if actions.restore_game_focus {
             let settings = self.settings.get_merged();
-            window_tracker::restore_foreground_by_title(game_window_title(&settings));
+            overmax_capture::restore_foreground_by_title(game_window_title(&settings));
 
             if let Some(rect) = ui.ctx().input(|i| i.viewport().outer_rect) {
                 self.handle_ui_command(crate::ui::ui_command::UiCommand::SetOverlayPosition {
@@ -1076,8 +1075,8 @@ impl NativeApp {
         if !is_valid {
             let settings = self.settings.get_merged();
             let game_title = game_window_title(&settings).to_string();
-            let title_wide = window_tracker::encode_wide(&game_title);
-            g_hwnd = window_tracker::find_hwnd_by_title(&title_wide);
+            let title_wide = overmax_capture::encode_wide(&game_title);
+            g_hwnd = overmax_capture::find_hwnd_by_title(&title_wide);
             self.platform.win_cache.cached_game_hwnd = g_hwnd.map(|h| h as isize);
             if let Some(h) = g_hwnd {
                 debug_ui::push_log(

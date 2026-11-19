@@ -1,8 +1,8 @@
-pub mod atlas_layout;
-pub mod captured_frame;
-pub mod roi_rect;
-pub mod utils;
-pub mod window;
+mod atlas_layout;
+mod captured_frame;
+mod roi_rect;
+mod utils;
+mod window;
 
 pub use atlas_layout::{
     build_virtual_atlas, AtlasSlot, ATLAS_HEIGHT, ATLAS_SLOTS, ATLAS_SLOT_COUNT, ATLAS_WIDTH,

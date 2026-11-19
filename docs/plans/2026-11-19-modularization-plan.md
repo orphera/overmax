@@ -195,3 +195,33 @@ app이 쓰는 engine 내부 경로(약 40곳)를 각 crate의 루트 re-export(`
 | `verify_pipeline` 109건 전체 (6회, 첫 회 제외 중앙값) | 3.98 s | 3.89 s | 차이 없음 (노이즈 범위) |
 | `measure_breakdown` 자켓 매칭 파이프라인 (3회) | 0.93 / 0.93 / 0.94 ms | 0.94 / 0.94 / 0.95 ms | 차이 없음 (이 벤치는 바뀐 코드를 거치지 않음) |
 | `measure_breakdown` 512×512 아틀라스 전송 (3회) | 0.20 / 0.17 / 0.17 ms | 0.16 / 0.23 / 0.24 ms | 노이즈 (실행마다 ±0.05 ms) |
+
+### 단계 3 — crate 분리 (2026-11-19)
+
+`overmax_engine`을 네 crate로 나눴다. 기존 `overmax_engine::{frame, detector, capture}::...` 경로는 모두 re-export로 남아 `overmax_app`·`overmax_runtime`과 engine 통합 테스트는 바뀌지 않았다.
+
+| crate | 내용 | 의존 |
+| :--- | :--- | :--- |
+| `overmax_frame` | 단계 1의 `frame` 모듈 (`CapturedFrame`, `frame_utils`, `RoiRect`, 아틀라스 슬롯 표, `WindowRect`) | `overmax_core`, `overmax_cv` |
+| `overmax_detect` | `detector/` 중 워커를 뺀 전부 + `JacketIndex` trait | `overmax_core`, `overmax_frame`, `overmax_cv` (테스트 전용 `image`) |
+| `overmax_capture` | `capture/` (캡처 엔진, 창 추적, Portal) | `overmax_frame`, 플랫폼 의존성 |
+| `overmax_engine` | `detection_worker.rs` + `ImageIndexJacket` 어댑터 + re-export | 위 셋, `overmax_data`, `overmax_core` |
+
+결정:
+
+- **`JacketIndex` 구현 위치는 engine**(`image_index_jacket.rs`). data가 구현하려면 data → detect 의존이 생기는데, 저장소 crate가 감지 crate에 의존하는 방향이 되고 data만 쓰는 crate(runtime 등)까지 감지 코드를 끌어오게 된다. engine은 이미 data와 detect를 둘 다 알고 있으므로 어댑터를 두기에 가장 자연스럽다. 결정 1("data가 구현")은 이 사유로 engine 구현으로 바꿨다.
+- **`DetectionPipeline`의 기본 타입 매개변수 제거**: detect가 engine 어댑터 이름을 알 수 없다. 대신 engine의 `detector::detection_pipeline::DetectionPipeline`을 `DetectionPipeline<ImageIndexJacket>` 타입 별칭으로 두어 app 코드를 유지했다. 이를 위해 분리 전에 `DetectionPipeline::new`를 제네릭 impl(`impl Into<J>`)로 옮기고, 어댑터는 `From<ImageIndexDb>`를 제공하도록 했다 (inherent impl은 타입의 crate 밖에 둘 수 없음).
+- **기능 전달**: `overmax_engine/telemetry` → `overmax-detect/telemetry` + `overmax-capture/telemetry`, `overmax_engine/portal-capture` → `overmax-capture/portal-capture`. Linux 캡처 의존성(memmap2, x11rb, 선택 의존성 pipewire 등)은 capture로 옮겼다.
+- **사전 정리 커밋 (이동 전, 동작 불변)**: detector 타입이 필요한 아틀라스 테스트 3개를 detector 쪽으로 이동 / `detection_pipeline` 테스트의 `ImageIndexDb::new("missing.db")` 픽스처를 같은 동작의 `StubJacketIndex`로 교체 (detect 테스트가 data에 의존하지 않도록).
+- **가시성만 넓힌 항목**: `frame::utils::mean_abs_diff`, `detect::telemetry::current_timestamp_str`, (Linux) `WindowFocusTelemetry`, `WindowTracker::game_snapshot_with_telemetry` — crate 경계를 넘어 쓰이게 되어 `pub(crate)` → `pub`. 단계 4 공개 API 정리에서 다시 본다.
+- `debug_println!` 매크로를 새 crate 루트에 복제했다 (`overmax_data`도 이미 같은 방식).
+- Linux Xvfb CI 스크립트(`.github/scripts/linux-vertical-slice-lifecycle.sh`)는 해당 ignored 테스트를 `-p overmax-capture`와 crate 기준 경로로 실행하도록 고쳤다. `build.bat`, `scripts/package-rust.ps1`, `scripts/package-linux.sh`는 `overmax-app` / `overmax-rs`만 참조하므로 변경 없음.
+
+게이트:
+
+- 커밋마다 `cargo test --workspace` (249 통과 · 2 ignored), `cargo clippy --all-targets` (경고 0), WSL `cargo clippy -p overmax-engine -p overmax-frame -p overmax-detect -p overmax-capture --all-targets --features overmax-engine/telemetry` (경고 0) 통과. 이동한 Xvfb 테스트 3개는 WSL에서 `-p overmax-capture` 목록에 있는 것을 확인했다.
+- **`portal-capture`는 WSL에서 빌드하지 못했다**: `libpipewire-0.3-dev`가 없어 `libspa-sys` 빌드 스크립트가 실패한다 (패키지 설치는 sudo가 필요해 하지 않음). CI의 Linux 작업은 `--features overmax-app/portal-capture`로 테스트하므로 push 후 CI에서 확인된다.
+- `verify_pipeline` 109건 결과 기준선과 바이트 단위 동일. `cargo build --release -p overmax-app` 성공.
+- 성능 A/B (`e3d2c3a` 대비, 같은 PC, 번갈아 실행, release): `verify_pipeline` 109건 전체 중앙값 3.60 s → 3.59 s (첫 회 제외), `measure_breakdown` 자켓 매칭 0.86 ms → 0.86~0.87 ms, 아틀라스 전송 0.14~0.15 ms → 0.12~0.16 ms. 모두 노이즈 범위.
+
+알게 된 기존 문제 (이번 변경과 무관, 고치지 않음): Linux에서 `--release` + telemetry 기능 없이 테스트를 빌드하면 `window_tracker/linux.rs` 테스트가 `cfg(any(debug_assertions, feature = "telemetry"))`로 빠진 `active_window_membership`을 import해 컴파일되지 않는다. `e3d2c3a`에도 같은 코드가 있다.

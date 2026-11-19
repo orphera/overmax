@@ -4,11 +4,11 @@ pub mod hdr_pipeline;
 pub mod normalizer;
 pub mod shader_bytes;
 
-use crate::capture::capture_engine::CaptureEngine;
-use crate::capture::window_tracker::WindowRect;
-use crate::frame::CapturedFrame;
+use crate::capture_engine::CaptureEngine;
+use crate::window_tracker::WindowRect;
 use dxgi::DxgiCaptureEngine;
 use gdi::GdiCaptureEngine;
+use overmax_frame::CapturedFrame;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PreferredCaptureEngine {

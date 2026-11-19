@@ -1,5 +1,5 @@
 use super::{publish_geometry, GameGeometrySource, ResolvedGeometry, SharedGameGeometry};
-use crate::capture::window_tracker::WindowRect;
+use crate::window_tracker::WindowRect;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::{self, BufRead, BufReader, Read, Write};

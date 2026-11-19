@@ -33,7 +33,7 @@ struct TrackerConnection {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct WindowFocusTelemetry {
+pub struct WindowFocusTelemetry {
     pub target_xid: u64,
     pub active_xid: Option<u64>,
     pub active_in_client_list: Option<bool>,
@@ -86,7 +86,7 @@ impl WindowTracker {
     }
 
     #[cfg(any(debug_assertions, feature = "telemetry"))]
-    pub(crate) fn game_snapshot_with_telemetry(
+    pub fn game_snapshot_with_telemetry(
         &self,
     ) -> Result<
         (
@@ -579,7 +579,7 @@ mod tests {
         restore_foreground_by_title, unique_window, Atoms, FocusEvidence, ManagedClient,
         WindowTracker,
     };
-    use crate::capture::window_tracker::{FocusSource, FocusState};
+    use crate::window_tracker::{FocusSource, FocusState};
     use std::time::{Duration, Instant};
     use x11rb::connection::Connection;
     use x11rb::errors::{ConnectionError, ReplyError};

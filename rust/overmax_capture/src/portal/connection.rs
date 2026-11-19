@@ -2,7 +2,7 @@
 //! UI commands and a single preview are bounded and never invoke Portal on the UI.
 
 use super::{FrameStamp, PortalCapture, PortalStatus};
-use crate::capture::{
+use crate::{
     frame::CapturedFrame,
     window_tracker::{FocusState, PresentationObservation},
 };

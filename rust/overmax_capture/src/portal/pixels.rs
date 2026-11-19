@@ -1,4 +1,4 @@
-use crate::frame::CapturedFrame;
+use overmax_frame::CapturedFrame;
 use pipewire::spa::{
     buffer::{Data, DataFlags, DataType},
     param::video::{VideoFlags, VideoFormat, VideoInfoRaw, VideoInterlaceMode},

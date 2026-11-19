@@ -1,5 +1,5 @@
 use super::{publish_geometry, GameGeometrySource, ResolvedGeometry, SharedGameGeometry};
-use crate::capture::window_tracker::WindowRect;
+use crate::window_tracker::WindowRect;
 use std::io::{Read, Write};
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;

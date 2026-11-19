@@ -1,5 +1,5 @@
-use crate::capture::window_tracker::{WindowRect, WindowSnapshot};
-use crate::frame::CapturedFrame;
+use crate::window_tracker::{WindowRect, WindowSnapshot};
+use overmax_frame::CapturedFrame;
 
 #[cfg(target_os = "linux")]
 mod linux;

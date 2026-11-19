@@ -1,7 +1,7 @@
-use crate::capture::capture_engine::CaptureEngine;
-use crate::capture::window_tracker::WindowRect;
-use crate::frame::atlas_layout::{ATLAS_HEIGHT, ATLAS_SLOTS, ATLAS_WIDTH};
-use crate::frame::CapturedFrame;
+use crate::capture_engine::CaptureEngine;
+use crate::window_tracker::WindowRect;
+use overmax_frame::atlas_layout::{ATLAS_HEIGHT, ATLAS_SLOTS, ATLAS_WIDTH};
+use overmax_frame::CapturedFrame;
 
 use windows::core::Interface;
 use windows::Win32::Foundation::{HMODULE, RECT};

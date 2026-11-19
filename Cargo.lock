@@ -2972,6 +2972,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "overmax-capture"
+version = "0.4.2"
+dependencies = [
+ "futures-util",
+ "image",
+ "memmap2",
+ "overmax-frame",
+ "pipewire",
+ "serde",
+ "serde_json",
+ "tokio",
+ "windows",
+ "windows-future",
+ "windows-sys 0.61.2",
+ "x11rb",
+ "zbus",
+]
+
+[[package]]
 name = "overmax-core"
 version = "0.4.2"
 dependencies = [
@@ -3014,23 +3033,17 @@ dependencies = [
 name = "overmax-engine"
 version = "0.4.2"
 dependencies = [
- "futures-util",
  "image",
- "memmap2",
+ "overmax-capture",
  "overmax-core",
  "overmax-data",
  "overmax-detect",
  "overmax-frame",
  "overmax_cv",
- "pipewire",
- "serde",
  "serde_json",
- "tokio",
  "windows",
  "windows-future",
  "windows-sys 0.61.2",
- "x11rb",
- "zbus",
 ]
 
 [[package]]

@@ -1,7 +1,7 @@
-use crate::capture::capture_engine::{CaptureEngine, CaptureErrorAction};
-use crate::capture::window_tracker::{WindowRect, WindowSnapshot};
-use crate::frame::CapturedFrame;
+use crate::capture_engine::{CaptureEngine, CaptureErrorAction};
+use crate::window_tracker::{WindowRect, WindowSnapshot};
 use memmap2::{MmapMut, MmapOptions};
+use overmax_frame::CapturedFrame;
 use std::fs::File;
 use x11rb::connection::Connection;
 use x11rb::errors::{ConnectionError, ReplyError, ReplyOrIdError};
@@ -828,11 +828,9 @@ fn transient_error_kind(kind: ErrorKind) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{calculate_layout, connection_failure, pixel_format_supported, CaptureFailure};
-    use crate::capture::capture_engine::{
-        AdaptiveCaptureEngine, CaptureEngine, CaptureErrorAction,
-    };
-    use crate::capture::window_tracker::{WindowRect, WindowSnapshot};
-    use crate::frame::CapturedFrame;
+    use crate::capture_engine::{AdaptiveCaptureEngine, CaptureEngine, CaptureErrorAction};
+    use crate::window_tracker::{WindowRect, WindowSnapshot};
+    use overmax_frame::CapturedFrame;
     use x11rb::connection::Connection;
     use x11rb::errors::ConnectionError;
     use x11rb::protocol::xproto::{

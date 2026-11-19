@@ -1,5 +1,5 @@
 use super::{publish_geometry, GameGeometrySource, ResolvedGeometry, SharedGameGeometry};
-use crate::capture::window_tracker::WindowRect;
+use crate::window_tracker::WindowRect;
 use serde_json::Value;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;

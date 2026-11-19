@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "rust/overmax_app",
+    "rust/overmax_capture",
     "rust/overmax_core",
     "rust/overmax_detect",
     "rust/overmax_cv",

@@ -10,7 +10,7 @@ use windows::Win32::Graphics::Direct3D11::{
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
 
 use super::shader_bytes::{PS_BYTECODE, VS_BYTECODE};
-use crate::capture::window_tracker::WindowRect;
+use crate::window_tracker::WindowRect;
 
 pub const NORMALIZED_WIDTH: u32 = 1920;
 pub const NORMALIZED_HEIGHT: u32 = 1080;

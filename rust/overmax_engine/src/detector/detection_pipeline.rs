@@ -103,6 +103,11 @@ pub struct DetectionPipeline<J: JacketIndex = ImageIndexJacket> {
 }
 
 impl<J: JacketIndex> DetectionPipeline<J> {
+    /// `J`로 변환 가능한 값(예: `ImageIndexDb` → `ImageIndexJacket`)에서 파이프라인을 만든다.
+    pub fn new(jacket_index: impl Into<J>) -> Self {
+        Self::with_jacket_index(jacket_index.into())
+    }
+
     pub fn with_jacket_index(jacket_index: J) -> Self {
         Self {
             stats: PipelineStatsCollector::new(),

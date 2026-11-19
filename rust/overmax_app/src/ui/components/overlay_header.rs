@@ -113,26 +113,20 @@ impl<'a> OverlayHeader<'a> {
                             .scale(self.px.scale),
                     );
 
-                    let btn_size_val = self.px.header_btn_size();
-                    let btn_gap_val = 2.5 * self.px.scale;
-                    let btn_radius = CornerRadius::same((3.5 * self.px.scale) as u8);
-                    let btn_size = Vec2::splat(btn_size_val);
-
-                    let mut btn_count = 1;
-                    if self.sync_open.is_some() {
-                        btn_count += 1;
-                    }
-                    if self.upload_history_button {
-                        btn_count += 1;
-                    }
-                    if self.varchive_upload_needed {
-                        btn_count += 1;
-                    }
-                    let right_w =
-                        (btn_count as f32 * btn_size_val) + ((btn_count - 1) as f32 * btn_gap_val);
+                    let buttons = HeaderButtons {
+                        settings_open: self.settings_open,
+                        sync_open: self.sync_open,
+                        upload_history: self.upload_history_button,
+                        upload_needed: self.varchive_upload_needed,
+                        upload_progress: self.varchive_upload_progress,
+                        account_configured: self.varchive_account_configured,
+                        scale: self.px.scale,
+                    };
                     let spacing = ui.spacing().item_spacing.x;
-                    let max_w =
-                        ui.available_width() - right_w - spacing * 2.0 - 4.0 * self.px.scale;
+                    let max_w = ui.available_width()
+                        - buttons.width()
+                        - spacing * 2.0
+                        - 4.0 * self.px.scale;
 
                     ui.add(
                         FadeClippedLabel::new(self.song_label)
@@ -143,108 +137,7 @@ impl<'a> OverlayHeader<'a> {
                             .scale(self.px.scale),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.spacing_mut().item_spacing.x = btn_gap_val;
-                        ui.spacing_mut().button_padding = Vec2::ZERO;
-                        let text = RichText::new("⚙")
-                            .color(Theme::TEXT_PRIMARY)
-                            .font(FontId::proportional(11.0 * self.px.scale));
-                        let btn = Button::new(text)
-                            .fill(Theme::SECTION_BG)
-                            .corner_radius(btn_radius)
-                            .wrap();
-                        let response = ui
-                            .add_sized(btn_size, btn.sense(Sense::click()))
-                            .on_hover_text(crate::t!("settings-title"));
-                        buttons_left_x = Some(response.rect.min.x);
-                        if response.clicked() {
-                            self.settings_open.store(true, Ordering::Relaxed);
-                            actions.command = Some(UiCommand::OpenSettings);
-                        }
-
-                        if let Some(sync_open) = self.sync_open {
-                            let sync_text = RichText::new("🔄")
-                                .color(Theme::TEXT_PRIMARY)
-                                .font(FontId::proportional(10.0 * self.px.scale));
-                            let sync_btn = Button::new(sync_text)
-                                .fill(Theme::SECTION_BG)
-                                .corner_radius(btn_radius)
-                                .wrap();
-                            let response = ui
-                                .add_sized(btn_size, sync_btn.sense(Sense::click()))
-                                .on_hover_text(crate::t!("sync-title"));
-                            buttons_left_x = Some(
-                                buttons_left_x
-                                    .map(|x| x.min(response.rect.min.x))
-                                    .unwrap_or(response.rect.min.x),
-                            );
-                            if response.clicked() {
-                                sync_open.store(true, Ordering::Relaxed);
-                                actions.command = Some(UiCommand::OpenSync);
-                            }
-                        }
-
-                        if self.upload_history_button {
-                            let history_text = RichText::new("📋")
-                                .color(Theme::TEXT_PRIMARY)
-                                .font(FontId::proportional(10.0 * self.px.scale));
-                            let history_btn = Button::new(history_text)
-                                .fill(Theme::SECTION_BG)
-                                .corner_radius(btn_radius)
-                                .wrap();
-                            let response = ui
-                                .add_sized(btn_size, history_btn.sense(Sense::click()))
-                                .on_hover_text(crate::t!("upload-history-title"));
-                            buttons_left_x = Some(
-                                buttons_left_x
-                                    .map(|x| x.min(response.rect.min.x))
-                                    .unwrap_or(response.rect.min.x),
-                            );
-                            if response.clicked() {
-                                actions.command = Some(UiCommand::OpenUploadHistory);
-                            }
-                        }
-
-                        if self.varchive_upload_needed {
-                            let upload_text = RichText::new("⬆")
-                                .color(if self.varchive_account_configured {
-                                    Theme::TEXT_PRIMARY
-                                } else {
-                                    Theme::TEXT_MUTED
-                                })
-                                .font(FontId::proportional(10.5 * self.px.scale));
-
-                            let progress = self.varchive_upload_progress;
-                            let fill_slots = progress.map(|_| UploadFillSlots::reserve(ui));
-                            let upload_btn = Button::new(upload_text)
-                                .fill(if fill_slots.is_some() {
-                                    egui::Color32::TRANSPARENT
-                                } else if self.varchive_account_configured {
-                                    Theme::PRIMARY
-                                } else {
-                                    Theme::SECTION_BG
-                                })
-                                .corner_radius(btn_radius)
-                                .wrap();
-
-                            let response = ui.add_sized(btn_size, upload_btn.sense(Sense::click()));
-                            if let (Some(slots), Some(p)) = (fill_slots, progress) {
-                                slots.paint(ui, response.rect, btn_radius, p);
-                            }
-                            let response = if self.varchive_account_configured {
-                                response.on_hover_text(crate::t!("overlay-varchive-upload-needed"))
-                            } else {
-                                response.on_hover_text(crate::t!("overlay-varchive-link-needed"))
-                            };
-                            buttons_left_x = Some(
-                                buttons_left_x
-                                    .map(|x| x.min(response.rect.min.x))
-                                    .unwrap_or(response.rect.min.x),
-                            );
-
-                            if response.clicked() && self.varchive_account_configured {
-                                actions.command = Some(UiCommand::UploadCurrentPattern);
-                            }
-                        }
+                        buttons_left_x = buttons.show(ui, actions);
                     });
                 });
                 ui.add_space(self.px.header_meta_gap());
@@ -277,6 +170,153 @@ impl<'a> OverlayHeader<'a> {
                 actions.restore_game_focus = true;
             }
         }
+    }
+}
+
+/// 헤더 오른쪽 버튼 묶음 (⚙ 설정, 🔄 동기화, 📋 업로드 기록, ⬆ 업로드).
+/// 일반 헤더와 라이트 헤더가 같은 크기·간격·모양으로 그리도록 공유한다.
+pub(crate) struct HeaderButtons<'a> {
+    pub settings_open: &'a Arc<AtomicBool>,
+    pub sync_open: Option<&'a Arc<AtomicBool>>,
+    pub upload_history: bool,
+    pub upload_needed: bool,
+    pub upload_progress: Option<f32>,
+    pub account_configured: bool,
+    pub scale: f32,
+}
+
+impl HeaderButtons<'_> {
+    fn btn_size(&self) -> f32 {
+        Px::new(self.scale).header_btn_size()
+    }
+
+    fn btn_gap(&self) -> f32 {
+        2.5 * self.scale
+    }
+
+    fn count(&self) -> usize {
+        1 + usize::from(self.sync_open.is_some())
+            + usize::from(self.upload_history)
+            + usize::from(self.upload_needed)
+    }
+
+    /// 버튼 묶음 전체 폭
+    pub(crate) fn width(&self) -> f32 {
+        let n = self.count() as f32;
+        n * self.btn_size() + (n - 1.0) * self.btn_gap()
+    }
+
+    /// 오른쪽부터 버튼을 그리고, 그려진 버튼 묶음의 왼쪽 끝 x를 돌려준다.
+    /// `right_to_left` 레이아웃 안에서 호출해야 한다.
+    pub(crate) fn show(&self, ui: &mut egui::Ui, actions: &mut OverlayActions) -> Option<f32> {
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing.x = self.btn_gap();
+            ui.spacing_mut().button_padding = Vec2::ZERO;
+            let btn_size = Vec2::splat(self.btn_size());
+            let btn_radius = CornerRadius::same((3.5 * self.scale) as u8);
+            let text = RichText::new("⚙")
+                .color(Theme::TEXT_PRIMARY)
+                .font(FontId::proportional(11.0 * self.scale));
+            let btn = Button::new(text)
+                .fill(Theme::SECTION_BG)
+                .corner_radius(btn_radius)
+                .wrap();
+            let response = ui
+                .add_sized(btn_size, btn.sense(Sense::click()))
+                .on_hover_text(crate::t!("settings-title"));
+            let mut buttons_left_x = Some(response.rect.min.x);
+            if response.clicked() {
+                self.settings_open.store(true, Ordering::Relaxed);
+                actions.command = Some(UiCommand::OpenSettings);
+            }
+
+            if let Some(sync_open) = self.sync_open {
+                let sync_text = RichText::new("🔄")
+                    .color(Theme::TEXT_PRIMARY)
+                    .font(FontId::proportional(10.0 * self.scale));
+                let sync_btn = Button::new(sync_text)
+                    .fill(Theme::SECTION_BG)
+                    .corner_radius(btn_radius)
+                    .wrap();
+                let response = ui
+                    .add_sized(btn_size, sync_btn.sense(Sense::click()))
+                    .on_hover_text(crate::t!("sync-title"));
+                buttons_left_x = Some(
+                    buttons_left_x
+                        .map(|x| x.min(response.rect.min.x))
+                        .unwrap_or(response.rect.min.x),
+                );
+                if response.clicked() {
+                    sync_open.store(true, Ordering::Relaxed);
+                    actions.command = Some(UiCommand::OpenSync);
+                }
+            }
+
+            if self.upload_history {
+                let history_text = RichText::new("📋")
+                    .color(Theme::TEXT_PRIMARY)
+                    .font(FontId::proportional(10.0 * self.scale));
+                let history_btn = Button::new(history_text)
+                    .fill(Theme::SECTION_BG)
+                    .corner_radius(btn_radius)
+                    .wrap();
+                let response = ui
+                    .add_sized(btn_size, history_btn.sense(Sense::click()))
+                    .on_hover_text(crate::t!("upload-history-title"));
+                buttons_left_x = Some(
+                    buttons_left_x
+                        .map(|x| x.min(response.rect.min.x))
+                        .unwrap_or(response.rect.min.x),
+                );
+                if response.clicked() {
+                    actions.command = Some(UiCommand::OpenUploadHistory);
+                }
+            }
+
+            if self.upload_needed {
+                let upload_text = RichText::new("⬆")
+                    .color(if self.account_configured {
+                        Theme::TEXT_PRIMARY
+                    } else {
+                        Theme::TEXT_MUTED
+                    })
+                    .font(FontId::proportional(10.5 * self.scale));
+
+                let progress = self.upload_progress;
+                let fill_slots = progress.map(|_| UploadFillSlots::reserve(ui));
+                let upload_btn = Button::new(upload_text)
+                    .fill(if fill_slots.is_some() {
+                        egui::Color32::TRANSPARENT
+                    } else if self.account_configured {
+                        Theme::PRIMARY
+                    } else {
+                        Theme::SECTION_BG
+                    })
+                    .corner_radius(btn_radius)
+                    .wrap();
+
+                let response = ui.add_sized(btn_size, upload_btn.sense(Sense::click()));
+                if let (Some(slots), Some(p)) = (fill_slots, progress) {
+                    slots.paint(ui, response.rect, btn_radius, p);
+                }
+                let response = if self.account_configured {
+                    response.on_hover_text(crate::t!("overlay-varchive-upload-needed"))
+                } else {
+                    response.on_hover_text(crate::t!("overlay-varchive-link-needed"))
+                };
+                buttons_left_x = Some(
+                    buttons_left_x
+                        .map(|x| x.min(response.rect.min.x))
+                        .unwrap_or(response.rect.min.x),
+                );
+
+                if response.clicked() && self.account_configured {
+                    actions.command = Some(UiCommand::UploadCurrentPattern);
+                }
+            }
+            buttons_left_x
+        })
+        .inner
     }
 }
 

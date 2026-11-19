@@ -1,13 +1,10 @@
-use crate::ui::components::{
-    FadeClippedLabel, ModeBadge, OverlayHeaderDetail, StatusLamp, UploadFillSlots,
-};
+use crate::ui::components::overlay_header::HeaderButtons;
+use crate::ui::components::{FadeClippedLabel, ModeBadge, OverlayHeaderDetail, StatusLamp};
 use crate::ui::overlay_theme::Theme;
 use crate::ui::overlay_ui::{diff_color, OverlayActions, OverlayProps, Px, LITE_BASE_HEIGHT};
-use crate::ui::ui_command::UiCommand;
 use eframe::egui::{
-    self, Align, Button, CornerRadius, FontId, Frame, Layout, Margin, RichText, Sense, Vec2,
+    self, Align, CornerRadius, FontId, Frame, Layout, Margin, RichText, Sense, Vec2,
 };
-use std::sync::atomic::Ordering;
 
 pub struct LitePanel;
 
@@ -34,7 +31,7 @@ impl LitePanel {
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 3.0 * props.scale;
 
-                // 1열: 상태 표시등 + [버튼모드] [난이도] [비공식 난이도] + 곡명 + 업로드 버튼 + 설정 버튼
+                // 1열: 상태 표시등 + [버튼모드] [난이도] [비공식 난이도] + 곡명 + 헤더 버튼 묶음
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0 * props.scale;
 
@@ -84,74 +81,18 @@ impl LitePanel {
                         }
                     }
 
-                    // 우측 배치: 설정/업로드 버튼만 우측 정렬로 묶음
+                    // 우측 배치: 일반 헤더와 같은 버튼 묶음 (설정/동기화/업로드 기록/업로드)
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.spacing_mut().button_padding = Vec2::ZERO;
-
-                        // 설정 버튼: 투명도 없이 불투명 fill을 적용해 버튼 영역 전체가 클릭 이벤트를 정확하게 받게 함
-                        let text = RichText::new("⚙")
-                            .color(Theme::TEXT_PRIMARY)
-                            .font(FontId::proportional(14.0 * props.scale));
-                        let btn = Button::new(text)
-                            .fill(Theme::SECTION_BG)
-                            .corner_radius(CornerRadius::same((5.0 * props.scale) as u8))
-                            .wrap();
-                        let response = ui
-                            .add_sized(Vec2::splat(18.0 * props.scale), btn.sense(Sense::click()))
-                            .on_hover_text(crate::t!("settings-title"));
-                        buttons_left_x = Some(response.rect.min.x);
-                        if response.clicked() {
-                            props.settings_open.store(true, Ordering::Relaxed);
-                            actions.command = Some(UiCommand::OpenSettings);
+                        buttons_left_x = HeaderButtons {
+                            settings_open: &props.settings_open,
+                            sync_open: Some(&props.sync_open),
+                            upload_history: true,
+                            upload_needed: props.varchive_upload_needed,
+                            upload_progress: props.varchive_upload_progress,
+                            account_configured: props.varchive_account_configured,
+                            scale: props.scale,
                         }
-
-                        // 업로드 버튼: 마찬가지로 불투명 fill 적용
-                        if props.varchive_upload_needed {
-                            ui.add_space(4.0 * props.scale);
-                            let upload_text = RichText::new("⬆")
-                                .color(if props.varchive_account_configured {
-                                    Theme::TEXT_PRIMARY
-                                } else {
-                                    Theme::TEXT_MUTED
-                                })
-                                .font(FontId::proportional(11.0 * props.scale));
-
-                            let btn_radius = CornerRadius::same((4.0 * props.scale) as u8);
-                            let progress = props.varchive_upload_progress;
-                            let fill_slots = progress.map(|_| UploadFillSlots::reserve(ui));
-                            let upload_btn = Button::new(upload_text)
-                                .fill(if fill_slots.is_some() {
-                                    egui::Color32::TRANSPARENT
-                                } else if props.varchive_account_configured {
-                                    Theme::PRIMARY
-                                } else {
-                                    Theme::SECTION_BG
-                                })
-                                .corner_radius(btn_radius)
-                                .wrap();
-
-                            let btn_size = Vec2::splat(18.0 * props.scale);
-                            let response_upload =
-                                ui.add_sized(btn_size, upload_btn.sense(Sense::click()));
-                            buttons_left_x =
-                                Some(buttons_left_x.map_or(response_upload.rect.min.x, |x| {
-                                    x.min(response_upload.rect.min.x)
-                                }));
-                            if let (Some(slots), Some(p)) = (fill_slots, progress) {
-                                slots.paint(ui, response_upload.rect, btn_radius, p);
-                            }
-                            let response_upload = if props.varchive_account_configured {
-                                response_upload
-                                    .on_hover_text(crate::t!("overlay-varchive-upload-needed"))
-                            } else {
-                                response_upload
-                                    .on_hover_text(crate::t!("overlay-varchive-link-needed"))
-                            };
-
-                            if response_upload.clicked() && props.varchive_account_configured {
-                                actions.command = Some(UiCommand::UploadCurrentPattern);
-                            }
-                        }
+                        .show(ui, &mut actions);
 
                         let title_w = ui.available_width();
                         ui.with_layout(

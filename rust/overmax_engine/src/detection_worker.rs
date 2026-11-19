@@ -18,10 +18,7 @@ use std::time::{Duration, Instant};
 
 const LOG_INTERVAL: Duration = Duration::from_secs(3);
 #[cfg(all(target_os = "linux", feature = "portal-capture"))]
-use overmax_capture::{
-    connection::{PortalConnection, PortalControl, ResetScope},
-    PortalCapture,
-};
+use overmax_capture::{PortalCapture, PortalConnection, PortalControl, ResetScope};
 
 pub struct WorkerControl {
     #[cfg(all(target_os = "linux", feature = "portal-capture"))]

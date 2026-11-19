@@ -1,5 +1,6 @@
 #![cfg(windows)]
 
+use overmax_engine::detector::jacket_index::JacketIndex;
 use std::path::{Path, PathBuf};
 
 fn find_snapshot_dir() -> Option<PathBuf> {
@@ -79,7 +80,7 @@ fn test_analyze_all_hdr_snapshots() {
         let mut db = overmax_data::store::image_index::ImageIndexDb::new(p, 0.60);
         db.load().ok().map(|count| {
             println!("Loaded Image DB with {} entries", count);
-            db.matcher()
+            overmax_engine::image_index_jacket::ImageIndexJacket::new(db)
         })
     });
 
@@ -98,7 +99,7 @@ fn test_analyze_all_hdr_snapshots() {
 #[cfg(windows)]
 fn analyze_single_snapshot(
     raw_path: &Path,
-    matcher_opt: Option<&overmax_data::service::jacket_matcher::JacketMatcher>,
+    matcher_opt: Option<&overmax_engine::image_index_jacket::ImageIndexJacket>,
 ) {
     let file_name = raw_path.file_name().unwrap().to_string_lossy();
     println!("\n>>> Analyzing: {} <<<", file_name);
@@ -511,7 +512,7 @@ fn test_all_captures_png() {
 
     let mut db = overmax_data::store::image_index::ImageIndexDb::new(actual_db.unwrap(), 0.60);
     db.load().unwrap();
-    let matcher = db.matcher();
+    let matcher = overmax_engine::image_index_jacket::ImageIndexJacket::new(db);
 
     let cap_dir = Path::new("../../scratch/captures_client");
     let fallback_cap_dir = Path::new("scratch/captures_client");
@@ -617,7 +618,7 @@ fn test_sdr_baseline() {
 
     let mut db = overmax_data::store::image_index::ImageIndexDb::new(actual_db.unwrap(), 0.60);
     db.load().unwrap();
-    let matcher = db.matcher();
+    let matcher = overmax_engine::image_index_jacket::ImageIndexJacket::new(db);
 
     println!("\n==================================================");
     println!(" [SDR BASELINE TEST]");
@@ -1065,7 +1066,7 @@ fn test_all_snapshots_summary() {
         println!("[HDR Replay Test] Summary skipped: failed to load ImageIndexDb");
         return;
     }
-    let matcher = db.matcher();
+    let matcher = overmax_engine::image_index_jacket::ImageIndexJacket::new(db);
 
     use overmax_engine::capture::capture_engine::windows::hdr_pipeline::{
         convert_scrgb_fp16_to_bgra8_p3, DEFAULT_SDR_WHITE_LEVEL,
@@ -1186,7 +1187,7 @@ fn test_captures_and_snapshots_play_state() {
 
     let mut db = overmax_data::store::image_index::ImageIndexDb::new(actual_db.unwrap(), 0.50);
     db.load().unwrap();
-    let matcher = db.matcher();
+    let matcher = overmax_engine::image_index_jacket::ImageIndexJacket::new(db);
 
     // 0. SDR Baseline (hd_test_*.png) 710 vs 709 comparison
     println!("\n=======================================================");
@@ -1842,7 +1843,7 @@ fn test_compare_2stage_vs_linear_jackets() {
         );
         return;
     }
-    let matcher = db.matcher();
+    let matcher = overmax_engine::image_index_jacket::ImageIndexJacket::new(db);
 
     const WIDTH: usize = 512;
     const HEIGHT: usize = 512;

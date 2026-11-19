@@ -1,16 +1,6 @@
 use crate::window_tracker::{WindowRect, WindowSnapshot};
 use overmax_frame::CapturedFrame;
 
-#[cfg(target_os = "linux")]
-mod linux;
-#[cfg(target_os = "windows")]
-pub mod windows;
-
-#[cfg(target_os = "linux")]
-pub use linux::AdaptiveCaptureEngine;
-#[cfg(target_os = "windows")]
-pub use windows::{AdaptiveCaptureEngine, PreferredCaptureEngine};
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CaptureErrorAction {
     Retry,
@@ -35,7 +25,7 @@ pub trait CaptureEngine: Send + Sync {
     }
 
     #[cfg(target_os = "windows")]
-    fn set_preferred_engine(&mut self, _preferred: windows::PreferredCaptureEngine) {}
+    fn set_preferred_engine(&mut self, _preferred: crate::windows::PreferredCaptureEngine) {}
 
     #[cfg(target_os = "windows")]
     fn set_enable_gpu_atlas(&mut self, _enable: bool) {}

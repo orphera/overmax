@@ -9,15 +9,15 @@ xvfb-run --auto-servernum --server-args="$server_args" bash -euo pipefail -c '
     trap '\''kill "$wm_pid" 2>/dev/null || true'\'' EXIT
 
     cargo test -p overmax-capture --lib \
-        window_tracker::linux::tests::x11_ewmh_snapshot_lifecycle \
+        linux::window_tracker::tests::x11_ewmh_snapshot_lifecycle \
         --locked -- --ignored --exact --nocapture
     cargo test -p overmax-capture --lib \
-        capture_engine::linux::tests::xcomposite_shm_lifecycle \
+        linux::capture_engine::tests::xcomposite_shm_lifecycle \
         --locked -- --ignored --exact --nocapture
 '
 
 xvfb-run --auto-servernum \
     --server-args="-screen 0 1280x720x24 -extension Composite -nolisten tcp" \
     cargo test -p overmax-capture --lib \
-        capture_engine::linux::tests::unavailable_capture_backend_is_deferred_to_set_target \
+        linux::capture_engine::tests::unavailable_capture_backend_is_deferred_to_set_target \
         --locked -- --ignored --exact --nocapture

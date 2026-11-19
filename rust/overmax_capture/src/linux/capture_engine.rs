@@ -827,8 +827,9 @@ fn transient_error_kind(kind: ErrorKind) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::AdaptiveCaptureEngine;
     use super::{calculate_layout, connection_failure, pixel_format_supported, CaptureFailure};
-    use crate::capture_engine::{AdaptiveCaptureEngine, CaptureEngine, CaptureErrorAction};
+    use crate::capture_engine::{CaptureEngine, CaptureErrorAction};
     use crate::window_tracker::{WindowRect, WindowSnapshot};
     use overmax_frame::CapturedFrame;
     use x11rb::connection::Connection;

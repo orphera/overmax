@@ -8,11 +8,14 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
 };
 
-use crate::ui::tray_icon::{force_cleanup_tray, TrayIcon};
+mod overlay_host;
+mod tray_icon;
+
 use crate::ui::ui_command::UiCommand;
+use tray_icon::{force_cleanup_tray, TrayIcon};
 
 pub fn load_icon() -> Option<eframe::egui::IconData> {
-    let icon_bytes = include_bytes!("../../../../../assets/overmax.ico");
+    let icon_bytes = include_bytes!("../../../../../../assets/overmax.ico");
     if let Ok(img) = image::load_from_memory(icon_bytes) {
         let rgba = img.to_rgba8();
         let (width, height) = rgba.dimensions();

@@ -6,6 +6,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 pub mod layer_overlay;
+mod overlay_host;
 #[cfg(feature = "portal-capture")]
 pub mod portal_capture_ui;
 

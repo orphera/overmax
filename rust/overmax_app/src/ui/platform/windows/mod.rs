@@ -8,6 +8,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
 };
 
+mod overlay_host;
 mod tray_icon;
 
 use crate::ui::ui_command::UiCommand;

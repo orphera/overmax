@@ -20,7 +20,7 @@ overmax_data       저장·설정·외부 API·추천 엔진
 overmax_core / overmax_cv   공통 타입 · CV 알고리즘
 ```
 
-- `overmax_detect`·`overmax_capture`·`overmax_frame`은 `overmax_data`에 의존하지 않는다. data와 감지를 잇는 것은 `overmax_engine`의 `ImageIndexJacket`(`JacketIndex` 구현)과 워커다. 기존 `overmax_engine::{capture, detector, frame}::...` 경로는 re-export로 유지된다 (경로 정리는 모듈화 단계 4).
+- `overmax_detect`·`overmax_capture`·`overmax_frame`은 `overmax_data`에 의존하지 않는다. data와 감지를 잇는 것은 `overmax_engine`의 `ImageIndexJacket`(`JacketIndex` 구현)과 워커다. 각 항목은 그 항목을 소유한 crate의 루트에서 가져온다 (`overmax_frame::CapturedFrame`, `overmax_detect::RoiManager`, `overmax_capture::WindowTracker`). crate 안의 모듈은 비공개이며, 예외는 `overmax_detect::templates`(템플릿 판독 함수 묶음)와 Windows 전용 `overmax_capture::hdr_pipeline`이다.
 
 - `overmax_runtime`은 감지 출력을 `overmax_core` 타입(`GameSessionState`, `VerifiedPlayEvent`)으로 받으므로 `overmax_engine`에 의존하지 않는다. 다른 감지 소스를 쓰는 프론트엔드도 runtime을 그대로 쓸 수 있다.
 
@@ -44,7 +44,16 @@ overmax_core / overmax_cv   공통 타입 · CV 알고리즘
 | `overmax_runtime::auto_upload` | `AutoUploadScheduler` | 자동 업로드 대기·발사 판단 (시간은 호출자가 주입) |
 | `overmax_data::config` | `varchive_account`, `steam_session`, `settings_writer` | 계정 설정 조회, Steam 로그인 사용자, 설정 디바운스 저장 |
 | `overmax_data::RecordManager` | `try_handle_verified_play`, `try_upsert`, `try_delete` | 저장 실패(`Err`)와 변경 없음(`Ok(false)`)을 구분하는 기록 API |
-| `overmax_engine::capture::window_tracker` (Linux) | `GameGeometrySource`, `SharedGameGeometry`, `GameGeometry` | 컴포지터 좌표의 게임 창 위치 소스 |
+| `overmax_frame` | `CapturedFrame`, `ImageView`, `ImageRegion`, `RoiRect`, `RawRoiRect`, `WindowRect`, `WindowSnapshot`, `crop_roi`, `region_mean_bgr`, `compute_pixel_checksum`, `make_thumbnail`, `thumbnail_changed`, `mean_abs_diff`, `AtlasSlot`, `ATLAS_SLOTS`, `ATLAS_WIDTH`/`ATLAS_HEIGHT`/`ATLAS_SLOT_COUNT`, `build_virtual_atlas` | 캡처와 감지가 공유하는 프레임·사각형·창 기하 타입, GPU 아틀라스 슬롯 표 |
+| `overmax_detect` | `DetectionPipeline<J>`, `DetectionOutput`, `SleepHint`, `JacketMatchStatus`, `JacketIndex`, `JacketHit` | 감지 파이프라인과 자켓 인덱스 경계 (§3.3) |
+| `overmax_detect` | `RoiManager`, `GlobalRoiConfig`, `SceneRoiConfig`, `AtlasTranslator` | ROI 표와 아틀라스 좌표 해석 |
+| `overmax_detect` | `detect_static_scene`, `check_open_match_badge`, `detect_freestyle_result_colorbar_match`, `detect_button_mode`, `detect_difficulty`, `detect_max_combo`, `MIN_VALID_RATE`, `templates::*` | 단일 프레임 판독 함수 (도구·테스트용) |
+| `overmax_detect` | `RuntimeTelemetry`, `PipelineStatsCollector`, `PipelineTelemetrySnapshot`, `DetectionDeliveryTelemetry`, `TimingAggregator`, `format_duration_us`, `current_timestamp_str` | 감지·전달 텔레메트리 |
+| `overmax_capture` | `CaptureEngine`, `CaptureErrorAction`, `AdaptiveCaptureEngine`, `PreferredCaptureEngine` (Windows), `hdr_pipeline` (Windows) | 화면 캡처 엔진 |
+| `overmax_capture` | `WindowTracker`, `FocusState`, `PresentationObservation`, `SharedPresentationObservation`, `restore_foreground_by_title`, `encode_wide`·`find_hwnd_by_title` (Windows), `FocusObservation`·`FocusSource` (Linux) | 게임 창 추적 |
+| `overmax_capture` (Linux) | `GameGeometrySource`, `NoGeometrySource`, `select_geometry_source`, `spawn_game_geometry_source`, `SharedGameGeometry`, `GameGeometry`, `GeometryChangedCallback` | 컴포지터 좌표의 게임 창 위치 소스 (§3.2) |
+| `overmax_capture` (Linux, `portal-capture`) | `PortalCapture`, `PortalStatus`, `PortalConnection`, `PortalControl`, `ConnectionStatus`, `Confirmation`, `ResetScope` | XDG Desktop Portal 캡처 |
+| `overmax_engine` | `detection_worker` (모듈), `DetectionPipeline` (= `overmax_detect::DetectionPipeline<ImageIndexJacket>`), `ImageIndexJacket` | 캡처+감지를 묶는 워커, data 이미지 인덱스 기반 자켓 인덱스 |
 
 공개 API는 아직 버전 보장이 없다 (`0.x`). 시그니처를 바꾸는 변경은 이 문서와 함께 갱신한다.
 
@@ -81,6 +90,22 @@ pub trait GameGeometrySource: Send {
   4. 추적 상실·복수 매칭·보이지 않는 workspace·IPC 끊김이면 `sink`를 `None`으로 비운다 (fail-closed).
 - 등록: `select_geometry_source()`에 환경 변수 감지로 분기를 추가한다. 감지되지 않으면 `NoGeometrySource`를 유지한다.
 - 오버레이는 창 모드이고 `output`이 현재 대상 출력과 같을 때만 값을 쓴다. 위치 갱신 시 오버레이를 깨우는 경로는 TASKS 12.3에서 추가 예정이다.
+
+### 3.3 `JacketIndex`
+
+```rust
+pub trait JacketIndex {
+    fn is_ready(&self) -> bool;
+    fn similarity_threshold(&self) -> f32;
+    fn check_centroid_kernel(&self, data: &[u8], width: usize, height: usize, channels: usize) -> bool;
+    fn match_jacket(&self, data: &[u8], width: usize, height: usize, channels: usize) -> Option<JacketHit>;
+}
+```
+
+- `DetectionPipeline<J: JacketIndex>`가 자켓 ROI(BGRA, `channels` = 4)로 호출한다. 정적 디스패치이며 매 프레임 경로에 있으므로 구현은 할당을 최소화한다.
+- `is_ready`가 거짓이면 파이프라인은 자켓 매칭을 건너뛴다. `check_centroid_kernel`은 결과·선곡 화면 판정 전의 사전 게이트로, 판단할 근거가 없으면 `true`를 돌려준다.
+- `match_jacket`은 가장 유사한 후보 하나를 돌려준다. `image_id`는 곡 ID 문자열이며, 파이프라인은 `similarity >= similarity_threshold()`일 때만 장면 판정에 쓴다.
+- 기본 구현은 `overmax_engine::ImageIndexJacket` (`overmax_data`의 `ImageIndexDb` + `JacketMatcher`, DB 형식 불변).
 
 ---
 

@@ -256,3 +256,33 @@ app이 쓰는 engine 내부 경로(약 40곳)를 각 crate의 루트 re-export(`
 - `verify_pipeline` 109건 결과 기준선과 바이트 단위 동일. `cargo build --release -p overmax-app` 성공. 감지 경로에 변경이 없어 A/B는 생략했다.
 
 알게 된 기존 문제 (고치지 않음): `overmax_app`의 `ui::native_app::tests::upload_outcome_maps_to_channel_message`가 간헐적으로 실패한다. `LOCALE_TEST_LOCK` 없이 현재 언어를 읽는데, 같은 바이너리의 `overlay_header_detail` 테스트가 언어를 바꾸기 때문이다 (재실행하면 통과).
+
+### 단계 5 — 플랫폼 분리 (진행 중, 2026-11-19)
+
+#### 목표 파일 지도
+
+`overmax_capture` (완료, `ea…` 이동 커밋 참고):
+
+| 이전 | 이후 |
+| :--- | :--- |
+| `capture_engine/windows/{mod,dxgi,gdi,hdr_pipeline,normalizer,shader_bytes}.rs` | `windows/capture.rs`, `windows/capture/*.rs` |
+| `window_tracker/windows.rs` | `windows/window_tracker.rs` |
+| `capture_engine/linux.rs` | `linux/capture_engine.rs` |
+| `window_tracker/linux.rs`, `window_tracker/geometry_source{.rs,/}` | `linux/window_tracker.rs`, `linux/geometry_source{.rs,/}` |
+| `portal{.rs,/}` | `linux/portal{.rs,/}` (`portal-capture` 기능) |
+| `window_tracker.rs`의 Linux 전용 `FocusSource`·`FocusObservation` | `linux/window_tracker.rs` |
+
+공통으로 남는 것: `capture_engine.rs` (`CaptureEngine` trait, `CaptureErrorAction`), `window_tracker.rs` (`FocusState`, `PresentationObservation`). `#[cfg]`는 `lib.rs`의 `mod`/`pub use`와 `CaptureEngine`의 Windows 전용 설정 메서드 3개(`set_preferred_engine` 등)에만 남는다. 이 3개는 워커가 `Box<dyn CaptureEngine>`에 대고 부르므로, 없애려면 워커 구조가 바뀐다 (아래 워커 결정에 묶음).
+
+`overmax_engine` 워커 (설계 결정 필요): `detection_worker.rs` 1,702줄, `#[cfg]` 82개. Linux 전용은 `LinuxFocusPolicy`·`capture_target_resized`·`effective_focus`, `tick_linux`·`process_linux_frame`·`handle_linux_capture_error`·`linux_detecting_output`·`on_linux_window_missing`, portal 연결 필드, 그리고 테스트 대부분. Windows 전용은 `tick`, `cached_window_id`, 캡처 설정 동기화.
+
+`overmax_app` (계획):
+
+| 이전 | 이후 |
+| :--- | :--- |
+| `ui/platform/windows.rs` | `ui/platform/windows/mod.rs` |
+| `ui/tray_icon.rs` | `ui/platform/windows/tray_icon.rs` |
+| `ui/platform/linux.rs` | `ui/platform/linux/mod.rs` |
+| `ui/portal_capture_ui.rs` | `ui/platform/linux/portal_capture_ui.rs` |
+| `ui/linux_layer_overlay.rs` (2,574줄) | `ui/platform/linux/layer_overlay/` — `mod.rs` (스냅샷·핸들·`spawn`/`run`), `foreign_toplevel.rs` (상태 파싱·대상 선택 + `ZwlrForeignToplevel*` Dispatch), `backend.rs` (`Backend` 상태·렌더 루프), `output.rs` (출력 기하·배율), `panel.rs` (패널 크기·여백·표시 판단·degraded 그리기), `handlers.rs` (Compositor/LayerShell/Seat/Pointer/Output·viewport Dispatch), `tests.rs` |
+| `native_app_viewports.rs`·`native_app.rs`의 플랫폼 접착 코드 | 조사 후 결정 (`#[cfg]` 40개·8개) |

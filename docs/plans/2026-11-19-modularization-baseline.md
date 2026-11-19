@@ -88,7 +88,7 @@ diff --strip-trailing-cr <worktree>/docs/plans/2026-11-19-modularization-baselin
 | 자켓 해시 (ahash+dhash+phash) | 712.0 µs | – | – |
 | 자켓 매칭 파이프라인 전체 | 862.3 µs | – | – |
 
-### 3.2 인게임 실측 — **사용자 측정 대기**
+### 3.2 인게임 실측
 
 앱 텔레메트리(`cache/telemetry.log`의 `[TelemetryFlow]` 줄, 약 5초 주기)는 캡처 시간을 `time=평균/P95/최대`로 기록한다. P50은 기록하지 않으므로 기준선은 **평균·P95**로 잡는다. 과거 참고값(TASKS 아카이브 4.6): DXGI 캡처 P50 0.62ms · P95 0.80ms.
 

@@ -1,3 +1,32 @@
+//! 순수 Rust 경량 컴퓨터 비전 라이브러리.
+//!
+//! OS·외부 CV 라이브러리(OpenCV 등) 의존 없이 화면 캡처 이미지를 판독할 때 필요한
+//! 기본 연산을 제공한다. 게임 종류와 무관하며 Overmax 밖에서 그대로 쓸 수 있다.
+//!
+//! # 제공하는 것
+//! - 지각 해시: [`compute_image_hashes`] → `(pHash, dHash, aHash)`
+//! - HOG 특징: [`compute_image_hog`], [`hog`]
+//! - 4×4 그리드 RGB 히스토그램: [`compute_grid_histogram`]
+//! - 이진화: [`binarize_by_global_contrast`], [`image`] 모듈의 적응형 임계처리
+//! - 문자 분할·비트마스크 템플릿 매칭: [`segment_characters`], [`match_character`]
+//!
+//! # 제공하지 않는 것
+//! - 화면 캡처, 창 추적 → `overmax-capture`
+//! - 프레임 버퍼·ROI 타입 → `overmax-frame`
+//! - 특정 게임 화면의 판독 로직 (DJMAX 판독은 앱 전용 `overmax-detect`)
+//!
+//! 입력은 `channels`(1/3/4)를 지정한 행 우선 바이트 버퍼이며, 3·4채널은 BGR(A) 순서다.
+//!
+//! ```
+//! let (w, h) = (32, 32);
+//! let bgr: Vec<u8> = (0..w * h * 3).map(|i| (i % 251) as u8).collect();
+//! let (phash, dhash, ahash) = overmax_cv::compute_image_hashes(&bgr, w, h, 3).unwrap();
+//! let same = overmax_cv::compute_image_hashes(&bgr, w, h, 3).unwrap();
+//! assert_eq!((phash, dhash, ahash), same);
+//! ```
+//!
+//! 재사용 범위와 의존 방법: `docs/guides/module-contracts.md` §6.
+
 pub mod color;
 pub mod error;
 pub mod hog;

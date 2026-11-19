@@ -982,7 +982,15 @@ impl NativeApp {
             self.platform.last_painted_rect = Some(rect);
             let target_w = (overlay_ui::BASE_WIDTH * scale).ceil();
             let fit_h = rect.height().ceil();
-            if target_w > 1.0 && fit_h > 1.0 {
+            // 크기가 실제로 다를 때만 보낸다. 매 프레임 InnerSize를 보내면 SetWindowPos가
+            // 반복되고, NVIDIA OpenGL 드라이버가 창 크기 처리마다 스핀 대기해 선곡 화면에서
+            // UI 스레드 CPU가 코어 1개 가까이 오른다 (#44).
+            let current = ui
+                .ctx()
+                .input(|i| i.viewport().inner_rect.map(|r| r.size()));
+            let needs_resize = current
+                .is_none_or(|size| (size.x - target_w).abs() > 0.5 || (size.y - fit_h).abs() > 0.5);
+            if target_w > 1.0 && fit_h > 1.0 && needs_resize {
                 ui.ctx()
                     .send_viewport_cmd(ViewportCommand::InnerSize(Vec2::new(target_w, fit_h)));
             }

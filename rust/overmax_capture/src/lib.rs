@@ -19,5 +19,7 @@ pub use window_tracker::{
 };
 #[cfg(target_os = "linux")]
 pub use window_tracker::{
-    spawn_game_geometry_source, FocusObservation, FocusSource, GameGeometry, SharedGameGeometry,
+    select_geometry_source, spawn_game_geometry_source, FocusObservation, FocusSource,
+    GameGeometry, GameGeometrySource, GeometryChangedCallback, NoGeometrySource,
+    SharedGameGeometry,
 };

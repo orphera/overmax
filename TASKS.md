@@ -248,7 +248,7 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [x] 1. engine 내부 순환 끊기
   - [x] 2. 감지 ↔ data 분리 (`JacketIndex`, `DetectConfig`)
   - [x] 3. crate 분리 (`overmax_frame` / `overmax_detect` / `overmax_capture`)
-  - [ ] 4. 공개 API 정리
+  - [x] 4. 공개 API 정리
   - [ ] 5. 플랫폼 분리
   - [ ] 6. 큰 파일 분할
   - [ ] 7. 최종 검증 (기준선 비교)

@@ -1,13 +1,7 @@
 use overmax_core::SceneType;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RawRoiRect {
-    pub x: i32,
-    pub y: i32,
-    pub width: i32,
-    pub height: i32,
-}
+pub use crate::frame::roi_rect::RawRoiRect;
 
 #[derive(Debug, Clone)]
 pub struct SceneRoiConfig {

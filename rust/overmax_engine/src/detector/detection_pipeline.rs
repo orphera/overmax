@@ -829,7 +829,7 @@ pub fn detect_static_scene(
         .unwrap_or(SceneType::Unknown)
 }
 
-fn detect_rect_edges(frame: &CapturedFrame, roi: crate::detector::roi::RoiRect) -> Option<f32> {
+fn detect_rect_edges(frame: &CapturedFrame, roi: crate::frame::RoiRect) -> Option<f32> {
     let margin = 8;
     roi.with_margin(margin)
         .and_then(frame, |ext_img| ext_img.detect_edges(margin as usize).ok())
@@ -837,11 +837,11 @@ fn detect_rect_edges(frame: &CapturedFrame, roi: crate::detector::roi::RoiRect) 
 
 fn check_category_band_solid(
     frame: &CapturedFrame,
-    jacket_roi: crate::detector::roi::RoiRect,
+    jacket_roi: crate::frame::RoiRect,
     scale: f32,
 ) -> bool {
     let width = ((4.0 * scale).round() as i32).max(4);
-    let band_roi = crate::detector::roi::RoiRect {
+    let band_roi = crate::frame::RoiRect {
         x1: jacket_roi.x2,
         y1: jacket_roi.y1,
         x2: jacket_roi.x2 + width,
@@ -1417,7 +1417,7 @@ mod tests {
 
     #[test]
     fn song_select_emits_verified_event_once_across_stable_frames() {
-        use crate::detector::roi::RoiRect;
+        use crate::frame::RoiRect;
         use overmax_core::SceneType;
 
         let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));

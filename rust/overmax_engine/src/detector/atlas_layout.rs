@@ -1,5 +1,5 @@
 use crate::frame::CapturedFrame;
-use crate::detector::roi_config::RawRoiRect;
+use crate::frame::RawRoiRect;
 use overmax_core::SceneType;
 
 /// GPU 아틀라스 텍스처 규격 (512x512 RGBA8, 1 MB)

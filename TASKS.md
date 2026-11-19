@@ -254,3 +254,9 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [x] 7. 최종 검증 (기준선 비교) — 인식 109건 동일, 인게임 A/B CPU·캡처 10% 이내. Windows 수동 체크리스트 15/18 확인, 3개 보류 (오픈매치 2·3인 결과, DB 동기화 버전 갱신, 업데이트 확인)
 - [x] **13.3 [orphera/overmax#44](https://github.com/orphera/overmax/issues/44) 릴리스 빌드에서 선곡·결과 화면 CPU 사용률이 높음**
   - 원인: 매 프레임 `InnerSize` → `SetWindowPos` → NVIDIA OpenGL 드라이버 스핀. `7f5df1e`에서 창 크기가 다를 때만 보내도록 수정. 선곡 화면 CPU 평균 87.4% → 6.1% (코어 1개 기준)
+- [ ] **13.4 크레이트 재사용성 정리** ([결정 기록](docs/decisions/workspace_and_reuse.md))
+  - [x] 재사용 후보(`overmax_cv` / `overmax-frame` / `overmax-capture`) 크레이트 문서(`//!`)와 doctest
+  - [x] Cargo 메타데이터(`description`/`keywords`/`categories`/`repository`), 앱 전용 크레이트 `publish = false`
+  - [x] 재사용 가능한 크레이트 표 ([module-contracts.md §6](docs/guides/module-contracts.md#6-재사용-가능한-크레이트))
+  - [ ] DJMAX 전용 코드 경계 분리: `overmax-frame`의 `atlas_layout`(→ `overmax-core` 의존)과 capture의 GPU 아틀라스 모드를 이동하거나 feature 뒤로
+  - [ ] 재사용 크레이트별 `examples/` (예: capture "창 제목으로 1프레임 캡처해 PNG 저장", cv "이미지 해시 비교")

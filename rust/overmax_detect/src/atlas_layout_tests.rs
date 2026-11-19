@@ -1,10 +1,10 @@
 //! `frame::atlas_layout` 슬롯 표와 detector의 ROI 설정·아틀라스 해석이 맞물리는지 확인하는 테스트.
 //! (슬롯 표는 frame에 있지만, 이 검사들은 detector 타입이 필요해 detector 쪽에 둔다.)
 
-use crate::detector::roi_config::GlobalRoiConfig;
-use crate::frame::atlas_layout::*;
-use crate::frame::CapturedFrame;
+use crate::roi_config::GlobalRoiConfig;
 use overmax_core::{Difficulty, SceneType};
+use overmax_frame::atlas_layout::*;
+use overmax_frame::CapturedFrame;
 
 #[test]
 fn test_src_rect_matches_global_roi_config() {
@@ -116,8 +116,8 @@ fn test_src_rect_matches_global_roi_config() {
 
 #[test]
 fn test_virtual_atlas_pixel_perfect_identity() {
-    use crate::detector::atlas_translator::AtlasTranslator;
-    use crate::frame::utils::crop_roi;
+    use crate::atlas_translator::AtlasTranslator;
+    use overmax_frame::utils::crop_roi;
 
     // 1. 패턴 데이터로 채워진 1920x1080 테스트 프레임 생성
     let w = 1920;
@@ -176,9 +176,9 @@ fn test_virtual_atlas_pixel_perfect_identity() {
 
 #[test]
 fn test_virtual_atlas_diff_panel_pixel_perfect_identity() {
-    use crate::detector::atlas_translator::AtlasTranslator;
-    use crate::detector::roi::RoiManager;
-    use crate::frame::utils::crop_roi;
+    use crate::atlas_translator::AtlasTranslator;
+    use crate::roi::RoiManager;
+    use overmax_frame::utils::crop_roi;
 
     let w = 1920;
     let h = 1080;

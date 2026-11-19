@@ -1,13 +1,12 @@
-use crate::detector::hysteresis::HysteresisBuffer;
-use crate::detector::jacket_index::JacketIndex;
-use crate::detector::play_state::PlayStateDetector;
-use crate::detector::roi::RoiManager;
-use crate::detector::telemetry::{PipelineStatsCollector, PipelineTelemetrySnapshot};
-use crate::frame::utils::{make_thumbnail, mean_abs_diff, thumbnail_changed};
-use crate::frame::window::WindowSnapshot;
-use crate::frame::CapturedFrame;
-use crate::image_index_jacket::ImageIndexJacket;
+use crate::hysteresis::HysteresisBuffer;
+use crate::jacket_index::JacketIndex;
+use crate::play_state::PlayStateDetector;
+use crate::roi::RoiManager;
+use crate::telemetry::{PipelineStatsCollector, PipelineTelemetrySnapshot};
 use overmax_core::{GameSessionState, SceneType, VerifiedPlayEvent};
+use overmax_frame::utils::{make_thumbnail, mean_abs_diff, thumbnail_changed};
+use overmax_frame::window::WindowSnapshot;
+use overmax_frame::CapturedFrame;
 use std::time::Instant;
 
 const JACKET_MATCH_INTERVAL: f64 = 0.25;
@@ -45,7 +44,7 @@ pub struct DetectionOutput {
     pub current_song_id: Option<i32>,
     pub image_db_ready: bool,
     pub jacket_status: JacketMatchStatus,
-    pub game_rect: Option<crate::frame::window::WindowRect>,
+    pub game_rect: Option<overmax_frame::window::WindowRect>,
     pub window_snapshot: Option<WindowSnapshot>,
     pub capture_fatal: Option<String>,
     pub top_jacket_similarity: Option<f32>,
@@ -55,7 +54,7 @@ pub struct DetectionOutput {
     pub sleep_hint: SleepHint,
     pub telemetry_snapshot: Option<PipelineTelemetrySnapshot>,
     #[cfg(any(debug_assertions, feature = "telemetry"))]
-    pub delivery_telemetry: Option<crate::detector::telemetry::DetectionDeliveryTelemetry>,
+    pub delivery_telemetry: Option<crate::telemetry::DetectionDeliveryTelemetry>,
 }
 
 /// 씬 폴링 파싱 실패 시의 원인 진단 정보 (텔레메트리 수집용)
@@ -83,7 +82,7 @@ pub enum JacketMatchStatus {
     Matched { song_id: i32, similarity: f32 },
 }
 
-pub struct DetectionPipeline<J: JacketIndex = ImageIndexJacket> {
+pub struct DetectionPipeline<J: JacketIndex> {
     pub stats: PipelineStatsCollector,
     jacket_index: J,
     rois: RoiManager,
@@ -177,7 +176,7 @@ impl<J: JacketIndex> DetectionPipeline<J> {
         // A backend/format change may arrive on a cached tick. In-game history
         // cannot outlive the availability of its evidence, even before polling.
         if (self.last_scene.is_ingame() || self.pending_scene.is_ingame())
-            && !crate::detector::templates::gameplay_scene::supports_frame(frame)
+            && !crate::templates::gameplay_scene::supports_frame(frame)
         {
             self.commit_scene(SceneType::Unknown);
         }
@@ -336,8 +335,7 @@ impl<J: JacketIndex> DetectionPipeline<J> {
             return None;
         }
 
-        let gameplay_scene =
-            crate::detector::templates::gameplay_scene::read_scene(frame, &self.rois);
+        let gameplay_scene = crate::templates::gameplay_scene::read_scene(frame, &self.rois);
         let is_ingame = gameplay_scene.is_ingame();
         let final_scene: SceneType;
         if is_ingame {
@@ -447,7 +445,7 @@ impl<J: JacketIndex> DetectionPipeline<J> {
 
     fn apply_jacket_match(
         &mut self,
-        jacket: &crate::frame::utils::ImageRegion,
+        jacket: &overmax_frame::utils::ImageRegion,
     ) -> JacketMatchStatus {
         self.stats.record_match_jacket();
         let Some(result) = self.jacket_index.match_jacket(
@@ -538,7 +536,7 @@ impl<J: JacketIndex> DetectionPipeline<J> {
     }
 }
 
-use crate::detector::templates::FREESTYLE_RESULT_MODE_COLORS;
+use crate::templates::FREESTYLE_RESULT_MODE_COLORS;
 use overmax_cv::Bgr;
 
 fn get_min_color_distance(mean: Bgr, colors: &[Bgr]) -> f32 {
@@ -605,7 +603,7 @@ fn detect_result_scene_via_edge(
     // ResultFreestyle, ResultOpen3, ResultOpen2 재킷 ROI는 같은 위치를 공유함
     let jacket_roi = rois.get_roi_for_scene("jacket", SceneType::ResultFreestyle)?;
     let colorbar_roi = rois.get_roi_for_scene("mode_colorbar", SceneType::ResultFreestyle)?;
-    let mean = crate::frame::utils::region_mean_bgr(frame, colorbar_roi);
+    let mean = overmax_frame::utils::region_mean_bgr(frame, colorbar_roi);
 
     let is_freestyle_result = detect_freestyle_result_colorbar_match(mean);
     let open_match_scene = check_open_match_badge(frame, rois);
@@ -831,7 +829,7 @@ pub fn detect_static_scene(
         .unwrap_or(SceneType::Unknown)
 }
 
-fn detect_rect_edges(frame: &CapturedFrame, roi: crate::frame::RoiRect) -> Option<f32> {
+fn detect_rect_edges(frame: &CapturedFrame, roi: overmax_frame::RoiRect) -> Option<f32> {
     let margin = 8;
     roi.with_margin(margin)
         .and_then(frame, |ext_img| ext_img.detect_edges(margin as usize).ok())
@@ -839,11 +837,11 @@ fn detect_rect_edges(frame: &CapturedFrame, roi: crate::frame::RoiRect) -> Optio
 
 fn check_category_band_solid(
     frame: &CapturedFrame,
-    jacket_roi: crate::frame::RoiRect,
+    jacket_roi: overmax_frame::RoiRect,
     scale: f32,
 ) -> bool {
     let width = ((4.0 * scale).round() as i32).max(4);
-    let band_roi = crate::frame::RoiRect {
+    let band_roi = overmax_frame::RoiRect {
         x1: jacket_roi.x2,
         y1: jacket_roi.y1,
         x2: jacket_roi.x2 + width,
@@ -922,8 +920,8 @@ fn check_category_band_solid(
 #[cfg(test)]
 mod tests {
     use super::{DetectionPipeline, JacketMatchStatus, SleepHint};
-    use crate::detector::jacket_index::{JacketHit, JacketIndex};
-    use crate::frame::CapturedFrame;
+    use crate::jacket_index::{JacketHit, JacketIndex};
+    use overmax_frame::CapturedFrame;
 
     /// 적재되지 않은 `ImageIndexDb`(엔트리 0개)와 같은 동작을 하는 테스트용 자켓 인덱스:
     /// 매칭 결과 없음, centroid 게이트 통과, 지정한 임계값.
@@ -998,9 +996,7 @@ mod tests {
             height: 1440,
             bgra: vec![0; 2560 * 1440 * 4],
         };
-        assert!(!crate::detector::templates::gameplay_scene::supports_frame(
-            &frame
-        ));
+        assert!(!crate::templates::gameplay_scene::supports_frame(&frame));
         for resume_before_replay in [false, true] {
             for (rate, is_max_combo) in [(99.86, true), (99.5, false)] {
                 let mut pipeline =
@@ -1256,7 +1252,7 @@ mod tests {
             }
         }
         let mut paused = blank_frame();
-        let title = crate::detector::templates::gameplay_scene::PAUSE_TITLE[0];
+        let title = crate::templates::gameplay_scene::PAUSE_TITLE[0];
         for (i, &gray) in title.iter().enumerate() {
             let offset = ((177 + i / 148) * 1920 + 731 + i % 148) * 4;
             paused.bgra[offset..offset + 3].fill(gray);
@@ -1451,8 +1447,8 @@ mod tests {
 
     #[test]
     fn song_select_emits_verified_event_once_across_stable_frames() {
-        use crate::frame::RoiRect;
         use overmax_core::SceneType;
+        use overmax_frame::RoiRect;
 
         let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         let mut frame = blank_frame();
@@ -1483,7 +1479,7 @@ mod tests {
             },
             [0xDC, 0xDC, 0xDC],
         ); // NORMAL
-        crate::detector::play_state::paint_song_select_rate_zero(&mut frame); // 기록 없음 = 0.00%
+        crate::play_state::paint_song_select_rate_zero(&mut frame); // 기록 없음 = 0.00%
 
         let mut stable = 0;
         let mut events = 0;
@@ -1513,9 +1509,9 @@ mod tests {
     #[test]
     #[ignore]
     fn test_scratch_images() {
-        use crate::frame::utils::crop_roi;
         use image::GenericImageView;
         use overmax_core::SceneType;
+        use overmax_frame::utils::crop_roi;
 
         let scratch_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scratch");
         let images = [
@@ -1645,7 +1641,7 @@ mod tests {
     #[test]
     fn gameplay_atlas_and_full_frame_return_same_candidate_for_equivalent_evidence() {
         use overmax_core::SceneType;
-        let mut rois = crate::detector::roi::RoiManager::new(1920, 1080);
+        let mut rois = crate::roi::RoiManager::new(1920, 1080);
         let mut full = CapturedFrame {
             width: 1920,
             height: 1080,
@@ -1657,7 +1653,7 @@ mod tests {
             }
         }
         assert_eq!(
-            crate::detector::templates::gameplay_scene::read_scene(&full, &rois),
+            crate::templates::gameplay_scene::read_scene(&full, &rois),
             SceneType::Gameplay
         );
         let atlas = CapturedFrame {
@@ -1666,11 +1662,9 @@ mod tests {
             bgra: vec![0; 512 * 512 * 4],
         };
         rois.update_window_size(atlas.width, atlas.height);
-        assert!(crate::detector::templates::gameplay_scene::supports_frame(
-            &atlas
-        ));
+        assert!(crate::templates::gameplay_scene::supports_frame(&atlas));
         assert_eq!(
-            crate::detector::templates::gameplay_scene::read_scene(&atlas, &rois),
+            crate::templates::gameplay_scene::read_scene(&atlas, &rois),
             SceneType::Unknown
         );
     }
@@ -1679,10 +1673,10 @@ mod tests {
     /// 엣지를 읽는다. 아틀라스 모드에서도 그 마진은 이웃 슬롯이 아닌 실제 화면 픽셀이어야 한다.
     #[test]
     fn open_match_player_panel_edge_margin_is_identical_in_atlas() {
-        use crate::detector::roi::RoiManager;
-        use crate::frame::atlas_layout::build_virtual_atlas;
-        use crate::frame::utils::crop_roi;
+        use crate::roi::RoiManager;
         use overmax_core::SceneType;
+        use overmax_frame::atlas_layout::build_virtual_atlas;
+        use overmax_frame::utils::crop_roi;
 
         let (w, h) = (1920usize, 1080usize);
         let mut bgra = Vec::with_capacity(w * h * 4);

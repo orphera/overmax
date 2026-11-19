@@ -502,7 +502,7 @@ fn format_output_environment(output: &OutputEnvironment) -> String {
     )
 }
 
-pub(crate) fn current_timestamp_str() -> String {
+pub fn current_timestamp_str() -> String {
     let now = std::time::SystemTime::now();
     let duration = now
         .duration_since(std::time::UNIX_EPOCH)
@@ -644,7 +644,7 @@ impl PipelineStatsCollector {
     pub fn record_scene_miss(
         &mut self,
         thumb_diff: Option<f32>,
-        diag: crate::detector::detection_pipeline::SceneMissDiag,
+        diag: crate::detection_pipeline::SceneMissDiag,
     ) {
         self.scene_poll_misses += 1;
         if let Some(diff) = thumb_diff {

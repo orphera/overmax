@@ -1,4 +1,4 @@
-use crate::frame::utils::ImageView;
+use overmax_frame::utils::ImageView;
 use overmax_core::{Difficulty, Mode};
 
 /// Rate 영역을 Pure Rust CV 템플릿 매칭으로 감지합니다.
@@ -332,13 +332,13 @@ fn parse_rate_text(text: &str) -> Option<f32> {
     }
     let mut value = cleaned.parse::<f32>().ok()?;
 
-    if !dot_seen && value >= (crate::detector::play_state::MIN_VALID_RATE * 100.0) {
+    if !dot_seen && value >= (crate::play_state::MIN_VALID_RATE * 100.0) {
         value /= 100.0;
     }
 
     value = (value * 100.0).floor() / 100.0;
 
-    (crate::detector::play_state::MIN_VALID_RATE..=100.0)
+    (crate::play_state::MIN_VALID_RATE..=100.0)
         .contains(&value)
         .then_some(value)
 }
@@ -373,8 +373,8 @@ mod tests {
     #[test]
     fn matches_digit_templates_accurately() {
         for &template_set in &[
-            crate::detector::templates::digit::DIGIT_TEMPLATES_SCORE,
-            crate::detector::templates::digit::DIGIT_TEMPLATES_RATE,
+            crate::templates::digit::DIGIT_TEMPLATES_SCORE,
+            crate::templates::digit::DIGIT_TEMPLATES_RATE,
         ] {
             for t in template_set {
                 let res = overmax_cv::match_character(t.mask, t.width, t.height, template_set);

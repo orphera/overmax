@@ -3001,6 +3001,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "overmax-detect"
+version = "0.4.2"
+dependencies = [
+ "image",
+ "overmax-core",
+ "overmax-frame",
+ "overmax_cv",
+]
+
+[[package]]
 name = "overmax-engine"
 version = "0.4.2"
 dependencies = [
@@ -3009,6 +3019,7 @@ dependencies = [
  "memmap2",
  "overmax-core",
  "overmax-data",
+ "overmax-detect",
  "overmax-frame",
  "overmax_cv",
  "pipewire",

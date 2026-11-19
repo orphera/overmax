@@ -1,8 +1,8 @@
-use crate::detector::roi_config::GlobalRoiConfig;
-pub use crate::frame::roi_rect::RoiRect;
-use crate::frame::utils::ImageView;
-use crate::frame::CapturedFrame;
+use crate::roi_config::GlobalRoiConfig;
 use overmax_core::{Difficulty, SceneType};
+pub use overmax_frame::roi_rect::RoiRect;
+use overmax_frame::utils::ImageView;
+use overmax_frame::CapturedFrame;
 
 const REF_WIDTH: i32 = 1920;
 const REF_HEIGHT: i32 = 1080;
@@ -84,9 +84,7 @@ impl RoiManager {
     /// 지정된 씬의 ROI 영역을 반환합니다.
     pub fn get_roi_for_scene(&self, name: &str, scene: SceneType) -> Option<RoiRect> {
         if self.is_atlas {
-            return crate::detector::atlas_translator::AtlasTranslator::get_roi_for_scene(
-                name, scene,
-            );
+            return crate::atlas_translator::AtlasTranslator::get_roi_for_scene(name, scene);
         }
         let roi = self
             .config
@@ -98,7 +96,7 @@ impl RoiManager {
 
     pub fn get_global_roi(&self, name: &str) -> Option<RoiRect> {
         if self.is_atlas {
-            return crate::detector::atlas_translator::AtlasTranslator::get_roi_for_scene(
+            return crate::atlas_translator::AtlasTranslator::get_roi_for_scene(
                 name,
                 SceneType::Unknown,
             );
@@ -126,7 +124,7 @@ impl RoiManager {
         scene: SceneType,
     ) -> Option<RoiRect> {
         if self.is_atlas {
-            return crate::detector::atlas_translator::AtlasTranslator::get_diff_panel_roi_for_scene(
+            return crate::atlas_translator::AtlasTranslator::get_diff_panel_roi_for_scene(
                 diff, scene,
             );
         }

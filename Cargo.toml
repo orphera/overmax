@@ -2,6 +2,7 @@
 members = [
     "rust/overmax_app",
     "rust/overmax_core",
+    "rust/overmax_detect",
     "rust/overmax_cv",
     "rust/overmax_data",
     "rust/overmax_engine",

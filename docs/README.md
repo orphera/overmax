@@ -85,6 +85,7 @@ OS별 구동 가이드 및 외부 연동 프로토콜 규격을 보관합니다.
 
 ### 6. Archive (`docs/archive/tasks/`)
 완료된 이전 버전의 마일스톤 태스크 목록입니다.
+* [`TASKS_closed_2026-11-19.md`](archive/tasks/TASKS_closed_2026-11-19.md): 진행하지 않기로 닫은 작업 (레인 가림막·단축키, 래더매치, 곡명 다국어, 감지 안정성 후속)과 이유.
 * [`TASKS_v0.4.0_archive.md`](archive/tasks/TASKS_v0.4.0_archive.md): v0.4.0 마일스톤 완료 작업 (스마트 추천 엔진, TrueSkill 실력 모델, ODDS 다이얼로그, RecordDB 분할, 일본어 i18n 등).
 * [`TASKS_v0.3.0_archive.md`](archive/tasks/TASKS_v0.3.0_archive.md): v0.3.0 마일스톤 완료 작업.
 * [`TASKS_v0.2.0_archive.md`](archive/tasks/TASKS_v0.2.0_archive.md): v0.2.0 마일스톤 완료 작업.

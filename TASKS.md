@@ -122,16 +122,7 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
 
 # 🎯 [Planned] Milestone v0.5.0 — 인게임 유틸리티 및 연동 고도화 (In-game Utilities & Automation)
 
-## 6. 플레이어 편의성 및 인게임 유틸리티 (In-game Utilities & Controls)
-
-- [ ] **6.1 글로벌/인게임 단축키(Hotkeys) 지원**
-  - [ ] 오버레이 표시/숨김(Toggle Visibility), 라이트 모드 전환, 간편 V-Archive 업로드 단축키 연동
-  - [ ] 게임 중 키 씹힘 방지 및 사용자 커스텀 단축키 설정 UI 제공
-- [ ] **6.2 노트 레인 임시 가림막(Lane Blind / Curtain Overlay) 지원**
-  - [ ] 연습용 상단/하단 가림막(SUDDEN / HIDDEN / BLIND 효과) 전용 경량 투명 서브 뷰포트 오버레이
-  - [ ] 가림막 높이, 위치, 투명도 및 단축키 토글 제어 기능 지원
-
----
+> 6(단축키·레인 가림막), 8(래더매치), 9(곡명 다국어), 10(감지 안정성 후속)은 진행하지 않기로 하고 닫았습니다. 이유와 남은 메모는 [`docs/archive/tasks/TASKS_closed_2026-11-19.md`](docs/archive/tasks/TASKS_closed_2026-11-19.md) 참조. 번호는 기존 참조 유지를 위해 재배정하지 않습니다.
 
 ## 7. 기록 수집 및 V-Archive 자동 연동 (Record Automation)
 
@@ -149,33 +140,6 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [x] 기록 DB 저장 (앱 재실행 후에도 유지) — `record.db`의 신규 `upload_history` 테이블 (사용자별 최근 200건), 기동 시 로드, 사용자 전환 시 재로드
 - [ ] **7.3 플레이어 편의기능**
   - [x] 업로드 할 때 Rate 얼마올랐는지 표시 하도록 (업로드 토스트·동기화 목록 결과에 `(+X.XX%)` 표기, 신규 MAX COMBO 달성 시 `M` 표기, 이전 V-Archive 기록이 없는 신규 등록은 상승폭 생략)
-
----
-
-## 8. 감지 씬 다양화 및 인게임 확장 (Scene Diversity & Ladder Match)
-
-- [ ] **8.1 래더매치(Ladder Match) 씬 감지 대응**
-  - [ ] 래더매치 밴픽/선곡 화면 및 대기실 감지 대응
-  - [ ] 래더매치 결과창 인식 지원
-
----
-
-## 9. 곡명 다국어 표기 (Song Title Localization)
-
-- [ ] **9.1 한국어 곡명 다국어 표기 대응**
-  - [ ] 조사: 게임 언어 설정(EN/JA)에서 한국어 곡명(`songs.json` 846곡 중 73곡)의 인게임 표기 확인 → 현지화 필요 여부 결정 (`songs.json`에는 다국어 곡명 필드 없음)
-  - [ ] (필요 시) 표시 전용 곡명 매핑(`song_id → {en, ja}`) 도입, 미등록 곡은 원본 표기 폴백
-  - [ ] V-Archive 업로드/검색 등 외부 연동은 원본(한국어) 곡명 유지
-
----
-
-## 10. 감지 안정성 후속 과제 (Detection Hardening)
-
-- [ ] **10.1 선곡 화면 rate 오인식의 5프레임 검증 우회 방지**
-  - [ ] 배경: 선곡 화면 `rate_cache`가 체크섬(±50) 기반으로 값을 유지하므로, 오인식 1회가 안정화 이력(5프레임) 전체에 복제되어 `Unplayed(0.0)` 이벤트 → 로컬 기록 삭제(`RecordManager::handle_verified_play`)로 이어질 수 있음. (결과창은 7샘플 median으로 방어하지만 선곡 화면에는 대응 장치 없음)
-  - [x] 오탐 여부 1차 측정 (2026-10-08, 녹화 영상 재생 기반 debug 빌드, `[VerifiedEvent]` 로그): 선곡 화면 이벤트 15건 중 오탐 0건 (rate 검출 2건은 로컬 기록과 일치, `0.00%` 13건은 기록 없음 또는 게임 화면도 0.00%). 표본이 작고 라이브 캡처가 아니므로 결론은 "증거 없음"이며 안전을 증명한 것은 아님
-  - [ ] (보류) 방어 로직 도입: 오탐 증거가 없어 근거 없는 땜질을 피하기 위해 보류. 실플레이 라이브 로그에서 기록이 있는 패턴이 선곡 화면 `Rate: 0.00%`로 확정되는 사례가 확인되면 재개. 후보: 삭제 조건 강화(미플레이 지속 시간) / 독립 샘플 검증. 구조적 약점은 그대로임: `(score, rate) = (None, None)`이 `Unplayed`로 처리되어 "읽기 실패"와 "기록 없음"이 구분되지 않음 (`play_state.rs` `process_rate_detection`)
-  - [ ] 관련: `handle_verified_play`가 실패(DB busy 등)와 "변경 없음"을 모두 `false`로 반환해, 이벤트 1회 방출 구조에서는 실패 재시도가 불가함 — 반환값 의미 분리는 완료(11.3, `try_handle_verified_play` / `RecordCommit::Failed`), 재시도 정책은 미정
 
 ---
 
@@ -216,7 +180,7 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
     - [x] 2단계: 관찰자(IPC 발행, 자동 업로드, app 스냅샷)를 `RuntimeUpdate`를 받는 읽기 전용 trait 뒤로 하나씩 분리 — `RuntimeObserver` + `IpcObserver`. 자동 업로드는 감지 출력이 없어도 매 프레임 타이머를 진행해야 해서 관찰자가 아닌 app의 프레임 tick에 둠. app 스냅샷은 `on_detection` 반환값으로 받음
     - [x] 3단계: 커밋 체인을 `SessionTracker`(세션 경계·기록 스냅샷·PB 판정) → `RecordCommit` → `DerivedState`(추천 재계산) 순서 고정 호출로 분리 — `SessionTracker` → `commit_record` (`hub.rs`). 추천 재계산은 여러 경로에서 호출되므로 `runtime::derived::recommend_for_state` 함수로 두고 app의 `refresh_overlay_data`가 부름
     - [x] 순서 불변식 유지: PB 판정은 기록 저장 전, `PlayVerified`는 DB 커밋 결과와 무관하게 발행 (`hub.rs` 테스트)
-    - [x] (별도 커밋) `RecordCommit` 결과를 실패/변경 없음/갱신으로 구분 — 10.1의 `handle_verified_play` 반환값 의미 분리와 연결 (`try_handle_verified_play` 등 `try_*` API 추가, 기존 API는 호환 유지. 실패는 디버그 로그로만 노출)
+    - [x] (별도 커밋) `RecordCommit` 결과를 실패/변경 없음/갱신으로 구분 — 10.1의 `handle_verified_play` 반환값 의미 분리와 연결 (10.1은 닫음) (`try_handle_verified_play` 등 `try_*` API 추가, 기존 API는 호환 유지. 실패는 디버그 로그로만 노출)
 
 - [x] **11.4 공개 계약 문서화**
   - [x] 하위 crate가 app·외부에 노출하는 API(창 geometry trait 포함)와 입출력 계약 정리
@@ -264,6 +228,6 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [ ] 인게임 성능 영향 확인 (Windows 및 Linux 모두)
 
 - [ ] **12.5 (보류) 후속 검토 항목**
-  - [ ] 오버레이 포함 스크린샷 캡처 버튼 (단축키 연동은 6.1과 연결)
+  - [ ] 오버레이 포함 스크린샷 캡처 버튼 (6.1 단축키는 닫음 — 단축키 없이 검토)
   - [ ] Gamescope 외부 오버레이 경로 (실행 구성 변경 범위가 커서 별도 검토)
   - [ ] Vulkan 레이어 방식 — 프로젝트 원칙(화면 캡처·OS 창 API만 사용)과 충돌하므로 보류

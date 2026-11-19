@@ -641,9 +641,8 @@ impl NativeApp {
             .x
             .zip(overlay.position.y)
             .map(|(x, y)| (x as i32, y as i32));
-        self.platform
-            .linux_overlay
-            .publish(crate::ui::linux_layer_overlay::LinuxOverlaySnapshot {
+        self.platform.linux_overlay.publish(
+            crate::ui::platform::layer_overlay::LinuxOverlaySnapshot {
                 state: self.session.clone(),
                 song_label: self.current_song_label(),
                 pattern_tabs: self.pattern_tabs.clone(),
@@ -688,7 +687,8 @@ impl NativeApp {
                     .last_detection_output
                     .as_ref()
                     .and_then(|output| output.delivery_telemetry),
-            });
+            },
+        );
     }
 
     fn poll_and_drain_events(&mut self, ctx: &egui::Context) {

@@ -644,7 +644,7 @@ fn advanced_tab(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContext) {
     });
     section_card(ui, crate::t!("settings-screen-capture"), |ui| {
         #[cfg(all(target_os = "linux", feature = "portal-capture"))]
-        crate::ui::portal_capture_ui::render(ui, &ctx.portal);
+        crate::ui::platform::portal_capture_ui::render(ui, &ctx.portal);
         capture_section(ui, draft);
     });
     section_card(ui, crate::t!("settings-update-section"), |ui| {

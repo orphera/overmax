@@ -43,7 +43,7 @@ const CMD_EXIT: usize = 1005;
 static ACTIONS: OnceLock<TrayActions> = OnceLock::new();
 
 fn current_icon_bytes() -> &'static [u8] {
-    include_bytes!("../../../../assets/overmax.ico")
+    include_bytes!("../../../../../../assets/overmax.ico")
 }
 
 pub struct TrayIcon {

@@ -77,5 +77,5 @@ pub(super) fn render(ui: &mut egui::Ui, control: &PortalControl) {
         }
     });
     ui.ctx().request_repaint_after(Duration::from_millis(200));
-    ui.add_space(super::dialog_theme::DialogTheme::GAP_MD);
+    ui.add_space(crate::ui::dialog_theme::DialogTheme::GAP_MD);
 }

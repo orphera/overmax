@@ -5,8 +5,12 @@ use serde_json::Value;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
-use crate::ui::linux_layer_overlay::LinuxLayerOverlayHandle;
+pub mod layer_overlay;
+#[cfg(feature = "portal-capture")]
+pub mod portal_capture_ui;
+
 use crate::ui::ui_command::UiCommand;
+use layer_overlay::LinuxLayerOverlayHandle;
 
 pub fn init_platform_on_startup() -> Result<(), String> {
     for name in ["DISPLAY", "WAYLAND_DISPLAY"] {
@@ -118,7 +122,7 @@ impl PlatformState {
             }
         });
 
-        let linux_overlay = crate::ui::linux_layer_overlay::spawn(
+        let linux_overlay = layer_overlay::spawn(
             game_window_title.to_string(),
             command_tx.clone(),
             repaint.clone(),

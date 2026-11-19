@@ -3,6 +3,10 @@ name = "overmax-frame"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+description = "BGRA capture frame buffer, ROI rectangles, zero-copy crop views and change detection shared by capture and screen-reading code"
+keywords = ["capture", "roi", "frame", "image"]
+categories = ["multimedia::images"]
 
 [lints]
 workspace = true

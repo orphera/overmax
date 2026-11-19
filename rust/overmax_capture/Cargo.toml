@@ -3,6 +3,10 @@ name = "overmax-capture"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+description = "Low-overhead game window tracking and screen capture (Windows DXGI/WGC/GDI with HDR-to-SDR, Linux XComposite/MIT-SHM and XDG Portal)"
+keywords = ["screen-capture", "dxgi", "window-tracking", "wayland", "x11"]
+categories = ["multimedia::video", "os::windows-apis"]
 
 [lints]
 workspace = true

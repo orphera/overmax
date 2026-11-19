@@ -16,6 +16,7 @@ resolver = "2"
 version = "0.4.2"
 edition = "2021"
 license = "MIT"
+repository = "https://github.com/orphera/overmax"
 
 [workspace.lints.clippy]
 # 인지 복잡도(Cognitive Complexity) 한계를 55로 강제 제한 (초과 시 컴파일 실패)

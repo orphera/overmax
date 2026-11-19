@@ -3,6 +3,11 @@ name = "overmax_cv"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+description = "Pure Rust lightweight computer vision: perceptual hashes, HOG, grid histograms, binarization and bitmask template matching for screen-capture images"
+keywords = ["computer-vision", "image-hash", "hog", "template-matching"]
+categories = ["multimedia::images", "computer-vision"]
+readme = "README.md"
 
 [lints]
 workspace = true

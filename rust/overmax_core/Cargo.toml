@@ -3,6 +3,8 @@ name = "overmax-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+# 앱 전용 크레이트. 재사용 가능한 크레이트는 docs/guides/module-contracts.md §6 참조
+publish = false
 
 [lints]
 workspace = true

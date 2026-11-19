@@ -225,3 +225,34 @@ app이 쓰는 engine 내부 경로(약 40곳)를 각 crate의 루트 re-export(`
 - 성능 A/B (`e3d2c3a` 대비, 같은 PC, 번갈아 실행, release): `verify_pipeline` 109건 전체 중앙값 3.60 s → 3.59 s (첫 회 제외), `measure_breakdown` 자켓 매칭 0.86 ms → 0.86~0.87 ms, 아틀라스 전송 0.14~0.15 ms → 0.12~0.16 ms. 모두 노이즈 범위.
 
 알게 된 기존 문제 (이번 변경과 무관, 고치지 않음): Linux에서 `--release` + telemetry 기능 없이 테스트를 빌드하면 `window_tracker/linux.rs` 테스트가 `cfg(any(debug_assertions, feature = "telemetry"))`로 빠진 `active_window_membership`을 import해 컴파일되지 않는다. `e3d2c3a`에도 같은 코드가 있다.
+
+### 단계 4 — 공개 API 정리 (2026-11-19)
+
+원칙: 각 항목은 소유 crate의 루트에서 가져오고, crate 안의 모듈은 비공개로 둔다. 실제 사용처(`overmax_app`, engine 워커·테스트·예제, crate 사이 참조)를 조사해 루트 export를 정했다. 전체 목록은 [module-contracts.md §2](../guides/module-contracts.md#2-공개-api).
+
+| crate | 루트 공개 | 비공개로 바꾼 모듈 | 남긴 공개 모듈 |
+| :--- | :--- | :--- | :--- |
+| `overmax_frame` | 모든 공개 항목 | `atlas_layout`, `captured_frame`, `roi_rect`, `utils`, `window` | 없음 |
+| `overmax_detect` | 파이프라인, `JacketIndex`, 판독 함수, ROI 표, 텔레메트리 | `atlas_translator`, `detection_pipeline`, `hysteresis`, `jacket_index`, `play_state`, `roi`, `roi_config`, `telemetry` | `templates` (판독 함수 묶음, 테스트·도구가 이름공간으로 사용) |
+| `overmax_capture` | 캡처 엔진, 창 추적, Linux 위치 소스, Portal (Linux+`portal-capture`) | `capture_engine`, `portal`, `window_tracker` | `hdr_pipeline` (Windows, 루트 re-export. HDR 재생 테스트가 함수 묶음으로 사용) |
+| `overmax_engine` | `detection_worker` (모듈), `DetectionPipeline` 별칭, `ImageIndexJacket` | `image_index_jacket` | `detection_worker` |
+
+결정:
+
+- 단계 3의 호환 re-export(`overmax_engine::{frame, capture, detector}`, `overmax_capture::{frame, frame_utils}`, `overmax_detect::atlas_layout`·`ATLAS_*`)는 모두 지웠다. `WindowRect`/`WindowSnapshot`은 소유자인 `overmax_frame`에서만 공개한다.
+- `overmax_app`은 `overmax_frame`·`overmax_detect`·`overmax_capture`에 직접 의존한다 (기능은 여전히 engine이 전달).
+- 워커 파일을 `overmax_engine/src/detector/detection_worker.rs` → `src/detection_worker.rs`로 옮겼다 (`detector/`가 비게 되어). 앱 경로는 `overmax_engine::detection_worker`.
+- 모듈을 비공개로 바꾸자 드러난 항목 처리:
+  - `GlobalRoiConfig`/`SceneRoiConfig`는 루트에 공개했다 (ROI 표는 감지 라이브러리 사용자가 다루는 설정이고, 숨기면 읽지 않는 `logo` 필드가 dead-code 경고가 된다).
+  - Linux 위치 소스 API(`GameGeometrySource`, `NoGeometrySource`, `select_geometry_source`, `GeometryChangedCallback`)는 module-contracts §3.2의 확장 지점이라 루트에 공개했다.
+  - Windows `D3d11Normalizer::new`는 호출처가 없는 래퍼(`new_with_format`만 사용)라 별도 커밋으로 지웠다. 동작 변경 없음.
+- 호출부 경로 변경은 crate별로 나누지 않고 한 커밋(`99a4b62`)으로 했다. 경로 치환만 있는 기계적 변경이라 crate별로 쪼개도 검증 단위가 달라지지 않는다.
+- module-contracts.md: 계층 설명, §2 공개 API 표(새 crate 4개), §3.3 `JacketIndex` 계약을 실제 코드에 맞게 갱신했다.
+
+게이트:
+
+- 커밋마다 `cargo test --workspace` (249 통과 · 2 ignored), `cargo clippy --all-targets` (경고 0), WSL `cargo clippy -p overmax-engine -p overmax-frame -p overmax-detect -p overmax-capture -p overmax-app --all-targets --features overmax-engine/telemetry` 통과. 이번부터 WSL 검사에 `overmax-app`을 넣었는데, app에는 Linux에서만 보이는 기존 경고 5건이 있다 (`native_app_viewports.rs` 미사용 `Mutex`·`style_applied`, `native_app.rs` 테스트의 `assert_eq!` 불필요한 참조 2건, `measure_breakdown.rs` 미사용 함수). `870bd11`에도 같은 코드이며 이번 변경과 무관하다.
+- `portal-capture` 기능은 WSL에 PipeWire 개발 패키지가 없어 이번에도 빌드하지 못했다. 해당 경로(`overmax_capture` 루트의 Portal export, `portal_capture_ui.rs`, `portal_capture_probe` 예제)는 CI Linux 작업에서 확인된다.
+- `verify_pipeline` 109건 결과 기준선과 바이트 단위 동일. `cargo build --release -p overmax-app` 성공. 감지 경로에 변경이 없어 A/B는 생략했다.
+
+알게 된 기존 문제 (고치지 않음): `overmax_app`의 `ui::native_app::tests::upload_outcome_maps_to_channel_message`가 간헐적으로 실패한다. `LOCALE_TEST_LOCK` 없이 현재 언어를 읽는데, 같은 바이너리의 `overlay_header_detail` 테스트가 언어를 바꾸기 때문이다 (재실행하면 통과).

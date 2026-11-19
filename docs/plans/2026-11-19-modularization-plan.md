@@ -257,7 +257,7 @@ app이 쓰는 engine 내부 경로(약 40곳)를 각 crate의 루트 re-export(`
 
 알게 된 기존 문제 (고치지 않음): `overmax_app`의 `ui::native_app::tests::upload_outcome_maps_to_channel_message`가 간헐적으로 실패한다. `LOCALE_TEST_LOCK` 없이 현재 언어를 읽는데, 같은 바이너리의 `overlay_header_detail` 테스트가 언어를 바꾸기 때문이다 (재실행하면 통과).
 
-### 단계 5 — 플랫폼 분리 (진행 중, 2026-11-19)
+### 단계 5 — 플랫폼 분리 (2026-11-19)
 
 #### 목표 파일 지도
 
@@ -274,9 +274,13 @@ app이 쓰는 engine 내부 경로(약 40곳)를 각 crate의 루트 re-export(`
 
 공통으로 남는 것: `capture_engine.rs` (`CaptureEngine` trait, `CaptureErrorAction`), `window_tracker.rs` (`FocusState`, `PresentationObservation`). `#[cfg]`는 `lib.rs`의 `mod`/`pub use`와 `CaptureEngine`의 Windows 전용 설정 메서드 3개(`set_preferred_engine` 등)에만 남는다. 이 3개는 워커가 `Box<dyn CaptureEngine>`에 대고 부르므로, 없애려면 워커 구조가 바뀐다 (아래 워커 결정에 묶음).
 
-`overmax_engine` 워커 (설계 결정 필요): `detection_worker.rs` 1,702줄, `#[cfg]` 82개. Linux 전용은 `LinuxFocusPolicy`·`capture_target_resized`·`effective_focus`, `tick_linux`·`process_linux_frame`·`handle_linux_capture_error`·`linux_detecting_output`·`on_linux_window_missing`, portal 연결 필드, 그리고 테스트 대부분. Windows 전용은 `tick`, `cached_window_id`, 캡처 설정 동기화.
+`overmax_engine` 워커 (완료, `d0df83b` 이동 · `e3d4742` 구조):
 
-`overmax_app` (계획):
+| 이전 | 이후 |
+| :--- | :--- |
+| `detection_worker.rs` (1,702줄, `#[cfg]` 82개) | `detection_worker/mod.rs` (공통 루프·출력·로그, 약 760줄), `linux.rs` (포커스 정책, `tick_linux`·Portal 경로, Linux 테스트), `windows.rs` (`tick`, `on_window_missing`, WinRT 초기화, 캡처 설정 동기화) |
+
+`overmax_app` (완료, `3a76e30` · `bfa305e` · `3a43e8e`):
 
 | 이전 | 이후 |
 | :--- | :--- |
@@ -284,5 +288,22 @@ app이 쓰는 engine 내부 경로(약 40곳)를 각 crate의 루트 re-export(`
 | `ui/tray_icon.rs` | `ui/platform/windows/tray_icon.rs` |
 | `ui/platform/linux.rs` | `ui/platform/linux/mod.rs` |
 | `ui/portal_capture_ui.rs` | `ui/platform/linux/portal_capture_ui.rs` |
-| `ui/linux_layer_overlay.rs` (2,574줄) | `ui/platform/linux/layer_overlay/` — `mod.rs` (스냅샷·핸들·`spawn`/`run`), `foreign_toplevel.rs` (상태 파싱·대상 선택 + `ZwlrForeignToplevel*` Dispatch), `backend.rs` (`Backend` 상태·렌더 루프), `output.rs` (출력 기하·배율), `panel.rs` (패널 크기·여백·표시 판단·degraded 그리기), `handlers.rs` (Compositor/LayerShell/Seat/Pointer/Output·viewport Dispatch), `tests.rs` |
-| `native_app_viewports.rs`·`native_app.rs`의 플랫폼 접착 코드 | 조사 후 결정 (`#[cfg]` 40개·8개) |
+| `ui/linux_layer_overlay.rs` (2,574줄) | `ui/platform/linux/layer_overlay/` — `mod.rs` (스냅샷·핸들·`spawn`/`run`), `foreign_toplevel.rs` (상태 파싱·대상 선택), `output.rs` (출력 기하·배율), `panel.rs` (패널 크기·여백·표시 판단·degraded 그리기), `backend.rs` (`Backend` 상태·렌더 루프), `backend/handlers.rs` (sctk handler·Dispatch 구현), `tests.rs` |
+| `native_app_viewports.rs`의 Windows 오버레이 경로 (`render_windows_overlay`, `update_overlay_geometry`, `render_overlay_panel`, `determine_active_state`, `game_hwnd_cached`) | `ui/platform/windows/overlay_host.rs` |
+| `native_app_viewports.rs`의 `publish_linux_overlay` | `ui/platform/linux/overlay_host.rs` |
+
+#### 결정
+
+- **워커는 trait 없이 같은 이름의 메서드로 나눈다 (옵션 A, 사용자 결정).** 플랫폼마다 `PlatformState` 구조체 하나(Linux: 창 스냅샷·포커스 관찰·포커스 정책·Portal 연결, Windows: 캐시한 창 ID)와 `impl DetectionWorker` 블록을 두고, `run()`은 `configure_capture`, `sync_capture_settings`, `initial_detecting_output`, `tick_platform`을 부른다. 두 플랫폼이 이 네 메서드를 같은 시그니처로 정의하는 것이 계약이다 (컴파일러가 강제하는 trait이 아님). 이유: 안정화된 `tick_linux`·Portal 코드를 다시 쓰지 않고 그대로 옮길 수 있고, 여기서 Portal 경로를 실행해 볼 수 없어 동작 보존이 우선이다. 프레임마다 지나는 경로에 `dyn`이나 할당은 늘지 않았다 (Portal `Option`을 tick 앞뒤로 꺼냈다 되돌리는 이동만 추가). plan §4.4의 `CaptureSession` trait은 이번 단계에서 만들지 않았다.
+- Linux 재연결(1초 대기 후 tracker·캡처 엔진 재생성)과 중단 처리는 `linux::tick_platform` 안으로 옮기고, 루프에는 `TickFlow { Sleep, Skip, Stop }`만 돌려준다. Windows는 항상 `Sleep`이라 `Skip`/`Stop`에는 Windows에서만 `dead_code` 허용을 붙였다.
+- `CaptureEngine` trait의 Windows 전용 설정 메서드 3개(`set_preferred_engine`, `set_enable_gpu_atlas`, `set_hdr_sdr_white_level`)에는 `#[cfg]`가 남는다. 워커가 `Box<dyn CaptureEngine>`에 대고 부르기 때문에, 없애려면 워커가 구체 타입을 들고 있어야 한다. 이번 단계 범위 밖으로 두었다.
+- `#[cfg]`가 아직 남은 곳 (이동만으로는 없앨 수 없는 것): `detection_worker/mod.rs`의 `WorkerControl.portal`(공개 API)·`spawn`의 Portal 연결, `WindowQueryScheduler`의 Windows 필드, `native_app_viewports.rs`의 디버그 스냅샷·보조 viewport 안 Windows 분기(29개), `native_app.rs`의 Portal 상태. 6단계(큰 파일 분할)에서 다시 본다.
+- `layer_overlay`의 foreign-toplevel `Dispatch` 구현은 계획과 달리 `foreign_toplevel.rs`가 아니라 `backend/handlers.rs`에 두었다. `Backend`의 비공개 필드를 쓰므로 `backend`의 하위 모듈이어야 필드를 공개하지 않아도 된다. 형제 모듈끼리 쓰는 항목과 필드에는 `pub(super)`만 붙였다.
+- 분할 중 찾은 기존 빌드 오류 2건을 따로 고쳤다. 둘 다 `--features portal-capture`에서만 드러나 지금까지 확인되지 않았다: `d4b38aa` (Portal 모듈이 단계 3 이전 경로 `crate::frame` 사용), `2611fb8` (워커가 단계 4에서 비공개가 된 `overmax_capture::connection` 경로 사용).
+
+#### 게이트
+
+- 커밋마다 `cargo test --workspace` (249 통과 · 2 ignored), `cargo clippy --all-targets` (경고 0), WSL `cargo clippy` (engine·frame·detect·capture·app, `telemetry`) 통과. app의 Linux 기존 경고 5건은 그대로.
+- 이번 단계부터 WSL에 PipeWire·libclang 개발 패키지와 Xvfb·Openbox가 있다. `--features overmax-engine/portal-capture,overmax-engine/telemetry`로 clippy·테스트(engine 9개, capture), app debug·release 빌드 통과. `linux-vertical-slice-lifecycle.sh` (Xvfb + Openbox, 새 테스트 경로 `linux::window_tracker::tests::…`, `linux::capture_engine::tests::…`) 3건 통과. 분할 전 브랜치 끝(`2611fb8`)에서도 같은 게이트를 먼저 돌려 통과를 확인했다.
+- Portal 경로는 빌드와 단위 테스트까지만 확인했다. 실제 xdg-desktop-portal 세션(화면 선택·PipeWire 프레임 수신)은 실행하지 못했다. 이동한 파일: `overmax_capture/src/linux/portal/*`, `overmax_engine/src/detection_worker/linux.rs`의 Portal 분기, `overmax_app/src/ui/platform/linux/portal_capture_ui.rs`.
+- `verify_pipeline` 109건 결과 기준선과 바이트 단위 동일. `cargo build --release -p overmax-app` 성공. 감지 경로에 변경이 없어 A/B는 생략했다.

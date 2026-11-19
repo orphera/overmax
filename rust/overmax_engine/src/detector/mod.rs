@@ -1,4 +1,6 @@
 pub use crate::frame::atlas_layout;
+#[cfg(test)]
+mod atlas_layout_tests;
 pub mod atlas_translator;
 pub mod detection_pipeline;
 pub mod detection_worker;

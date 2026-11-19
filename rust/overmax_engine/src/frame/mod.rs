@@ -1,3 +1,4 @@
+pub mod atlas_layout;
 pub mod captured_frame;
 pub mod roi_rect;
 pub mod utils;

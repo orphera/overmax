@@ -447,7 +447,7 @@ impl AtlasTranslator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::detector::atlas_layout::{ATLAS_HEIGHT, ATLAS_SLOTS, ATLAS_WIDTH};
+    use crate::frame::atlas_layout::{ATLAS_HEIGHT, ATLAS_SLOTS, ATLAS_WIDTH};
     use crate::detector::roi::RoiManager;
 
     #[test]

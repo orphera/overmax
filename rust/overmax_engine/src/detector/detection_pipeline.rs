@@ -1644,7 +1644,7 @@ mod tests {
     #[test]
     fn open_match_player_panel_edge_margin_is_identical_in_atlas() {
         use crate::frame::utils::crop_roi;
-        use crate::detector::atlas_layout::build_virtual_atlas;
+        use crate::frame::atlas_layout::build_virtual_atlas;
         use crate::detector::roi::RoiManager;
         use overmax_core::SceneType;
 

@@ -1449,6 +1449,7 @@ mod tests {
             },
             [0xDC, 0xDC, 0xDC],
         ); // NORMAL
+        crate::detector::play_state::paint_song_select_rate_zero(&mut frame); // 기록 없음 = 0.00%
 
         let mut stable = 0;
         let mut events = 0;

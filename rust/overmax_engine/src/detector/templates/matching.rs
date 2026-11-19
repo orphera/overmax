@@ -3,13 +3,48 @@ use overmax_core::{Difficulty, Mode};
 
 /// Rate 영역을 Pure Rust CV 템플릿 매칭으로 감지합니다.
 pub fn detect_rate(rate: &ImageView) -> Option<f32> {
-    let (matched_str, _, _, _) =
-        match_digits_template(rate, super::digit::DIGIT_TEMPLATES_RATE).ok()?;
+    match read_rate(rate) {
+        RateReading::Valid(value) => Some(value),
+        RateReading::Zero | RateReading::Unreadable => None,
+    }
+}
 
+/// Rate 영역 판독 결과. 선곡 화면은 기록 없는 패턴을 `0.00%`로 표시하므로,
+/// 이를 "읽기 실패"와 구분해 돌려준다.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RateReading {
+    /// 유효 범위(`MIN_VALID_RATE`..=100) 안의 Rate
+    Valid(f32),
+    /// 정확히 `0.00`으로 읽힘 (기록 없음)
+    Zero,
+    /// 그 외 (매칭 실패, 범위 밖 값, 불완전한 문자열)
+    Unreadable,
+}
+
+/// Rate 영역을 템플릿 매칭 1회로 판독한다.
+pub fn read_rate(rate: &ImageView) -> RateReading {
+    let Ok((matched_str, _, _, _)) =
+        match_digits_template(rate, super::digit::DIGIT_TEMPLATES_RATE)
+    else {
+        return RateReading::Unreadable;
+    };
+    classify_rate_text(&matched_str)
+}
+
+fn classify_rate_text(matched_str: &str) -> RateReading {
+    if matched_str.is_empty() {
+        return RateReading::Unreadable;
+    }
     // 템플릿 매칭 결과에서 ?를 제거하고 파싱 시도
-    (!matched_str.is_empty())
-        .then(|| matched_str.replace('?', ""))
-        .and_then(|clean_str| parse_rate_text(&clean_str))
+    let clean_str = matched_str.replace('?', "");
+    if let Some(value) = parse_rate_text(&clean_str) {
+        return RateReading::Valid(value);
+    }
+    // `?`가 섞인 불완전한 판독은 0으로 단정하지 않는다
+    if !matched_str.contains('?') && matched_str.trim_end_matches('%') == "0.00" {
+        return RateReading::Zero;
+    }
+    RateReading::Unreadable
 }
 
 /// Score 영역을 템플릿 매칭을 통해 정수로 직접 누적하여 파싱합니다 (Zero String Allocation).
@@ -310,7 +345,18 @@ fn parse_rate_text(text: &str) -> Option<f32> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_rate_text;
+    use super::{classify_rate_text, parse_rate_text, RateReading};
+
+    #[test]
+    fn classifies_zero_rate_separately_from_unreadable() {
+        assert_eq!(classify_rate_text("0.00%"), RateReading::Zero);
+        assert_eq!(classify_rate_text("0.00"), RateReading::Zero);
+        assert_eq!(classify_rate_text("99.43%"), RateReading::Valid(99.43));
+        assert_eq!(classify_rate_text(""), RateReading::Unreadable);
+        assert_eq!(classify_rate_text("0.?0%"), RateReading::Unreadable);
+        assert_eq!(classify_rate_text("0.0%"), RateReading::Unreadable);
+        assert_eq!(classify_rate_text("75.12%"), RateReading::Unreadable);
+    }
 
     #[test]
     fn parses_rate_text_like_python_path() {

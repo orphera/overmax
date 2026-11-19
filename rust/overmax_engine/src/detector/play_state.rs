@@ -159,6 +159,8 @@ pub struct PlayStateDetector {
     last_emitted_event: Option<VerifiedPlayEvent>,
     /// 직전 프레임이 결과창이었는지 (결과창 → 선곡 복귀 시점 1회 감지용)
     was_result: bool,
+    /// 이번 프레임의 선곡 화면 rate 판독 실패 여부 (안정화 이력 제외용)
+    rate_unread: bool,
 }
 
 impl PlayStateDetector {
@@ -191,7 +193,7 @@ impl PlayStateDetector {
         scene: overmax_core::SceneType,
         is_result: bool,
         now: f64,
-    ) -> PatternRecord {
+    ) -> Option<PatternRecord> {
         let checksums = Self::rate_input_checksums(frame, rois);
         let is_song_select = matches!(
             scene,
@@ -242,16 +244,26 @@ impl PlayStateDetector {
                     }
                 }
             }
-            self.rate_cache
-                .get()
-                .copied()
-                .unwrap_or(PatternRecord::Unplayed)
+            Some(
+                self.rate_cache
+                    .get()
+                    .copied()
+                    .unwrap_or(PatternRecord::Unplayed),
+            )
         } else {
             self.result_rate_window.clear();
-            let record = self.rate_cache.get_or_detect(checksums, now, || {
+            // 반환 None = 읽기 실패. 캐시에 남지 않아 다음 주기에 다시 판독하며,
+            // 호출부는 이 프레임을 안정화 이력에서 제외한다 (기록 삭제 이벤트 방지).
+            self.rate_cache.get_or_detect(checksums, now, || {
                 let detected_score = rois.and_then_roi(frame, "score", templates::detect_score);
-                let direct_rate =
-                    rois.and_then_roi(frame, "rate", |img| templates::detect_rate(img));
+                let rate_reading = rois
+                    .get_roi("rate")
+                    .and_then(|roi| roi.and_then(frame, |img| Some(templates::read_rate(img))))
+                    .unwrap_or(templates::RateReading::Unreadable);
+                let direct_rate = match rate_reading {
+                    templates::RateReading::Valid(value) => Some(value),
+                    _ => None,
+                };
 
                 let final_rate = match (detected_score, direct_rate) {
                     (Some(score_val), Some(rate_val)) => {
@@ -287,10 +299,14 @@ impl PlayStateDetector {
                         });
                     }
                 }
-                Some(PatternRecord::Unplayed)
-            });
-
-            record.unwrap_or(PatternRecord::Unplayed)
+                // 선곡 화면은 기록 없는 패턴을 0.00%로 표시한다. 그 표시를 직접 읽었을 때만
+                // 미플레이로 확정하고, 그 외(읽기 실패·80% 미만 등)는 판단을 보류한다.
+                if !is_song_select || rate_reading == templates::RateReading::Zero {
+                    Some(PatternRecord::Unplayed)
+                } else {
+                    None
+                }
+            })
         }
     }
 
@@ -348,6 +364,7 @@ impl PlayStateDetector {
             result_rate_window: VecDeque::new(),
             last_emitted_event: None,
             was_result: false,
+            rate_unread: false,
         }
     }
 
@@ -449,12 +466,19 @@ impl PlayStateDetector {
             self.clear_detected_cache();
         }
         self.was_result = scene.is_result();
+        self.rate_unread = false;
 
         // 1. 현재 프레임의 플레이 컨텍스트 관측 (모드, 난이도, 점수)
         let current_context = self.observe_current_context(frame, rois, song_id, scene, now);
 
         // 2. 5프레임 연속 일치(Hysteresis) 이력 갱신 및 안정화 상태 판독
-        let stable_context = self.commit_history_and_get_stable(current_context.clone());
+        // rate를 읽지 못한 프레임은 표시용으로만 쓰고 안정화 이력에는 넣지 않는다
+        let history_context = if self.rate_unread {
+            None
+        } else {
+            current_context.clone()
+        };
+        let stable_context = self.commit_history_and_get_stable(history_context);
 
         // 3. 최종 게임 세션 상태 및 결과창 1회 도메인 이벤트 생성
         self.build_session_state_and_event(scene, current_context, stable_context)
@@ -502,6 +526,8 @@ impl PlayStateDetector {
 
         // 1-2. 점수 / Rate / MAX COMBO 판독
         let record = self.process_rate_detection(frame, rois, scene, is_result, now);
+        self.rate_unread = record.is_none();
+        let record = record.unwrap_or(PatternRecord::Unplayed);
         let rate = record.rate();
         let rate_valid = !is_result || rate >= MIN_VALID_RATE;
 
@@ -771,9 +797,26 @@ pub fn detect_max_combo_result(frame: &CapturedFrame, rois: &RoiManager) -> bool
     score_perfect <= BADGE_MATCH_THRESHOLD || score_mc <= BADGE_MATCH_THRESHOLD
 }
 
+/// 선곡 화면(1080p)의 rate 영역에 실제 캡처의 `0.00%`(기록 없음) 표시를 붙인다.
+#[cfg(test)]
+pub(crate) fn paint_song_select_rate_zero(frame: &mut CapturedFrame) {
+    const PNG: &[u8] = include_bytes!("test_fixtures/song_select_rate_zero.png");
+    const X0: i32 = 172;
+    const Y0: i32 = 583;
+    let img = image::load_from_memory(PNG)
+        .expect("rate fixture decodes")
+        .to_rgb8();
+    for (x, y, px) in img.enumerate_pixels() {
+        let idx = (((Y0 + y as i32) * frame.width + X0 + x as i32) * 4) as usize;
+        frame.bgra[idx..idx + 4].copy_from_slice(&[px[2], px[1], px[0], 255]);
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{detect_button_mode, PlayStateDetector, RateInputChecksums};
+    use super::{
+        detect_button_mode, paint_song_select_rate_zero, PlayStateDetector, RateInputChecksums,
+    };
     use crate::capture::frame::CapturedFrame;
     use crate::detector::roi::RoiManager;
     use overmax_core::{PatternRecord, SceneType};
@@ -796,6 +839,7 @@ mod tests {
         paint_rect(&mut frame, 98, 488, 208, 516, Bgr::from_rgb_hex(0xDCDCDC)); // #DCDCDC
         let mut rois = RoiManager::new(1920, 1080);
         rois.set_scene(SceneType::Freestyle);
+        paint_song_select_rate_zero(&mut frame); // 기록 없음 = 0.00%
 
         assert!(!detector.detect(&frame, &rois, Some(7), 1.0).0.is_stable);
         assert!(!detector.detect(&frame, &rois, Some(7), 2.0).0.is_stable);
@@ -852,6 +896,7 @@ mod tests {
         paint_rect(&mut frame, 98, 488, 208, 516, Bgr::from_rgb_hex(0xDCDCDC)); // NORMAL diff
         let mut rois = RoiManager::new(1920, 1080);
         rois.set_scene(SceneType::Freestyle);
+        paint_song_select_rate_zero(&mut frame); // 기록 없음 = 0.00%
 
         let emitted = (0..10)
             .filter(|i| {
@@ -1115,6 +1160,7 @@ mod tests {
         paint_rect(&mut frame, 98, 488, 208, 516, Bgr::from_rgb_hex(0xDCDCDC)); // NM
         let mut rois = RoiManager::new(1920, 1080);
         rois.set_scene(SceneType::Freestyle);
+        paint_song_select_rate_zero(&mut frame); // 기록 없음 = 0.00%
 
         // 1. 곡 1 (기록 있음: 98.5%)
         let checksums = PlayStateDetector::rate_input_checksums(&frame, &rois);
@@ -1184,7 +1230,48 @@ mod tests {
             0.0,
             "유효한 점수가 없는 새로운 입력 감지 시 캐시된 점수가 0.0으로 클리어되어야 함"
         );
-        assert_eq!(detector.rate_cache.get(), Some(&PatternRecord::Unplayed));
+        // 0.00% 표시도 없으므로 미플레이로 단정하지 않고 판독 실패로 남긴다
+        assert_eq!(detector.rate_cache.get(), None);
+        assert!(detector.rate_unread);
+    }
+
+    #[test]
+    fn song_select_unreadable_rate_never_emits_unplayed_event() {
+        let mut detector = PlayStateDetector::new(3);
+        let mut frame = blank_frame();
+        paint_rect(&mut frame, 80, 130, 85, 135, Bgr::from_rgb_hex(0x2D4F55)); // 4B
+        paint_rect(&mut frame, 98, 488, 208, 516, Bgr::from_rgb_hex(0xDCDCDC)); // NM
+        let mut rois = RoiManager::new(1920, 1080);
+        rois.set_scene(SceneType::Freestyle);
+
+        // rate 영역이 비어 있음 = 판독 실패 (기록 없음 표시 0.00%가 아님)
+        for i in 0..10 {
+            let (state, event) = detector.detect(&frame, &rois, Some(7), f64::from(i));
+            assert!(
+                event.is_none(),
+                "판독 실패가 미플레이 이벤트로 확정되면 안 됨"
+            );
+            assert!(!state.is_stable);
+            assert_eq!(state.context.as_ref().map(|c| c.rate), Some(0.0));
+        }
+    }
+
+    #[test]
+    fn song_select_zero_rate_display_emits_unplayed_event() {
+        let mut detector = PlayStateDetector::new(3);
+        let mut frame = blank_frame();
+        paint_rect(&mut frame, 80, 130, 85, 135, Bgr::from_rgb_hex(0x2D4F55)); // 4B
+        paint_rect(&mut frame, 98, 488, 208, 516, Bgr::from_rgb_hex(0xDCDCDC)); // NM
+        paint_song_select_rate_zero(&mut frame);
+        let mut rois = RoiManager::new(1920, 1080);
+        rois.set_scene(SceneType::Freestyle);
+
+        let events: Vec<_> = (0..10)
+            .filter_map(|i| detector.detect(&frame, &rois, Some(7), f64::from(i)).1)
+            .collect();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].rate, 0.0);
+        assert!(!events[0].is_result_screen);
     }
 
     #[test]

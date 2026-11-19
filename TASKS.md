@@ -250,7 +250,7 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [x] 3. crate 분리 (`overmax_frame` / `overmax_detect` / `overmax_capture`)
   - [x] 4. 공개 API 정리
   - [x] 5. 플랫폼 분리
-  - [ ] 6. 큰 파일 분할
+  - [x] 6. 큰 파일 분할
   - [ ] 7. 최종 검증 (기준선 비교)
 - [x] **13.3 [orphera/overmax#44](https://github.com/orphera/overmax/issues/44) 릴리스 빌드에서 선곡·결과 화면 CPU 사용률이 높음**
   - 원인: 매 프레임 `InnerSize` → `SetWindowPos` → NVIDIA OpenGL 드라이버 스핀. `7f5df1e`에서 창 크기가 다를 때만 보내도록 수정. 선곡 화면 CPU 평균 87.4% → 6.1% (코어 1개 기준)

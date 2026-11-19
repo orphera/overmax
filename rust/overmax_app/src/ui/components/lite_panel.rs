@@ -21,6 +21,8 @@ impl LitePanel {
         ui.set_min_height(target_height);
         ui.set_max_height(target_height);
 
+        // 수동 배치 드래그 영역에서 제외할 우측 버튼 묶음의 실제 왼쪽 끝
+        let mut buttons_left_x: Option<f32> = None;
         let response = Frame::new()
             .fill(Theme::PANEL_BG)
             .corner_radius(CornerRadius::same((8.0 * props.scale) as u8))
@@ -97,6 +99,7 @@ impl LitePanel {
                         let response = ui
                             .add_sized(Vec2::splat(18.0 * props.scale), btn.sense(Sense::click()))
                             .on_hover_text(crate::t!("settings-title"));
+                        buttons_left_x = Some(response.rect.min.x);
                         if response.clicked() {
                             props.settings_open.store(true, Ordering::Relaxed);
                             actions.command = Some(UiCommand::OpenSettings);
@@ -130,6 +133,10 @@ impl LitePanel {
                             let btn_size = Vec2::splat(18.0 * props.scale);
                             let response_upload =
                                 ui.add_sized(btn_size, upload_btn.sense(Sense::click()));
+                            buttons_left_x =
+                                Some(buttons_left_x.map_or(response_upload.rect.min.x, |x| {
+                                    x.min(response_upload.rect.min.x)
+                                }));
                             if let (Some(slots), Some(p)) = (fill_slots, progress) {
                                 slots.paint(ui, response_upload.rect, btn_radius, p);
                             }
@@ -177,9 +184,11 @@ impl LitePanel {
         let is_snap_manual = props.is_snap_manual;
 
         if is_snap_manual {
-            // Exclude the right settings/upload buttons area (approx 45px * scale) from the drag target
-            let mut drag_rect = response.response.rect;
-            drag_rect.max.x -= 45.0 * props.scale;
+            // 우측 설정/업로드 버튼이 실제로 그려진 영역을 드래그 대상에서 제외한다 (#38)
+            let drag_rect = crate::ui::components::overlay_header::drag_rect_excluding_buttons(
+                response.response.rect,
+                buttons_left_x,
+            );
 
             let drag_response =
                 ui.interact(drag_rect, ui.id().with("lite_overlay_drag"), Sense::drag());

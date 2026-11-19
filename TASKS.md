@@ -231,3 +231,14 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [ ] 오버레이 포함 스크린샷 캡처 버튼 (6.1 단축키는 닫음 — 단축키 없이 검토)
   - [ ] Gamescope 외부 오버레이 경로 (실행 구성 변경 범위가 커서 별도 검토)
   - [ ] Vulkan 레이어 방식 — 프로젝트 원칙(화면 캡처·OS 창 API만 사용)과 충돌하므로 보류
+
+---
+
+## 13. 남은 이슈
+
+- [ ] **13.1 [orphera/overmax#38](https://github.com/orphera/overmax/issues/38) 라이트 모드 헤더에서 V-Archive 업로드 버튼이 클릭되지 않음**
+  - [x] 원인: 수동 배치 드래그 영역이 오른쪽 버튼 묶음을 고정값 `45px × scale`만 제외해, 업로드 버튼이 드래그 영역에 덮임 (`lite_panel.rs`)
+  - [x] 수정: 일반 모드 헤더와 같이 실제로 그려진 설정/업로드 버튼의 왼쪽 끝(`buttons_left_x`)까지만 드래그 영역으로 사용 (`drag_rect_excluding_buttons` 공유)
+  - [ ] 실제 앱에서 확인: 라이트 모드 + 수동 배치에서 ⬆ 클릭으로 업로드, 스냅 모드 동작 유지, 헤더 빈 곳 드래그 유지
+- [ ] **13.2 [orphera/overmax#43](https://github.com/orphera/overmax/issues/43) 기능 모듈화**
+  - 재사용에 용이하도록 overmax의 기능을 모듈화. 11번(app 경계 정리)의 후속으로 범위를 정한 뒤 진행

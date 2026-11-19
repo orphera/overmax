@@ -280,7 +280,7 @@ impl<'a> OverlayHeader<'a> {
     }
 }
 
-fn drag_rect_excluding_buttons(header: Rect, buttons_left_x: Option<f32>) -> Rect {
+pub(crate) fn drag_rect_excluding_buttons(header: Rect, buttons_left_x: Option<f32>) -> Rect {
     let Some(left_x) = buttons_left_x else {
         return header;
     };

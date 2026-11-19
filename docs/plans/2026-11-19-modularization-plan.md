@@ -168,3 +168,30 @@ app이 쓰는 engine 내부 경로(약 40곳)를 각 crate의 루트 re-export(`
 - `frame/atlas_layout.rs`의 `#[cfg(test)]` 테스트 일부가 `detector::{roi_config, roi, atlas_translator}`를 쓴다 (아틀라스와 ROI 정합성 검사). 제품 코드 의존은 아니지만, 단계 3에서 `overmax_frame`을 별도 crate로 뺄 때 이 테스트들은 detector 쪽으로 옮겨야 한다.
 
 결과: 제품 코드 기준 `capture → detector` 참조 0, `detector → capture` 참조는 `detection_worker.rs`에만 남음. 커밋마다 `cargo test --workspace` (249 통과 · 2 ignored), `cargo clippy --all-targets` (경고 0), WSL `cargo clippy -p overmax-engine --all-targets --features telemetry` (경고 0) 통과. WSL에 PipeWire 개발 패키지가 없어 `portal-capture` 기능 빌드는 확인하지 못했다. 단계 게이트: `verify_pipeline` 109건 결과가 단계 0 기준선과 바이트 단위로 같음.
+
+### 단계 2 — 감지 ↔ data 분리 (2026-11-19)
+
+**`JacketIndex` (§4.1)**: 실제 호출부를 조사한 결과 `DetectionPipeline`이 `ImageIndexDb` + `JacketMatcher`에서 쓰는 것은 `is_ready`, `similarity_threshold`, `check_centroid_kernel`, `match_jacket` 네 개뿐이었다. trait은 이 네 개만 담는다 (§4.1 초안의 `find_best(&ImageView)` 대신 기존 시그니처 `(&[u8], width, height, channels)`를 유지해 호출부 변경과 복사를 없앴다).
+
+| 항목 | 위치 | 내용 |
+| :--- | :--- | :--- |
+| `JacketIndex` trait, `JacketHit` | `detector/jacket_index.rs` | 감지 쪽 경계. `JacketHit { image_id, similarity }`는 `ImageMatch`와 같은 모양 |
+| `ImageIndexJacket` | `image_index_jacket.rs` (engine 루트, detector 밖) | `ImageIndexDb` + `JacketMatcher`를 감싼 구현. `ImageMatch`의 `image_id`를 옮겨 담아 추가 할당·복사 없음. DB 형식 불변 |
+| `DetectionPipeline<J: JacketIndex = ImageIndexJacket>` | `detector/detection_pipeline.rs` | 정적 디스패치. 장면 판정 헬퍼는 `&impl JacketIndex` |
+| `new(ImageIndexDb)`, `replace_image_db` | `image_index_jacket.rs`의 `impl DetectionPipeline<ImageIndexJacket>` | 기존 시그니처 유지 → 워커·`overmax_app` 변경 없음 |
+
+- 구현 위치: 결정 1은 "data가 구현"이지만, 지금은 engine이 data에 의존하므로 data가 engine의 trait을 구현하면 순환이 된다. 그래서 단계 2에서는 engine 루트의 어댑터가 구현하고, 단계 3에서 `overmax_detect` crate가 생기면 data(또는 runtime) 쪽으로 옮긴다.
+- 기본 타입 매개변수(`= ImageIndexJacket`)는 `overmax_app`이 `DetectionPipeline`을 매개변수 없이 쓰기 때문에 두었다. detector가 `crate::image_index_jacket`을 이름으로 참조하는 유일한 지점이며, 단계 3/4에서 app이 구체 타입을 명시하게 되면 없앤다.
+- `tests/hdr_replay_test.rs`는 `detect_static_scene`에 `JacketMatcher` 대신 어댑터를 넘기도록 바꿨다 (`JacketHit` 필드가 같아 나머지 코드는 그대로).
+
+**`DetectConfig` (§4.2)**: 조사 결과 detector(워커 제외)와 capture 코드는 이미 `overmax_data::Settings`를 읽지 않는다. `Settings`는 `detection_worker.rs`만 읽고, 캡처 엔진에는 아틀라스 여부·HDR 화이트 레벨 같은 값을, 파이프라인에는 `ImageIndexDb`(임계값 포함)를 넘긴다. 실시간 설정 반영도 워커 안에서 끝난다. 따라서 이번 단계에서는 설정 구조체를 새로 만들지 않았다 (쓸 곳 없는 타입 추가 방지). 단계 3에서 워커가 detect crate 밖으로 나가는지에 따라 다시 판단한다.
+
+**결과 (grep)**: `detector/`(워커 제외)와 `frame/`의 제품 코드에서 `overmax_data` import 0. 남은 것은 `detection_pipeline.rs`의 `#[cfg(test)]` 모듈(`ImageIndexDb::new("missing.db")` 픽스처)과 `jacket_index.rs`의 주석뿐이다. 테스트 픽스처는 단계 3에서 crate를 나눌 때 정리한다.
+
+**게이트**: 커밋마다 `cargo test --workspace` (249 통과 · 2 ignored), `cargo clippy --all-targets` (경고 0), WSL engine clippy (경고 0, `portal-capture` 제외). `verify_pipeline` 109건 결과 기준선과 바이트 단위 동일. 성능 A/B (같은 PC, 번갈아 실행, release):
+
+| 측정 | 단계 1 (`0d779fd`) | 단계 2 | 판단 |
+| :--- | :--- | :--- | :--- |
+| `verify_pipeline` 109건 전체 (6회, 첫 회 제외 중앙값) | 3.98 s | 3.89 s | 차이 없음 (노이즈 범위) |
+| `measure_breakdown` 자켓 매칭 파이프라인 (3회) | 0.93 / 0.93 / 0.94 ms | 0.94 / 0.94 / 0.95 ms | 차이 없음 (이 벤치는 바뀐 코드를 거치지 않음) |
+| `measure_breakdown` 512×512 아틀라스 전송 (3회) | 0.20 / 0.17 / 0.17 ms | 0.16 / 0.23 / 0.24 ms | 노이즈 (실행마다 ±0.05 ms) |

@@ -122,7 +122,7 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
 
 # 🎯 [Planned] Milestone v0.5.0 — 인게임 유틸리티 및 연동 고도화 (In-game Utilities & Automation)
 
-> 6(단축키·레인 가림막), 8(래더매치), 9(곡명 다국어), 10(감지 안정성 후속)은 진행하지 않기로 하고 닫았습니다. 이유와 남은 메모는 [`docs/archive/tasks/TASKS_closed_2026-11-19.md`](docs/archive/tasks/TASKS_closed_2026-11-19.md) 참조. 번호는 기존 참조 유지를 위해 재배정하지 않습니다.
+> 6(단축키·레인 가림막), 8(래더매치), 9(곡명 다국어), 10(감지 안정성 후속)은 정리했습니다 (10.1은 같은 날 재개해 완료). 이유와 남은 메모는 [`docs/archive/tasks/TASKS_closed_2026-11-19.md`](docs/archive/tasks/TASKS_closed_2026-11-19.md) 참조. 번호는 기존 참조 유지를 위해 재배정하지 않습니다.
 
 ## 7. 기록 수집 및 V-Archive 자동 연동 (Record Automation)
 
@@ -180,7 +180,7 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
     - [x] 2단계: 관찰자(IPC 발행, 자동 업로드, app 스냅샷)를 `RuntimeUpdate`를 받는 읽기 전용 trait 뒤로 하나씩 분리 — `RuntimeObserver` + `IpcObserver`. 자동 업로드는 감지 출력이 없어도 매 프레임 타이머를 진행해야 해서 관찰자가 아닌 app의 프레임 tick에 둠. app 스냅샷은 `on_detection` 반환값으로 받음
     - [x] 3단계: 커밋 체인을 `SessionTracker`(세션 경계·기록 스냅샷·PB 판정) → `RecordCommit` → `DerivedState`(추천 재계산) 순서 고정 호출로 분리 — `SessionTracker` → `commit_record` (`hub.rs`). 추천 재계산은 여러 경로에서 호출되므로 `runtime::derived::recommend_for_state` 함수로 두고 app의 `refresh_overlay_data`가 부름
     - [x] 순서 불변식 유지: PB 판정은 기록 저장 전, `PlayVerified`는 DB 커밋 결과와 무관하게 발행 (`hub.rs` 테스트)
-    - [x] (별도 커밋) `RecordCommit` 결과를 실패/변경 없음/갱신으로 구분 — 10.1의 `handle_verified_play` 반환값 의미 분리와 연결 (10.1은 닫음) (`try_handle_verified_play` 등 `try_*` API 추가, 기존 API는 호환 유지. 실패는 디버그 로그로만 노출)
+    - [x] (별도 커밋) `RecordCommit` 결과를 실패/변경 없음/갱신으로 구분 — 10.1의 `handle_verified_play` 반환값 의미 분리와 연결 (10.1 완료) (`try_handle_verified_play` 등 `try_*` API 추가, 기존 API는 호환 유지. 실패는 디버그 로그로만 노출)
 
 - [x] **11.4 공개 계약 문서화**
   - [x] 하위 crate가 app·외부에 노출하는 API(창 geometry trait 포함)와 입출력 계약 정리

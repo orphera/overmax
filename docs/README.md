@@ -34,13 +34,14 @@ Overmax 프로젝트의 설계 문서, 아키텍처 다이어그램, 의사결�
 * [`data_and_sync.md`](decisions/data_and_sync.md): V-Archive 동기화, SQLite 캐시, Steam 계정 감지 결정 사항.
 * [`ui_and_i18n.md`](decisions/ui_and_i18n.md): egui 렌더링, 한국어/영어 i18n, 설정창 UI 결정 사항.
 * [`linux_support.md`](decisions/linux_support.md): X11/Wayland 캡처 및 Layer Overlay 지원 결정 사항.
+* [`workspace_and_reuse.md`](decisions/workspace_and_reuse.md): 크레이트 재사용 범위, git 의존성 방식(crates.io 미배포) 결정 사항.
 
 ### 3. Guides & Specifications (`docs/guides/`)
 OS별 구동 가이드 및 외부 연동 프로토콜 규격을 보관합니다.
 * [`linux-support.md`](guides/linux-support.md) / [`linux-support.en.md`](guides/linux-support.en.md): Linux 환경 빌드 및 실행 가이드 (한/영).
 * [`recommend-provider-protocol.md`](guides/recommend-provider-protocol.md): 외부 추천 엔진 연동 프로토콜 v1 규격.
 * [`ipc-protocol-guide.md`](guides/ipc-protocol-guide.md): 외부 도구/위젯 연동을 위한 Overmax IPC 프로토콜 (`overmax-ipc/1`) 규격 및 Python 예제 가이드.
-* [`module-contracts.md`](guides/module-contracts.md): 기여자용 모듈 계약 — crate 계층·의존 규칙, 공개 API, 확장 지점(`RuntimeObserver`, `GameGeometrySource`), 필수 테스트 및 검증 보고 양식.
+* [`module-contracts.md`](guides/module-contracts.md): 기여자용 모듈 계약 — crate 계층·의존 규칙, 공개 API, 확장 지점(`RuntimeObserver`, `GameGeometrySource`), 필수 테스트, 검증 보고 양식, **Overmax 밖에서 재사용 가능한 크레이트 표(§6)**.
 * [`STORE_LISTING.md`](store/STORE_LISTING.md) / [`PRIVACY.md`](store/PRIVACY.md): Microsoft Store 등록 메타데이터, 심사 정책 준수 및 개인정보처리방침.
 
 ### 4. Plans & RFCs (`docs/plans/`)

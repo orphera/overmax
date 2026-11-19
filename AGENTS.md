@@ -136,6 +136,8 @@
   - 데이터 & 동기화: [docs/decisions/data_and_sync.md](docs/decisions/data_and_sync.md)
   - UI & 다국어(i18n): [docs/decisions/ui_and_i18n.md](docs/decisions/ui_and_i18n.md)
   - Linux 지원: [docs/decisions/linux_support.md](docs/decisions/linux_support.md)
+  - 크레이트 재사용: [docs/decisions/workspace_and_reuse.md](docs/decisions/workspace_and_reuse.md)
+- **재사용 가능한 크레이트**: Overmax 밖의 요구에 크레이트를 가져다 쓸 수 있는지는 [docs/guides/module-contracts.md §6](docs/guides/module-contracts.md#6-재사용-가능한-크레이트)을 참고한다.
 - **엔지니어링 취향**: 설계 및 코드 변경 시 소유자의 엔지니어링 취향을 반영하기 위해 [ENGINEERING_TASTE.md](ENGINEERING_TASTE.md)를 필요할 때 참고한다.
 
 ---

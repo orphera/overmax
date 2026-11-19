@@ -152,3 +152,31 @@ pub trait JacketIndex {
 ### 로그
 (`[LinuxOverlay]` / `[WindowTracker]` 관련 디버그 로그 발췌)
 ```
+
+---
+
+## 6. 재사용 가능한 크레이트
+
+Overmax 바깥 프로젝트(다른 리듬게임·다른 게임용 도구, 에이전트가 새로 만드는 프로젝트)에서 가져다 쓸 수 있는 크레이트와 그렇지 않은 크레이트의 구분이다. crates.io에는 배포하지 않으므로 git 의존성으로 쓴다 ([결정 기록](../decisions/workspace_and_reuse.md)).
+
+```toml
+[dependencies]
+overmax_cv = { git = "https://github.com/orphera/overmax", package = "overmax_cv" }
+overmax-frame = { git = "https://github.com/orphera/overmax", package = "overmax-frame" }
+overmax-capture = { git = "https://github.com/orphera/overmax", package = "overmax-capture" }
+```
+
+| 크레이트 | 용도 | 플랫폼 | DJMAX 의존 | 재사용 |
+|:---|:---|:---|:---|:---|
+| `overmax_cv` | 이미지 해시(aHash/dHash/pHash), HOG, 그리드 히스토그램, 이진화, 비트마스크 문자 템플릿 매칭 | 전체 (순수 Rust, 외부 의존 없음) | 없음 | ✅ 그대로 사용 가능 |
+| `overmax-frame` | BGRA 프레임 버퍼, ROI 사각형·크롭 뷰, 썸네일 변화 감지, 픽셀 체크섬, 창 기하 타입 | 전체 | `atlas_layout` (DJMAX ROI 46개 슬롯 표, `overmax-core::SceneType` 사용)만 해당 | ✅ 아틀라스 항목 제외하고 사용 |
+| `overmax-capture` | 게임 창 추적 + 저부하 화면 캡처 (Windows: DXGI/WGC/GDI 적응형, HDR→SDR 복원 / Linux: XComposite·MIT-SHM, XDG Portal) | Windows, Linux | GPU 아틀라스 모드(`set_enable_gpu_atlas`, 기본 꺼짐)만 해당 | ✅ 아틀라스 모드를 끈 채로 사용 |
+| `overmax-core` | 게임 상태·기록 도메인 타입 | 전체 | 전부 | ❌ 앱 전용 (`publish = false`) |
+| `overmax-detect` | DJMAX 화면 판독 파이프라인 | 전체 | 전부 | ❌ 앱 전용 |
+| `overmax-engine` | 캡처+판독 워커 | Windows, Linux | 전부 | ❌ 앱 전용 |
+| `overmax-data` | 곡 DB, 기록 DB, V-Archive 연동, 설정 | 전체 | 전부 | ❌ 앱 전용 |
+| `overmax-runtime` | 판독 결과 분배, IPC 서버, 자동 업로드 | 전체 | 전부 | ❌ 앱 전용 (외부 연동은 [IPC 프로토콜](ipc-protocol-guide.md) 사용) |
+| `overmax-app` | egui 오버레이 앱 | Windows, Linux | 전부 | ❌ 앱 전용 |
+
+- 재사용 크레이트의 API도 `0.x`이며 버전 보장이 없다. 외부에서 쓸 때는 `rev = "<커밋>"`으로 고정한다.
+- 각 재사용 크레이트의 범위와 DJMAX 전용 항목은 해당 `lib.rs`의 크레이트 문서(`cargo doc -p <크레이트> --open`)에 적혀 있다.

@@ -917,11 +917,42 @@ fn check_category_band_solid(
 #[cfg(test)]
 mod tests {
     use super::{DetectionPipeline, JacketMatchStatus, SleepHint};
+    use crate::detector::jacket_index::{JacketHit, JacketIndex};
     use crate::frame::CapturedFrame;
-    use overmax_data::ImageIndexDb;
+
+    /// 적재되지 않은 `ImageIndexDb`(엔트리 0개)와 같은 동작을 하는 테스트용 자켓 인덱스:
+    /// 매칭 결과 없음, centroid 게이트 통과, 지정한 임계값.
+    struct StubJacketIndex {
+        ready: bool,
+        threshold: f32,
+    }
+
+    impl StubJacketIndex {
+        fn missing(threshold: f32) -> Self {
+            Self {
+                ready: false,
+                threshold,
+            }
+        }
+    }
+
+    impl JacketIndex for StubJacketIndex {
+        fn is_ready(&self) -> bool {
+            self.ready
+        }
+        fn similarity_threshold(&self) -> f32 {
+            self.threshold
+        }
+        fn check_centroid_kernel(&self, _: &[u8], _: usize, _: usize, _: usize) -> bool {
+            true
+        }
+        fn match_jacket(&self, _: &[u8], _: usize, _: usize, _: usize) -> Option<JacketHit> {
+            None
+        }
+    }
 
     fn replay_result_observations(
-        pipeline: &mut DetectionPipeline,
+        pipeline: &mut DetectionPipeline<StubJacketIndex>,
         now: f64,
         rate: f32,
         is_max_combo: bool,
@@ -930,7 +961,7 @@ mod tests {
     }
 
     fn replay_result_observations_with_frame(
-        pipeline: &mut DetectionPipeline,
+        pipeline: &mut DetectionPipeline<StubJacketIndex>,
         frame: &CapturedFrame,
         now: f64,
         rate: f32,
@@ -967,7 +998,8 @@ mod tests {
         ));
         for resume_before_replay in [false, true] {
             for (rate, is_max_combo) in [(99.86, true), (99.5, false)] {
-                let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+                let mut pipeline =
+                    DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
                 assert_eq!(
                     replay_result_observations_with_frame(&mut pipeline, &frame, 10.0, 99.86, true)
                         .len(),
@@ -1018,7 +1050,7 @@ mod tests {
 
     #[test]
     fn result_resume_revalidates_without_emitting_a_second_completion() {
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         assert_eq!(
             replay_result_observations(&mut pipeline, 10.0, 99.86, true).len(),
             1
@@ -1049,7 +1081,7 @@ mod tests {
             SceneType::Freestyle,
             SceneType::Unknown,
         ] {
-            let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+            let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
             assert_eq!(
                 replay_result_observations(&mut pipeline, 10.0, 99.86, true).len(),
                 1
@@ -1078,7 +1110,7 @@ mod tests {
 
     #[test]
     fn result_resume_still_emits_verified_rate_and_max_combo_improvements() {
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         assert_eq!(
             replay_result_observations(&mut pipeline, 10.0, 99.5, false).len(),
             1
@@ -1095,11 +1127,11 @@ mod tests {
 
     #[test]
     fn replace_image_db_keeps_recognition_history() {
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         pipeline.current_song_id = Some(42);
         pipeline.last_scene = overmax_core::SceneType::Gameplay;
 
-        pipeline.replace_image_db(ImageIndexDb::new("other-missing.db", 0.7));
+        pipeline.replace_jacket_index(StubJacketIndex::missing(0.7));
 
         assert_eq!(pipeline.current_song_id, Some(42));
         assert_eq!(pipeline.last_scene, overmax_core::SceneType::Gameplay);
@@ -1108,7 +1140,7 @@ mod tests {
     #[test]
     fn ingame_scenes_share_result_commitment_and_break_on_misses() {
         use overmax_core::SceneType;
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         assert_eq!(
             pipeline.commit_scene(SceneType::Gameplay),
             SceneType::Unknown
@@ -1131,7 +1163,7 @@ mod tests {
     #[test]
     fn unsupported_format_switch_invalidates_ingame_history_even_on_cached_tick() {
         use overmax_core::SceneType;
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         pipeline.commit_scene(SceneType::Gameplay);
         pipeline.commit_scene(SceneType::Gameplay);
         pipeline.last_scene_check_ts = 10.0;
@@ -1152,7 +1184,7 @@ mod tests {
     #[test]
     fn incomplete_capture_clears_scene_before_any_pixel_reader_runs() {
         use overmax_core::SceneType;
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         pipeline.commit_scene(SceneType::Gameplay);
         pipeline.commit_scene(SceneType::Gameplay);
         let frame = CapturedFrame {
@@ -1169,7 +1201,7 @@ mod tests {
     #[test]
     fn ingame_candidate_closes_record_path_before_scene_is_confirmed() {
         use overmax_core::SceneType;
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         let frame = blank_frame();
         pipeline.last_scene = SceneType::ResultFreestyle;
         pipeline.rois.set_scene(SceneType::ResultFreestyle);
@@ -1211,7 +1243,7 @@ mod tests {
     #[test]
     fn ingame_confirmation_uses_next_capture_then_restores_relaxed_polling() {
         use overmax_core::SceneType;
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         let mut gameplay = blank_frame();
         for y in (80..=336).step_by(32) {
             for x in [705, 1214] {
@@ -1259,7 +1291,7 @@ mod tests {
     #[test]
     fn failed_confirmation_clears_candidate_and_result_timing_stays_unchanged() {
         use overmax_core::SceneType;
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         let frame = blank_frame();
         pipeline.unknown_since = Some(0.0);
         pipeline.commit_scene(SceneType::Gameplay);
@@ -1294,7 +1326,7 @@ mod tests {
 
     #[test]
     fn scene_poll_miss_flips_to_unknown_and_records_diag() {
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         let frame = blank_frame();
         use overmax_core::SceneType;
 
@@ -1314,7 +1346,7 @@ mod tests {
 
     #[test]
     fn sleep_hint_is_active_during_unknown_warmup_and_relaxed_after() {
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         let frame = blank_frame();
         use overmax_core::SceneType;
 
@@ -1335,7 +1367,7 @@ mod tests {
 
     #[test]
     fn stays_detecting_until_hysteresis_activates() {
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         let frame = blank_frame();
         use overmax_core::SceneType;
 
@@ -1350,7 +1382,7 @@ mod tests {
 
     #[test]
     fn resets_state_when_song_select_is_lost() {
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         let frame = blank_frame();
         use overmax_core::SceneType;
 
@@ -1365,7 +1397,7 @@ mod tests {
 
     #[test]
     fn cached_frames_do_not_repeat_a_scene_miss() {
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         let frame = blank_frame();
         use overmax_core::SceneType;
 
@@ -1384,7 +1416,7 @@ mod tests {
 
     #[test]
     fn cached_frames_do_not_complete_scene_entry() {
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         let frame = blank_frame();
         use overmax_core::SceneType;
 
@@ -1402,7 +1434,7 @@ mod tests {
     fn reset_clears_result_cache_and_roi_scene() {
         use overmax_core::SceneType;
 
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         pipeline.rois.set_scene(SceneType::ResultFreestyle);
         pipeline.play_state.seed_detected_cache_for_test();
 
@@ -1417,7 +1449,7 @@ mod tests {
         use crate::frame::RoiRect;
         use overmax_core::SceneType;
 
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         let mut frame = blank_frame();
         let mut paint = |r: RoiRect, bgr: [u8; 3]| {
             for y in r.y1..r.y2 {
@@ -1493,7 +1525,6 @@ mod tests {
 
         let db_path =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cache/image_index.db");
-        let db_path_str = db_path.to_str().unwrap();
 
         let roi_dir = scratch_dir.join("roi");
         std::fs::create_dir_all(&roi_dir).unwrap();
@@ -1506,8 +1537,11 @@ mod tests {
             }
 
             // Create a fresh pipeline for each image to isolate ROI checksum caches (mode/diff, rate)
-            let mut pipeline = DetectionPipeline::new(ImageIndexDb::new(db_path_str, 0.6));
-            let _ = pipeline.jacket_index.db_mut().load();
+            // 기존 동작 유지: 매처는 적재 전 DB로 만들어져 비어 있고, 적재 성공 시 is_ready만 참이 된다.
+            let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex {
+                ready: db_path.exists(),
+                threshold: 0.6,
+            });
 
             let img = image::ImageReader::open(&path)
                 .expect("Failed to open file")
@@ -1695,7 +1729,7 @@ mod tests {
     #[test]
     fn cached_tick_with_unsupported_frame_resets_ingame_to_unknown() {
         use overmax_core::SceneType;
-        let mut pipeline = DetectionPipeline::new(ImageIndexDb::new("missing.db", 0.6));
+        let mut pipeline = DetectionPipeline::with_jacket_index(StubJacketIndex::missing(0.6));
         pipeline.commit_scene(SceneType::Gameplay);
         pipeline.commit_scene(SceneType::Gameplay);
         pipeline.last_scene_check_ts = 10.0;

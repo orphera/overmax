@@ -103,7 +103,8 @@ pub trait JacketIndex {
 ```
 
 - `DetectionPipeline<J: JacketIndex>`가 자켓 ROI(BGRA, `channels` = 4)로 호출한다. 정적 디스패치이며 매 프레임 경로에 있으므로 구현은 할당을 최소화한다.
-- `is_ready`가 거짓이면 파이프라인은 자켓 매칭을 건너뛴다. `check_centroid_kernel`은 결과·선곡 화면 판정 전의 사전 게이트로, 판단할 근거가 없으면 `true`를 돌려준다.
+- `is_ready`가 거짓이면 선곡 화면의 주기적 자켓 매칭(곡 갱신)을 건너뛰고 `DetectionOutput::image_db_ready`로 알린다. 장면 판정 경로는 `is_ready`와 무관하게 `check_centroid_kernel` → `match_jacket`을 호출하므로, 비어 있는 인덱스는 `match_jacket`에서 `None`을 돌려줘야 한다.
+- `check_centroid_kernel`은 결과·선곡 화면 판정 전의 사전 게이트다. 판단할 근거(대표 분포)가 없으면 `true`를 돌려준다.
 - `match_jacket`은 가장 유사한 후보 하나를 돌려준다. `image_id`는 곡 ID 문자열이며, 파이프라인은 `similarity >= similarity_threshold()`일 때만 장면 판정에 쓴다.
 - 기본 구현은 `overmax_engine::ImageIndexJacket` (`overmax_data`의 `ImageIndexDb` + `JacketMatcher`, DB 형식 불변).
 

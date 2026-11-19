@@ -1,4 +1,4 @@
-use crate::capture::frame_utils::{crop_roi, ImageView};
+use crate::frame::utils::{crop_roi, ImageView};
 use crate::frame::CapturedFrame;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

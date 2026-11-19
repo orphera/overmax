@@ -1,6 +1,6 @@
 //! Gameplay/Paused pixel templates and matching, integrated with detector templates.
 use crate::frame::CapturedFrame;
-use crate::capture::frame_utils::ImageView;
+use crate::frame::utils::ImageView;
 use crate::detector::roi::RoiManager;
 use overmax_core::SceneType;
 

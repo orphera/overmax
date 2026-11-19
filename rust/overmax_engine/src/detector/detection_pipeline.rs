@@ -1,5 +1,5 @@
 use crate::frame::CapturedFrame;
-use crate::capture::frame_utils::{make_thumbnail, mean_abs_diff, thumbnail_changed};
+use crate::frame::utils::{make_thumbnail, mean_abs_diff, thumbnail_changed};
 use crate::capture::window_tracker::WindowSnapshot;
 use crate::detector::hysteresis::HysteresisBuffer;
 use crate::detector::play_state::PlayStateDetector;
@@ -445,7 +445,7 @@ impl DetectionPipeline {
 
     fn apply_jacket_match(
         &mut self,
-        jacket: &crate::capture::frame_utils::ImageRegion,
+        jacket: &crate::frame::utils::ImageRegion,
     ) -> JacketMatchStatus {
         self.stats.record_match_jacket();
         let Some(result) = self.jacket_matcher.match_jacket(
@@ -603,7 +603,7 @@ fn detect_result_scene_via_edge(
     // ResultFreestyle, ResultOpen3, ResultOpen2 재킷 ROI는 같은 위치를 공유함
     let jacket_roi = rois.get_roi_for_scene("jacket", SceneType::ResultFreestyle)?;
     let colorbar_roi = rois.get_roi_for_scene("mode_colorbar", SceneType::ResultFreestyle)?;
-    let mean = crate::capture::frame_utils::region_mean_bgr(frame, colorbar_roi);
+    let mean = crate::frame::utils::region_mean_bgr(frame, colorbar_roi);
 
     let is_freestyle_result = detect_freestyle_result_colorbar_match(mean);
     let open_match_scene = check_open_match_badge(frame, rois);
@@ -1479,7 +1479,7 @@ mod tests {
     #[test]
     #[ignore]
     fn test_scratch_images() {
-        use crate::capture::frame_utils::crop_roi;
+        use crate::frame::utils::crop_roi;
         use image::GenericImageView;
         use overmax_core::SceneType;
 
@@ -1643,7 +1643,7 @@ mod tests {
     /// 엣지를 읽는다. 아틀라스 모드에서도 그 마진은 이웃 슬롯이 아닌 실제 화면 픽셀이어야 한다.
     #[test]
     fn open_match_player_panel_edge_margin_is_identical_in_atlas() {
-        use crate::capture::frame_utils::crop_roi;
+        use crate::frame::utils::crop_roi;
         use crate::detector::atlas_layout::build_virtual_atlas;
         use crate::detector::roi::RoiManager;
         use overmax_core::SceneType;

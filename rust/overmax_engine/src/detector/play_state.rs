@@ -1,5 +1,5 @@
 use crate::frame::CapturedFrame;
-use crate::capture::frame_utils::{compute_pixel_checksum, region_mean_bgr};
+use crate::frame::utils::{compute_pixel_checksum, region_mean_bgr};
 use crate::detector::roi::RoiManager;
 use crate::detector::templates;
 use overmax_core::{

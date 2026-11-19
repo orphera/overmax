@@ -1,5 +1,5 @@
 use crate::frame::CapturedFrame;
-use crate::capture::frame_utils::ImageView;
+use crate::frame::utils::ImageView;
 use crate::detector::roi_config::GlobalRoiConfig;
 pub use crate::frame::roi_rect::RoiRect;
 use overmax_core::{Difficulty, SceneType};

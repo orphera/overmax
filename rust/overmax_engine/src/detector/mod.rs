@@ -1,15 +1,15 @@
-pub use crate::frame::atlas_layout;
-pub mod atlas_translator;
-pub mod detection_pipeline;
-pub mod detection_worker;
-pub mod hysteresis;
-pub mod jacket_index;
-pub mod play_state;
-pub mod roi;
-pub mod roi_config;
-pub mod telemetry;
-pub mod templates;
+//! 감지 코드는 `overmax_detect` crate로 옮겼다. 기존 `overmax_engine::detector::...` 경로를
+//! 유지하기 위해 re-export하고, 워커(`detection_worker`)만 engine에 남긴다.
 
-pub use atlas_layout::{AtlasSlot, ATLAS_HEIGHT, ATLAS_SLOTS, ATLAS_SLOT_COUNT, ATLAS_WIDTH};
-pub use atlas_translator::AtlasTranslator;
-pub use telemetry::{PipelineStatsCollector, PipelineTelemetrySnapshot, TimingAggregator};
+pub use overmax_detect::*;
+
+pub mod detection_worker;
+
+pub mod detection_pipeline {
+    pub use overmax_detect::detection_pipeline::*;
+
+    /// engine이 쓰는 구체 파이프라인: 자켓 인덱스로 `overmax_data` 이미지 인덱스를 쓴다.
+    pub type DetectionPipeline = overmax_detect::detection_pipeline::DetectionPipeline<
+        crate::image_index_jacket::ImageIndexJacket,
+    >;
+}

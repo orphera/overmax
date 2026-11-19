@@ -6,7 +6,7 @@ macro_rules! debug_println {
     };
 }
 
-pub mod capture;
+pub use overmax_capture as capture;
 pub mod detector;
-pub mod frame;
+pub use overmax_frame as frame;
 pub mod image_index_jacket;

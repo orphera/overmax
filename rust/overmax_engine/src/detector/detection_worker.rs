@@ -437,7 +437,7 @@ impl DetectionWorker {
         }
         if requested {
             self.log("[Detection] image_index.db 갱신 감지: 인덱스 재로드".to_string());
-            pipeline.replace_image_db(self.load_image_db());
+            pipeline.replace_jacket_index(self.load_image_db().into());
         }
     }
 

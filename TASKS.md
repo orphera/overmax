@@ -244,7 +244,7 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
 - [ ] **13.2 [orphera/overmax#43](https://github.com/orphera/overmax/issues/43) 기능 모듈화**
   - 재사용에 용이하도록 overmax의 기능을 모듈화. 목표: 감지 단독 사용 · 플랫폼 분리 · 큰 파일 정리 (동작 불변)
   - 계획: [2026-11-19-modularization-plan.md](docs/plans/2026-11-19-modularization-plan.md)
-  - [ ] 0. 기준선 측정
+  - [x] 0. 기준선 측정 ([기준선](docs/plans/2026-11-19-modularization-baseline.md))
   - [ ] 1. engine 내부 순환 끊기
   - [ ] 2. 감지 ↔ data 분리 (`JacketIndex`, `DetectConfig`)
   - [ ] 3. crate 분리 (`overmax_frame` / `overmax_detect` / `overmax_capture`)

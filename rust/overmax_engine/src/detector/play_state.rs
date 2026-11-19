@@ -1,4 +1,4 @@
-use crate::capture::frame::CapturedFrame;
+use crate::frame::CapturedFrame;
 use crate::capture::frame_utils::{compute_pixel_checksum, region_mean_bgr};
 use crate::detector::roi::RoiManager;
 use crate::detector::templates;
@@ -817,7 +817,7 @@ mod tests {
     use super::{
         detect_button_mode, paint_song_select_rate_zero, PlayStateDetector, RateInputChecksums,
     };
-    use crate::capture::frame::CapturedFrame;
+    use crate::frame::CapturedFrame;
     use crate::detector::roi::RoiManager;
     use overmax_core::{PatternRecord, SceneType};
     use overmax_cv::Bgr;

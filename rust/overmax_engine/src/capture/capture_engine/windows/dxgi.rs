@@ -1,5 +1,5 @@
 use crate::capture::capture_engine::CaptureEngine;
-use crate::capture::frame::CapturedFrame;
+use crate::frame::CapturedFrame;
 use crate::capture::window_tracker::WindowRect;
 use crate::detector::atlas_layout::{ATLAS_HEIGHT, ATLAS_SLOTS, ATLAS_WIDTH};
 

@@ -1,4 +1,4 @@
-use crate::capture::frame::CapturedFrame;
+use crate::frame::CapturedFrame;
 use crate::capture::frame_utils::{make_thumbnail, mean_abs_diff, thumbnail_changed};
 use crate::capture::window_tracker::WindowSnapshot;
 use crate::detector::hysteresis::HysteresisBuffer;
@@ -920,7 +920,7 @@ fn check_category_band_solid(
 #[cfg(test)]
 mod tests {
     use super::{DetectionPipeline, JacketMatchStatus, SleepHint};
-    use crate::capture::frame::CapturedFrame;
+    use crate::frame::CapturedFrame;
     use overmax_data::ImageIndexDb;
 
     fn replay_result_observations(

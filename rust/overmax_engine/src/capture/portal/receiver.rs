@@ -1,5 +1,5 @@
 use super::{copy_mapped_frame, session::StreamTarget, Mailbox, PortalStatus, StreamCommand};
-use crate::capture::frame::CapturedFrame;
+use crate::frame::CapturedFrame;
 use pipewire::{self as pw, properties::properties, spa};
 use spa::{
     buffer::meta::{MetaHeader, MetaHeaderFlags, MetaVideoCrop},

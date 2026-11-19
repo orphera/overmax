@@ -1,4 +1,4 @@
-use crate::capture::frame::CapturedFrame;
+use crate::frame::CapturedFrame;
 use crate::detector::roi_config::RawRoiRect;
 use overmax_core::SceneType;
 

@@ -1,7 +1,7 @@
 //! Runtime detection worker: window tracking -> capture -> pipeline -> UI state.
 
 use crate::capture::capture_engine::{AdaptiveCaptureEngine, CaptureEngine, CaptureErrorAction};
-use crate::capture::frame::CapturedFrame;
+use crate::frame::CapturedFrame;
 #[cfg(target_os = "linux")]
 use crate::capture::window_tracker::{
     FocusObservation, FocusSource, FocusState, PresentationObservation,
@@ -1317,7 +1317,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     use crate::capture::capture_engine::{CaptureEngine, CaptureErrorAction};
     #[cfg(target_os = "linux")]
-    use crate::capture::frame::CapturedFrame;
+    use crate::frame::CapturedFrame;
     #[cfg(target_os = "linux")]
     use crate::capture::window_tracker::{
         FocusObservation, FocusSource, FocusState, PresentationObservation,

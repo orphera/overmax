@@ -1,5 +1,5 @@
 use crate::capture::capture_engine::CaptureEngine;
-use crate::capture::frame::CapturedFrame;
+use crate::frame::CapturedFrame;
 use crate::capture::window_tracker::WindowRect;
 use std::ptr::null_mut;
 use windows_sys::Win32::Graphics::Gdi::{

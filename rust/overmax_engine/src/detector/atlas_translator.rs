@@ -1,4 +1,4 @@
-use crate::capture::frame::CapturedFrame;
+use crate::frame::CapturedFrame;
 use crate::capture::frame_utils::{crop_roi, ImageView};
 use crate::detector::roi::RoiRect;
 use overmax_core::{Difficulty, SceneType};

@@ -5,7 +5,7 @@ pub mod normalizer;
 pub mod shader_bytes;
 
 use crate::capture::capture_engine::CaptureEngine;
-use crate::capture::frame::CapturedFrame;
+use crate::frame::CapturedFrame;
 use crate::capture::window_tracker::WindowRect;
 use dxgi::DxgiCaptureEngine;
 use gdi::GdiCaptureEngine;

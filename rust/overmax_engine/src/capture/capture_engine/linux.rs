@@ -1,5 +1,5 @@
 use crate::capture::capture_engine::{CaptureEngine, CaptureErrorAction};
-use crate::capture::frame::CapturedFrame;
+use crate::frame::CapturedFrame;
 use crate::capture::window_tracker::{WindowRect, WindowSnapshot};
 use memmap2::{MmapMut, MmapOptions};
 use std::fs::File;
@@ -831,7 +831,7 @@ mod tests {
     use crate::capture::capture_engine::{
         AdaptiveCaptureEngine, CaptureEngine, CaptureErrorAction,
     };
-    use crate::capture::frame::CapturedFrame;
+    use crate::frame::CapturedFrame;
     use crate::capture::window_tracker::{WindowRect, WindowSnapshot};
     use x11rb::connection::Connection;
     use x11rb::errors::ConnectionError;

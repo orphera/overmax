@@ -30,7 +30,7 @@ pub struct DebugAppStateSnapshot {
     pub roi_scale: f32,
     pub roi_offset_y: i32,
     pub stable_hits: u32,
-    pub telemetry_snapshot: Option<overmax_engine::detector::telemetry::PipelineTelemetrySnapshot>,
+    pub telemetry_snapshot: Option<overmax_detect::PipelineTelemetrySnapshot>,
 }
 
 pub fn push_log(lines: &Arc<Mutex<VecDeque<Arc<str>>>>, max_lines: usize, line: impl AsRef<str>) {
@@ -391,18 +391,10 @@ fn render_app_state_dashboard(ui: &mut egui::Ui, state: &DebugAppStateSnapshot) 
                             ui.label(
                                 RichText::new(format!(
                                     "Cap: {} (max {}) | Det: {} (max {})",
-                                    overmax_engine::detector::telemetry::format_duration_us(
-                                        snap.capture_avg_us
-                                    ),
-                                    overmax_engine::detector::telemetry::format_duration_us(
-                                        snap.capture_max_us
-                                    ),
-                                    overmax_engine::detector::telemetry::format_duration_us(
-                                        snap.detect_avg_us
-                                    ),
-                                    overmax_engine::detector::telemetry::format_duration_us(
-                                        snap.detect_max_us
-                                    ),
+                                    overmax_detect::format_duration_us(snap.capture_avg_us),
+                                    overmax_detect::format_duration_us(snap.capture_max_us),
+                                    overmax_detect::format_duration_us(snap.detect_avg_us),
+                                    overmax_detect::format_duration_us(snap.detect_max_us),
                                 ))
                                 .size(Theme::FONT_BODY)
                                 .color(Color32::from_rgb(100, 220, 255))
@@ -422,15 +414,9 @@ fn render_app_state_dashboard(ui: &mut egui::Ui, state: &DebugAppStateSnapshot) 
                             ui.label(
                                 RichText::new(format!(
                                     "Scene: {} | Jkt: {} | Play: {}",
-                                    overmax_engine::detector::telemetry::format_duration_us(
-                                        snap.scene_avg_us
-                                    ),
-                                    overmax_engine::detector::telemetry::format_duration_us(
-                                        snap.jacket_avg_us
-                                    ),
-                                    overmax_engine::detector::telemetry::format_duration_us(
-                                        snap.play_state_avg_us
-                                    ),
+                                    overmax_detect::format_duration_us(snap.scene_avg_us),
+                                    overmax_detect::format_duration_us(snap.jacket_avg_us),
+                                    overmax_detect::format_duration_us(snap.play_state_avg_us),
                                 ))
                                 .size(Theme::FONT_BODY)
                                 .color(Theme::TEXT_PRIMARY)

@@ -3,8 +3,8 @@
 
 use crate::roi_config::GlobalRoiConfig;
 use overmax_core::{Difficulty, SceneType};
-use overmax_frame::atlas_layout::*;
 use overmax_frame::CapturedFrame;
+use overmax_frame::*;
 
 #[test]
 fn test_src_rect_matches_global_roi_config() {
@@ -117,7 +117,7 @@ fn test_src_rect_matches_global_roi_config() {
 #[test]
 fn test_virtual_atlas_pixel_perfect_identity() {
     use crate::atlas_translator::AtlasTranslator;
-    use overmax_frame::utils::crop_roi;
+    use overmax_frame::crop_roi;
 
     // 1. 패턴 데이터로 채워진 1920x1080 테스트 프레임 생성
     let w = 1920;
@@ -178,7 +178,7 @@ fn test_virtual_atlas_pixel_perfect_identity() {
 fn test_virtual_atlas_diff_panel_pixel_perfect_identity() {
     use crate::atlas_translator::AtlasTranslator;
     use crate::roi::RoiManager;
-    use overmax_frame::utils::crop_roi;
+    use overmax_frame::crop_roi;
 
     let w = 1920;
     let h = 1080;

@@ -1,5 +1,5 @@
 use egui::{ColorImage, TextureHandle, TextureOptions};
-use overmax_engine::capture::portal::connection::{Confirmation, ConnectionStatus, PortalControl};
+use overmax_capture::{Confirmation, ConnectionStatus, PortalControl};
 use std::time::Duration;
 
 pub(super) fn render(ui: &mut egui::Ui, control: &PortalControl) {

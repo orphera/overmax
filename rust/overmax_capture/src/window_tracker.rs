@@ -1,4 +1,4 @@
-pub use overmax_frame::window::{WindowRect, WindowSnapshot};
+pub use overmax_frame::{WindowRect, WindowSnapshot};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FocusState {

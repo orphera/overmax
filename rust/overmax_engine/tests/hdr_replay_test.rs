@@ -1,6 +1,6 @@
 #![cfg(windows)]
 
-use overmax_engine::detector::jacket_index::JacketIndex;
+use overmax_detect::JacketIndex;
 use std::path::{Path, PathBuf};
 
 fn find_snapshot_dir() -> Option<PathBuf> {
@@ -80,7 +80,7 @@ fn test_analyze_all_hdr_snapshots() {
         let mut db = overmax_data::store::image_index::ImageIndexDb::new(p, 0.60);
         db.load().ok().map(|count| {
             println!("Loaded Image DB with {} entries", count);
-            overmax_engine::image_index_jacket::ImageIndexJacket::new(db)
+            overmax_engine::ImageIndexJacket::new(db)
         })
     });
 
@@ -99,7 +99,7 @@ fn test_analyze_all_hdr_snapshots() {
 #[cfg(windows)]
 fn analyze_single_snapshot(
     raw_path: &Path,
-    matcher_opt: Option<&overmax_engine::image_index_jacket::ImageIndexJacket>,
+    matcher_opt: Option<&overmax_engine::ImageIndexJacket>,
 ) {
     let file_name = raw_path.file_name().unwrap().to_string_lossy();
     println!("\n>>> Analyzing: {} <<<", file_name);
@@ -118,7 +118,7 @@ fn analyze_single_snapshot(
         return;
     }
 
-    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::f16_to_f32;
+    use overmax_capture::hdr_pipeline::f16_to_f32;
 
     let pixel_count = WIDTH * HEIGHT;
 
@@ -165,14 +165,13 @@ fn analyze_single_snapshot(
     );
 
     // 2. 64KB LUT vs 부동소수점 수학 연산 벤치마크 및 오차 검증
-    let scale =
-        overmax_engine::capture::capture_engine::windows::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL;
+    let scale = overmax_capture::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL;
     let mut bgra_lut = vec![0u8; WIDTH * HEIGHT * 4];
     for y in 0..HEIGHT {
         let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
         let dst_row = unsafe { bgra_lut.as_mut_ptr().add(y * WIDTH * 4) };
         unsafe {
-            overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3(
+            overmax_capture::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3(
                 src_row, dst_row, WIDTH, scale,
             );
         }
@@ -207,10 +206,10 @@ fn analyze_single_snapshot(
 
         // 4. Detection Pipeline 전체 씬 감지
         use overmax_core::{Difficulty, Mode, SceneType};
-        use overmax_engine::capture::frame::CapturedFrame;
-        use overmax_engine::detector::detection_pipeline::detect_static_scene;
-        use overmax_engine::detector::roi::RoiManager;
-        use overmax_engine::detector::templates;
+        use overmax_detect::detect_static_scene;
+        use overmax_detect::templates;
+        use overmax_detect::RoiManager;
+        use overmax_frame::CapturedFrame;
 
         let frame = CapturedFrame {
             width: WIDTH as i32,
@@ -235,7 +234,7 @@ fn analyze_single_snapshot(
         // Freestyle ROI 추출
         let mut rois_fs = rois.clone();
         rois_fs.set_scene(SceneType::Freestyle);
-        let fs_mode = overmax_engine::detector::play_state::detect_button_mode(&frame, &rois_fs);
+        let fs_mode = overmax_detect::detect_button_mode(&frame, &rois_fs);
         let fs_score = rois_fs.and_then_roi(&frame, "score", templates::detect_score);
         let fs_rate = rois_fs.and_then_roi(&frame, "rate", |img| templates::detect_rate(img));
 
@@ -287,9 +286,7 @@ fn analyze_single_snapshot(
 #[cfg(windows)]
 #[test]
 fn test_scale_sweep() {
-    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::{
-        build_lut_table, convert_scrgb_fp16_to_bgra8_with_lut,
-    };
+    use overmax_capture::hdr_pipeline::{build_lut_table, convert_scrgb_fp16_to_bgra8_with_lut};
 
     let db_path = Path::new("../../cache/image_index.db");
     let fallback_db_path = Path::new("cache/image_index.db");
@@ -496,9 +493,9 @@ fn test_scale_sweep() {
 #[cfg(windows)]
 #[test]
 fn test_all_captures_png() {
-    use overmax_engine::capture::frame::CapturedFrame;
-    use overmax_engine::detector::detection_pipeline::detect_static_scene;
-    use overmax_engine::detector::roi::RoiManager;
+    use overmax_detect::detect_static_scene;
+    use overmax_detect::RoiManager;
+    use overmax_frame::CapturedFrame;
 
     let db_path = Path::new("../../cache/image_index.db");
     let fallback_db_path = Path::new("cache/image_index.db");
@@ -512,7 +509,7 @@ fn test_all_captures_png() {
 
     let mut db = overmax_data::store::image_index::ImageIndexDb::new(actual_db.unwrap(), 0.60);
     db.load().unwrap();
-    let matcher = overmax_engine::image_index_jacket::ImageIndexJacket::new(db);
+    let matcher = overmax_engine::ImageIndexJacket::new(db);
 
     let cap_dir = Path::new("../../scratch/captures_client");
     let fallback_cap_dir = Path::new("scratch/captures_client");
@@ -602,9 +599,9 @@ fn test_all_captures_png() {
 #[cfg(windows)]
 #[test]
 fn test_sdr_baseline() {
-    use overmax_engine::capture::frame::CapturedFrame;
-    use overmax_engine::detector::detection_pipeline::detect_static_scene;
-    use overmax_engine::detector::roi::RoiManager;
+    use overmax_detect::detect_static_scene;
+    use overmax_detect::RoiManager;
+    use overmax_frame::CapturedFrame;
 
     let db_path = Path::new("../../cache/image_index.db");
     let fallback_db_path = Path::new("cache/image_index.db");
@@ -618,7 +615,7 @@ fn test_sdr_baseline() {
 
     let mut db = overmax_data::store::image_index::ImageIndexDb::new(actual_db.unwrap(), 0.60);
     db.load().unwrap();
-    let matcher = overmax_engine::image_index_jacket::ImageIndexJacket::new(db);
+    let matcher = overmax_engine::ImageIndexJacket::new(db);
 
     println!("\n==================================================");
     println!(" [SDR BASELINE TEST]");
@@ -674,7 +671,7 @@ fn test_sdr_baseline() {
         if let Some(mode_roi) =
             rois.get_roi_for_scene("openmatch_mode", overmax_core::SceneType::ResultOpen3)
         {
-            let mean = overmax_engine::capture::frame_utils::region_mean_bgr(&frame, mode_roi);
+            let mean = overmax_frame::region_mean_bgr(&frame, mode_roi);
             println!(
                 "  [ResultOpen3 openmatch_mode] BGR=[{}, {}, {}]",
                 mean.b, mean.g, mean.r
@@ -683,7 +680,7 @@ fn test_sdr_baseline() {
         if let Some(mode_roi) =
             rois.get_roi_for_scene("openmatch_mode", overmax_core::SceneType::ResultOpen2)
         {
-            let mean = overmax_engine::capture::frame_utils::region_mean_bgr(&frame, mode_roi);
+            let mean = overmax_frame::region_mean_bgr(&frame, mode_roi);
             println!(
                 "  [ResultOpen2 openmatch_mode] BGR=[{}, {}, {}]",
                 mean.b, mean.g, mean.r
@@ -732,7 +729,7 @@ fn test_diagnose_unknown_snapshots() {
         "hdr_snapshot_1788931261.raw",
     ];
 
-    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8;
+    use overmax_capture::hdr_pipeline::convert_scrgb_fp16_to_bgra8;
 
     let _ = std::fs::create_dir_all("scratch/unknown_jackets");
 
@@ -869,11 +866,9 @@ fn test_diagnose_result_scenes() {
     ];
 
     use overmax_core::SceneType;
-    use overmax_engine::capture::frame::CapturedFrame;
-    use overmax_engine::detector::detection_pipeline::{
-        check_open_match_badge, detect_freestyle_result_colorbar_match,
-    };
-    use overmax_engine::detector::roi::RoiManager;
+    use overmax_detect::RoiManager;
+    use overmax_detect::{check_open_match_badge, detect_freestyle_result_colorbar_match};
+    use overmax_frame::CapturedFrame;
 
     for (label, fname) in result_files {
         let Some(p) = find_raw_file(fname) else {
@@ -893,11 +888,11 @@ fn test_diagnose_result_scenes() {
             let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
             let dst_row = unsafe { bgra_lut.as_mut_ptr().add(y * WIDTH * 4) };
             unsafe {
-                overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3(
+                overmax_capture::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3(
                     src_row,
                     dst_row,
                     WIDTH,
-                    overmax_engine::capture::capture_engine::windows::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
+                    overmax_capture::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
                 );
             }
         }
@@ -912,7 +907,7 @@ fn test_diagnose_result_scenes() {
         let colorbar_roi = rois
             .get_roi_for_scene("mode_colorbar", SceneType::ResultFreestyle)
             .unwrap();
-        let mean = overmax_engine::capture::frame_utils::region_mean_bgr(&frame, colorbar_roi);
+        let mean = overmax_frame::region_mean_bgr(&frame, colorbar_roi);
         let is_fs_colorbar = detect_freestyle_result_colorbar_match(mean);
 
         let open_badge = check_open_match_badge(&frame, &rois);
@@ -944,18 +939,18 @@ fn test_diagnose_result_scenes() {
                     let ax = (cb_rect.x1 + cx) as usize;
                     let ay = (cb_rect.y1 + cy) as usize;
                     let off = (ay * WIDTH + ax) * 8;
-                    let r_raw =
-                        overmax_engine::capture::capture_engine::windows::hdr_pipeline::f16_to_f32(
-                            u16::from_ne_bytes([bytes[off], bytes[off + 1]]),
-                        );
-                    let g_raw =
-                        overmax_engine::capture::capture_engine::windows::hdr_pipeline::f16_to_f32(
-                            u16::from_ne_bytes([bytes[off + 2], bytes[off + 3]]),
-                        );
-                    let b_raw =
-                        overmax_engine::capture::capture_engine::windows::hdr_pipeline::f16_to_f32(
-                            u16::from_ne_bytes([bytes[off + 4], bytes[off + 5]]),
-                        );
+                    let r_raw = overmax_capture::hdr_pipeline::f16_to_f32(u16::from_ne_bytes([
+                        bytes[off],
+                        bytes[off + 1],
+                    ]));
+                    let g_raw = overmax_capture::hdr_pipeline::f16_to_f32(u16::from_ne_bytes([
+                        bytes[off + 2],
+                        bytes[off + 3],
+                    ]));
+                    let b_raw = overmax_capture::hdr_pipeline::f16_to_f32(u16::from_ne_bytes([
+                        bytes[off + 4],
+                        bytes[off + 5],
+                    ]));
                     sum_r += r_raw;
                     sum_g += g_raw;
                     sum_b += b_raw;
@@ -970,7 +965,7 @@ fn test_diagnose_result_scenes() {
         }
     }
 
-    let detected = overmax_engine::capture::capture_engine::windows::hdr_pipeline::detect_monitor_sdr_white_level(None);
+    let detected = overmax_capture::hdr_pipeline::detect_monitor_sdr_white_level(None);
     println!(
         "\n>>> [System Check] detect_monitor_sdr_white_level(None) = {:?}",
         detected
@@ -990,9 +985,7 @@ fn test_benchmark_p3_conversion_speed() {
     const HEIGHT: usize = 512;
     let mut dst = vec![0u8; WIDTH * HEIGHT * 4];
 
-    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::{
-        convert_scrgb_fp16_to_bgra8_p3, DEFAULT_SDR_WHITE_LEVEL,
-    };
+    use overmax_capture::hdr_pipeline::{convert_scrgb_fp16_to_bgra8_p3, DEFAULT_SDR_WHITE_LEVEL};
     use std::time::Instant;
 
     // Warm up
@@ -1066,14 +1059,12 @@ fn test_all_snapshots_summary() {
         println!("[HDR Replay Test] Summary skipped: failed to load ImageIndexDb");
         return;
     }
-    let matcher = overmax_engine::image_index_jacket::ImageIndexJacket::new(db);
+    let matcher = overmax_engine::ImageIndexJacket::new(db);
 
-    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::{
-        convert_scrgb_fp16_to_bgra8_p3, DEFAULT_SDR_WHITE_LEVEL,
-    };
-    use overmax_engine::capture::frame::CapturedFrame;
-    use overmax_engine::detector::detection_pipeline::detect_static_scene;
-    use overmax_engine::detector::roi::RoiManager;
+    use overmax_capture::hdr_pipeline::{convert_scrgb_fp16_to_bgra8_p3, DEFAULT_SDR_WHITE_LEVEL};
+    use overmax_detect::detect_static_scene;
+    use overmax_detect::RoiManager;
+    use overmax_frame::CapturedFrame;
 
     const WIDTH: usize = 512;
     const HEIGHT: usize = 512;
@@ -1167,13 +1158,13 @@ fn test_all_snapshots_summary() {
 #[cfg(windows)]
 #[test]
 fn test_captures_and_snapshots_play_state() {
+    use overmax_capture::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3;
     use overmax_core::SceneType;
-    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3;
-    use overmax_engine::capture::frame::CapturedFrame;
-    use overmax_engine::detector::detection_pipeline::detect_static_scene;
-    use overmax_engine::detector::play_state::{detect_button_mode, detect_difficulty};
-    use overmax_engine::detector::roi::RoiManager;
-    use overmax_engine::detector::templates;
+    use overmax_detect::detect_static_scene;
+    use overmax_detect::templates;
+    use overmax_detect::RoiManager;
+    use overmax_detect::{detect_button_mode, detect_difficulty};
+    use overmax_frame::CapturedFrame;
 
     let db_path = Path::new("../../cache/image_index.db");
     let fallback_db_path = Path::new("cache/image_index.db");
@@ -1187,7 +1178,7 @@ fn test_captures_and_snapshots_play_state() {
 
     let mut db = overmax_data::store::image_index::ImageIndexDb::new(actual_db.unwrap(), 0.50);
     db.load().unwrap();
-    let matcher = overmax_engine::image_index_jacket::ImageIndexJacket::new(db);
+    let matcher = overmax_engine::ImageIndexJacket::new(db);
 
     // 0. SDR Baseline (hd_test_*.png) 710 vs 709 comparison
     println!("\n=======================================================");
@@ -1357,7 +1348,7 @@ fn test_captures_and_snapshots_play_state() {
                     src_row,
                     dst_row,
                     WIDTH,
-                    overmax_engine::capture::capture_engine::windows::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
+                    overmax_capture::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
                 );
             }
         }
@@ -1462,7 +1453,7 @@ fn test_captures_and_snapshots_play_state() {
 #[cfg(windows)]
 #[test]
 fn test_export_snapshots_to_png() {
-    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3;
+    use overmax_capture::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3;
 
     let Some(actual_snap) = find_snapshot_dir() else {
         return;
@@ -1506,7 +1497,7 @@ fn test_export_snapshots_to_png() {
                     src_row,
                     dst_row,
                     WIDTH,
-                    overmax_engine::capture::capture_engine::windows::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
+                    overmax_capture::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
                 );
             }
         }
@@ -1533,11 +1524,11 @@ fn test_export_snapshots_to_png() {
 #[cfg(windows)]
 #[test]
 fn test_diagnose_score_rate_anomalies() {
+    use overmax_capture::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3;
     use overmax_core::SceneType;
-    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3;
-    use overmax_engine::capture::frame::CapturedFrame;
-    use overmax_engine::detector::roi::RoiManager;
-    use overmax_engine::detector::templates;
+    use overmax_detect::templates;
+    use overmax_detect::RoiManager;
+    use overmax_frame::CapturedFrame;
 
     let target_files = [
         ("snapshot1", "hdr_snapshot1.raw"),
@@ -1563,7 +1554,7 @@ fn test_diagnose_score_rate_anomalies() {
                     src_row,
                     dst_row,
                     WIDTH,
-                    overmax_engine::capture::capture_engine::windows::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
+                    overmax_capture::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
                 );
             }
         }
@@ -1738,9 +1729,7 @@ unsafe fn convert_scrgb_fp16_to_bgra8_custom(
     pixel_count: usize,
     mode: ToneMapMode,
 ) {
-    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::{
-        f16_to_f32, strict_srgb_oetf,
-    };
+    use overmax_capture::hdr_pipeline::{f16_to_f32, strict_srgb_oetf};
 
     let src = src_row as *const u16;
 
@@ -1795,9 +1784,9 @@ enum ToneMapMode {
 #[cfg(windows)]
 #[test]
 fn test_compare_2stage_vs_linear_jackets() {
-    use overmax_engine::capture::frame::CapturedFrame;
-    use overmax_engine::detector::roi::RoiManager;
-    use overmax_engine::detector::templates;
+    use overmax_detect::templates;
+    use overmax_detect::RoiManager;
+    use overmax_frame::CapturedFrame;
 
     let target_dir = match find_snapshot_dir() {
         Some(d) => d,
@@ -1843,7 +1832,7 @@ fn test_compare_2stage_vs_linear_jackets() {
         );
         return;
     }
-    let matcher = overmax_engine::image_index_jacket::ImageIndexJacket::new(db);
+    let matcher = overmax_engine::ImageIndexJacket::new(db);
 
     const WIDTH: usize = 512;
     const HEIGHT: usize = 512;
@@ -1955,17 +1944,14 @@ fn test_compare_2stage_vs_linear_jackets() {
                 bgra,
             };
             let rois = RoiManager::new(WIDTH as i32, HEIGHT as i32);
-            let scene = overmax_engine::detector::detection_pipeline::detect_static_scene(
-                &frame, &rois, &matcher,
-            );
+            let scene = overmax_detect::detect_static_scene(&frame, &rois, &matcher);
             if scene != overmax_core::SceneType::Unknown {
                 stats[m_idx].scene_success += 1;
             }
 
             let mut rois_active = rois.clone();
             rois_active.set_scene(scene);
-            let btn_mode =
-                overmax_engine::detector::play_state::detect_button_mode(&frame, &rois_active);
+            let btn_mode = overmax_detect::detect_button_mode(&frame, &rois_active);
             if btn_mode.is_some() {
                 stats[m_idx].btn_mode_success += 1;
             }
@@ -2070,11 +2056,11 @@ fn test_benchmark_2stage_latency() {
             let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
             let dst_row = unsafe { bgra.as_mut_ptr().add(y * WIDTH * 4) };
             unsafe {
-                overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3(
+                overmax_capture::hdr_pipeline::convert_scrgb_fp16_to_bgra8_p3(
                     src_row,
                     dst_row,
                     WIDTH,
-                    overmax_engine::capture::capture_engine::windows::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
+                    overmax_capture::hdr_pipeline::DEFAULT_SDR_WHITE_LEVEL,
                 );
             }
         }
@@ -2082,14 +2068,14 @@ fn test_benchmark_2stage_latency() {
     let p3_ms = start_p3.elapsed().as_secs_f64() * 1000.0 / iterations as f64;
 
     // 2. 64KB LUT
-    let lut = overmax_engine::capture::capture_engine::windows::hdr_pipeline::build_lut_table(4.88);
+    let lut = overmax_capture::hdr_pipeline::build_lut_table(4.88);
     let start_lut = std::time::Instant::now();
     for _ in 0..iterations {
         for y in 0..HEIGHT {
             let src_row = unsafe { bytes.as_ptr().add(y * WIDTH * 8) };
             let dst_row = unsafe { bgra.as_mut_ptr().add(y * WIDTH * 4) };
             unsafe {
-                overmax_engine::capture::capture_engine::windows::hdr_pipeline::convert_scrgb_fp16_to_bgra8_with_lut(
+                overmax_capture::hdr_pipeline::convert_scrgb_fp16_to_bgra8_with_lut(
                     src_row, dst_row, WIDTH, &lut,
                 );
             }
@@ -2123,10 +2109,7 @@ fn test_benchmark_2stage_latency() {
         let mut t = [0u8; 1025];
         for (i, item) in t.iter_mut().enumerate() {
             let lin = i as f32 / 1024.0;
-            let srgb =
-                overmax_engine::capture::capture_engine::windows::hdr_pipeline::strict_srgb_oetf(
-                    lin,
-                );
+            let srgb = overmax_capture::hdr_pipeline::strict_srgb_oetf(lin);
             *item = (srgb * 255.0 + 0.5) as u8;
         }
         t
@@ -2169,7 +2152,7 @@ unsafe fn convert_scrgb_fp16_to_bgra8_fast(
     scale_mid: f32,
     v_knee: f32,
 ) {
-    use overmax_engine::capture::capture_engine::windows::hdr_pipeline::f16_to_f32;
+    use overmax_capture::hdr_pipeline::f16_to_f32;
 
     let src = src_row as *const u16;
 
@@ -2207,9 +2190,9 @@ unsafe fn convert_scrgb_fp16_to_bgra8_fast(
 #[test]
 fn test_analyze_user_capture_9858() {
     use overmax_core::SceneType;
-    use overmax_engine::capture::frame::CapturedFrame;
-    use overmax_engine::detector::roi::RoiManager;
-    use overmax_engine::detector::templates;
+    use overmax_detect::templates;
+    use overmax_detect::RoiManager;
+    use overmax_frame::CapturedFrame;
 
     let candidates = [
         "scratch/capture_174804.png",
@@ -2295,7 +2278,7 @@ fn test_analyze_user_capture_9858() {
     }
 
     // 4. Virtual Atlas (512x512) Pipeline Analysis (Exact match for enable_gpu_atlas: true)
-    let atlas_frame = overmax_engine::detector::atlas_layout::build_virtual_atlas(&frame_1080p);
+    let atlas_frame = overmax_frame::build_virtual_atlas(&frame_1080p);
     let mut rois_atlas = RoiManager::new(512, 512);
     rois_atlas.set_scene(SceneType::Freestyle);
 
@@ -2315,9 +2298,9 @@ fn test_analyze_user_capture_9858() {
 #[test]
 fn test_diagnose_user_openmatch() {
     use overmax_core::SceneType;
-    use overmax_engine::capture::frame::CapturedFrame;
-    use overmax_engine::detector::roi::RoiManager;
-    use overmax_engine::detector::templates;
+    use overmax_detect::templates;
+    use overmax_detect::RoiManager;
+    use overmax_frame::CapturedFrame;
 
     let candidates = ["scratch/user_openmatch", "../../scratch/user_openmatch"];
     let Some(base_dir) = candidates.iter().find(|p| std::path::Path::new(p).exists()) else {
@@ -2359,7 +2342,7 @@ fn test_diagnose_user_openmatch() {
         };
 
         // Virtual Atlas (512x512)
-        let atlas_frame = overmax_engine::detector::atlas_layout::build_virtual_atlas(&frame_1080p);
+        let atlas_frame = overmax_frame::build_virtual_atlas(&frame_1080p);
         let mut rois_atlas = RoiManager::new(512, 512);
         rois_atlas.set_scene(SceneType::OpenMatch);
 
@@ -2373,8 +2356,7 @@ fn test_diagnose_user_openmatch() {
         println!("  [RATE (Atlas)] => {:?}", det_rate);
 
         // 3. Max Combo Badge
-        let is_mc =
-            overmax_engine::detector::play_state::detect_max_combo(&atlas_frame, &rois_atlas);
+        let is_mc = overmax_detect::detect_max_combo(&atlas_frame, &rois_atlas);
         println!("  [BADGE (Atlas)] => is_mc={}", is_mc);
 
         match i {

@@ -4,12 +4,12 @@ use crate::ui::components::ToastMessage;
 use crate::ui::overlay_recommend_ui::PatternTabInfo;
 use crate::ui::overlay_ui::{self, OverlayActions, OverlayProps};
 use crate::ui::ui_command::UiCommand;
+use overmax_capture::{
+    FocusState, GameGeometry, PresentationObservation, SharedPresentationObservation,
+};
 use overmax_core::{GameSessionState, RecordValue};
 use overmax_data::{RecommendResult, RecordManager};
-use overmax_engine::capture::window_tracker::{
-    FocusState, GameGeometry, PresentationObservation, SharedPresentationObservation, WindowRect,
-    WindowSnapshot,
-};
+use overmax_frame::{WindowRect, WindowSnapshot};
 use raw_window_handle::{
     RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
 };
@@ -97,7 +97,7 @@ pub struct LinuxOverlaySnapshot {
     /// Windows 렌더 경로(`native_app_viewports.rs` 의 `overlay_on`)와 동일한 계약이다.
     pub overlay_visible_override: Option<bool>,
     #[cfg(any(debug_assertions, feature = "telemetry"))]
-    pub delivery_telemetry: Option<overmax_engine::detector::telemetry::DetectionDeliveryTelemetry>,
+    pub delivery_telemetry: Option<overmax_detect::DetectionDeliveryTelemetry>,
 }
 
 #[derive(Clone)]
@@ -107,7 +107,7 @@ pub struct LinuxLayerOverlayHandle {
     runtime_failure: Arc<Mutex<Option<String>>>,
     presentation_observation: SharedPresentationObservation,
     #[cfg(any(debug_assertions, feature = "telemetry"))]
-    runtime_telemetry: Option<Arc<overmax_engine::detector::telemetry::RuntimeTelemetry>>,
+    runtime_telemetry: Option<Arc<overmax_detect::RuntimeTelemetry>>,
 }
 
 #[derive(Default)]
@@ -240,7 +240,7 @@ pub fn spawn(
     game_window_title: String,
     command_tx: Sender<UiCommand>,
     app_repaint: AppRepaintCallback,
-    runtime_telemetry: Option<Arc<overmax_engine::detector::telemetry::RuntimeTelemetry>>,
+    runtime_telemetry: Option<Arc<overmax_detect::RuntimeTelemetry>>,
 ) -> Result<LinuxLayerOverlayHandle, String> {
     let published = Arc::new(Mutex::new(PublishedSnapshots::default()));
     let runtime_failure = Arc::new(Mutex::new(None));
@@ -305,7 +305,7 @@ fn run(
     published: Arc<Mutex<PublishedSnapshots>>,
     wake_reader: UnixStream,
     ready_tx: SyncSender<Result<(), String>>,
-    runtime_telemetry: Option<Arc<overmax_engine::detector::telemetry::RuntimeTelemetry>>,
+    runtime_telemetry: Option<Arc<overmax_detect::RuntimeTelemetry>>,
     presentation_observation: SharedPresentationObservation,
 ) -> Result<(), String> {
     let initialized = Backend::new(
@@ -543,7 +543,7 @@ struct Backend {
     drag_origin_margin: (i32, i32),
     drag_total_delta: egui::Vec2,
     #[cfg(any(debug_assertions, feature = "telemetry"))]
-    runtime_telemetry: Option<Arc<overmax_engine::detector::telemetry::RuntimeTelemetry>>,
+    runtime_telemetry: Option<Arc<overmax_detect::RuntimeTelemetry>>,
 }
 
 impl Backend {
@@ -552,7 +552,7 @@ impl Backend {
         command_tx: Sender<UiCommand>,
         app_repaint: AppRepaintCallback,
         published: Arc<Mutex<PublishedSnapshots>>,
-        runtime_telemetry: Option<Arc<overmax_engine::detector::telemetry::RuntimeTelemetry>>,
+        runtime_telemetry: Option<Arc<overmax_detect::RuntimeTelemetry>>,
         presentation_observation: SharedPresentationObservation,
     ) -> Result<(wayland_client::EventQueue<Self>, Self), String> {
         #[cfg(not(any(debug_assertions, feature = "telemetry")))]
@@ -2160,11 +2160,10 @@ mod tests {
         uses_manual_position, ForeignToplevelState, LinuxLayerOverlayHandle, LinuxOverlaySnapshot,
         PublishedSnapshots,
     };
+    use overmax_capture::{FocusState, GameGeometry, PresentationObservation};
     use overmax_core::{GameSessionState, SceneType};
     use overmax_data::{RecommendResult, RecordDB, RecordManager};
-    use overmax_engine::capture::window_tracker::{
-        FocusState, GameGeometry, PresentationObservation, WindowRect, WindowSnapshot,
-    };
+    use overmax_frame::{WindowRect, WindowSnapshot};
     use std::io::Read as _;
     use std::os::unix::net::UnixStream;
     use std::sync::atomic::{AtomicBool, Ordering};

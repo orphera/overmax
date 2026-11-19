@@ -4,8 +4,8 @@ use overmax_core::{
     Changed, Difficulty, GameSessionState, Mode, PatternRecord, PlayContext, RecordKey,
     VerifiedPlayEvent,
 };
-use overmax_frame::utils::{compute_pixel_checksum, region_mean_bgr};
 use overmax_frame::CapturedFrame;
+use overmax_frame::{compute_pixel_checksum, region_mean_bgr};
 use std::collections::VecDeque;
 
 pub const MIN_VALID_RATE: f32 = 80.0;

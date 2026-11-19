@@ -26,6 +26,9 @@ path = "src/bin/measure_breakdown.rs"
 
 [dependencies]
 overmax-engine = { path = "../overmax_engine" }
+overmax-capture = { path = "../overmax_capture" }
+overmax-detect = { path = "../overmax_detect" }
+overmax-frame = { path = "../overmax_frame" }
 eframe = { version = "0.36.1", default-features = false, features = [
   "default_fonts",
   "glow",

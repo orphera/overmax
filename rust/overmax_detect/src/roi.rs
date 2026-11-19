@@ -1,8 +1,8 @@
 use crate::roi_config::GlobalRoiConfig;
 use overmax_core::{Difficulty, SceneType};
-pub use overmax_frame::roi_rect::RoiRect;
-use overmax_frame::utils::ImageView;
 use overmax_frame::CapturedFrame;
+use overmax_frame::ImageView;
+pub use overmax_frame::RoiRect;
 
 const REF_WIDTH: i32 = 1920;
 const REF_HEIGHT: i32 = 1080;

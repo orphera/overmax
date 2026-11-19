@@ -447,7 +447,7 @@ impl PlatformState {
         command_tx: &Sender<UiCommand>,
         initial_hwnd: Option<isize>,
         _game_window_title: &str,
-        _runtime_telemetry: Option<Arc<overmax_engine::detector::telemetry::RuntimeTelemetry>>,
+        _runtime_telemetry: Option<Arc<overmax_detect::RuntimeTelemetry>>,
     ) -> Result<Self, String> {
         let tray = if settings
             .lock()
@@ -595,9 +595,7 @@ impl PlatformState {
         None
     }
 
-    pub fn presentation_observation(
-        &self,
-    ) -> overmax_engine::capture::window_tracker::SharedPresentationObservation {
+    pub fn presentation_observation(&self) -> overmax_capture::SharedPresentationObservation {
         std::sync::Arc::new(std::sync::Mutex::new(None))
     }
 }

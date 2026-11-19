@@ -1,5 +1,5 @@
 use image::GenericImageView;
-use overmax_engine::capture::frame::CapturedFrame;
+use overmax_frame::CapturedFrame;
 use std::path::Path;
 
 pub fn load_frame(path: &Path) -> Option<CapturedFrame> {

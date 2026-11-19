@@ -7,7 +7,7 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11_FILTER_MIN_MAG_MIP_POINT, D3D11_FLOAT32_MAX, D3D11_SAMPLER_DESC, D3D11_TEXTURE2D_DESC,
     D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_USAGE_DEFAULT, D3D11_VIEWPORT,
 };
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
+use windows::Win32::Graphics::Dxgi::Common::DXGI_SAMPLE_DESC;
 
 use super::shader_bytes::{PS_BYTECODE, VS_BYTECODE};
 use crate::window_tracker::WindowRect;
@@ -77,10 +77,6 @@ pub fn calculate_uv_rect(
 }
 
 impl D3d11Normalizer {
-    pub fn new(device: &ID3D11Device) -> Result<Self, String> {
-        Self::new_with_format(device, DXGI_FORMAT_B8G8R8A8_UNORM)
-    }
-
     pub fn new_with_format(
         device: &ID3D11Device,
         format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT,

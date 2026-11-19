@@ -3,7 +3,7 @@
 //! Wayland gives clients no global window coordinates, so per-compositor IPC adapters
 //! publish the game window rect here. Contract: docs/plans/2026-10-28-linux-window-geometry-sources.md
 
-use super::WindowRect;
+use crate::window_tracker::WindowRect;
 use std::sync::{Arc, Mutex};
 
 mod hyprland;

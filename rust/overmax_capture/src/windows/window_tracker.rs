@@ -1,4 +1,4 @@
-use super::WindowRect;
+use crate::window_tracker::WindowRect;
 
 pub struct WindowTracker {
     title: Vec<u16>,

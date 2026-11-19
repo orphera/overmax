@@ -1,4 +1,21 @@
-use super::{FocusObservation, FocusSource, FocusState, WindowRect, WindowSnapshot};
+use crate::window_tracker::{FocusState, WindowRect, WindowSnapshot};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FocusSource {
+    WaylandForeignToplevel,
+    EwmhFocusedState,
+    EwmhActiveWindow,
+    XInputFocus,
+    None,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FocusObservation {
+    pub state: FocusState,
+    pub source: FocusSource,
+    pub generation: u64,
+}
+
 use std::cell::Cell;
 use x11rb::connection::Connection;
 use x11rb::errors::ReplyError;
@@ -574,12 +591,13 @@ fn reply_or_window_gone<T>(reply: Result<T, ReplyError>) -> Result<Option<T>, St
 
 #[cfg(test)]
 mod tests {
+    use super::FocusSource;
     use super::{
         active_window_membership, decide_focus, parse_window_list, reply_or_window_gone,
         restore_foreground_by_title, unique_window, Atoms, FocusEvidence, ManagedClient,
         WindowTracker,
     };
-    use crate::window_tracker::{FocusSource, FocusState};
+    use crate::window_tracker::FocusState;
     use std::time::{Duration, Instant};
     use x11rb::connection::Connection;
     use x11rb::errors::{ConnectionError, ReplyError};

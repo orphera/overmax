@@ -7,24 +7,6 @@ pub enum FocusState {
     Unknown,
 }
 
-#[cfg(target_os = "linux")]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FocusSource {
-    WaylandForeignToplevel,
-    EwmhFocusedState,
-    EwmhActiveWindow,
-    XInputFocus,
-    None,
-}
-
-#[cfg(target_os = "linux")]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct FocusObservation {
-    pub state: FocusState,
-    pub source: FocusSource,
-    pub generation: u64,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PresentationObservation {
     /// Local observation lifetime, not a Portal, X11 or cross-client window ID.
@@ -38,23 +20,6 @@ pub struct PresentationObservation {
 
 pub type SharedPresentationObservation =
     std::sync::Arc<std::sync::Mutex<Option<PresentationObservation>>>;
-
-#[cfg(target_os = "linux")]
-mod geometry_source;
-#[cfg(target_os = "linux")]
-mod linux;
-#[cfg(target_os = "windows")]
-mod windows;
-
-#[cfg(target_os = "linux")]
-pub use geometry_source::{
-    select_geometry_source, spawn_game_geometry_source, GameGeometry, GameGeometrySource,
-    GeometryChangedCallback, NoGeometrySource, SharedGameGeometry,
-};
-#[cfg(target_os = "linux")]
-pub use linux::{restore_foreground_by_title, WindowTracker};
-#[cfg(target_os = "windows")]
-pub use windows::{encode_wide, find_hwnd_by_title, restore_foreground_by_title, WindowTracker};
 
 #[cfg(test)]
 mod tests {

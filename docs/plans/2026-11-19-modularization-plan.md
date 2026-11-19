@@ -115,7 +115,7 @@ app이 쓰는 engine 내부 경로(약 40곳)를 각 crate의 루트 re-export(`
 
 | 단계 | 내용 | 게이트 |
 |:---|:---|:---|
-| **0. 기준선** | 현재 `main`에서 감지 117개 테스트셋(`verify_pipeline`)·캡처 지연(P50/P95)·CPU 사용률 측정값 기록. Windows 수동 확인 체크리스트 작성 | 기준 수치 문서화 |
+| **0. 기준선** | 현재 `main`에서 감지 117개 테스트셋(`verify_pipeline`)·캡처 지연(P50/P95)·CPU 사용률 측정값 기록. Windows 수동 확인 체크리스트 작성 | 기준 수치 문서화 ([기준선](2026-11-19-modularization-baseline.md)) |
 | **1. engine 내부 순환 끊기** | `frame` 관련 타입·`atlas_layout`·`RoiRect`를 engine 안 `frame` 모듈로 모음 (아직 같은 crate). capture ↔ detector가 서로 대신 `frame`만 보게 함 | 테스트·clippy |
 | **2. 감지 ↔ data 분리** | `JacketIndex` trait 도입, `DetectConfig`로 Settings 의존 제거 (변경 커밋). data가 trait 구현 | 117 테스트셋 결과 동일 |
 | **3. crate 분리** | `overmax_frame` → `overmax_detect` → `overmax_capture` 순으로 이동 커밋 (내용 불변). engine은 워커만 남음 | 테스트·clippy·WSL 빌드 |

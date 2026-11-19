@@ -1,0 +1,133 @@
+=== OVERMAX PIPELINE DETAILED VERIFICATION LOG ===
+
+
+==================================================
+Category: custom_target_1 (../freestyle_songselect)
+==================================================
+  File: 20260710123140_1.jpg                -> Scene=Freestyle, SongID=236   (In my Dream) | Mode=4B, Diff=SC, Info=98.98% (MAX COMBO) | Atlas=OK
+  File: 20260710123144_1.jpg                -> Scene=Freestyle, SongID=270   (ANALYS) | Mode=4B, Diff=SC, Info=99.32% (MAX COMBO) | Atlas=OK
+  File: 20260710123148_1.jpg                -> Scene=Freestyle, SongID=218   (Ventilator) | Mode=4B, Diff=SC, Info=98.57% | Atlas=OK
+  File: 20260710123151_1.jpg                -> Scene=Freestyle, SongID=208   (Mind Control) | Mode=4B, Diff=SC, Info=99.74% | Atlas=OK
+  File: 20260710123247_1.jpg                -> Scene=Freestyle, SongID=254   (Dark ENVY) | Mode=5B, Diff=SC, Info=99.42% | Atlas=OK
+  File: 20260710123258_1.jpg                -> Scene=Freestyle, SongID=81    (Nightmare) | Mode=6B, Diff=SC, Info=96.88% | Atlas=OK
+  File: 20260710123345_1.jpg                -> Scene=Freestyle, SongID=509   (Disappearing Act) | Mode=8B, Diff=MX, Info=99.68% (MAX COMBO) | Atlas=OK
+  File: 20260714110153_1.jpg                -> Scene=Freestyle, SongID=512   (Fundamental) | Mode=4B, Diff=NM, Info=Stable | Atlas=OK
+  File: 20260714110157_1.jpg                -> Scene=Freestyle, SongID=512   (Fundamental) | Mode=4B, Diff=NM, Info=Stable | Atlas=OK
+  File: 20260717001657_1.jpg                -> Scene=Freestyle, SongID=463   (Aurora Borealis) | Mode=4B, Diff=SC, Info=99.82% (MAX COMBO) | Atlas=OK
+  File: 20260717001746_1.jpg                -> Scene=Freestyle, SongID=21    (Liar) | Mode=4B, Diff=SC, Info=99.88% (MAX COMBO) | Atlas=OK
+  File: 20260720002000_1.jpg                -> Scene=Freestyle, SongID=410   (glory day (Mintorment Remix)) | Mode=4B, Diff=SC, Info=Stable | Atlas=OK
+  File: 20260720002004_1.jpg                -> Scene=Freestyle, SongID=411   (glory day -JHS Remix-) | Mode=4B, Diff=SC, Info=99.66% (MAX COMBO) | Atlas=OK
+  File: 20260720002013_1.jpg                -> Scene=Freestyle, SongID=46    (We're All Gonna Die) | Mode=4B, Diff=SC, Info=98.27% | Atlas=OK
+  File: 20260720002028_1.jpg                -> Scene=Freestyle, SongID=271   (Chemical Slave) | Mode=4B, Diff=SC, Info=99.47% (MAX COMBO) | Atlas=OK
+  File: 20260720002039_1.jpg                -> Scene=Freestyle, SongID=512   (Fundamental) | Mode=4B, Diff=SC, Info=99.32% (MAX COMBO) | Atlas=OK
+  File: 20260720002054_1.jpg                -> Scene=Freestyle, SongID=388   (Become Myself) | Mode=4B, Diff=SC, Info=Stable | Atlas=OK
+  File: 20260720002115_1.jpg                -> Scene=Freestyle, SongID=368   (Thor) | Mode=4B, Diff=SC, Info=Stable | Atlas=OK
+  File: 20260720002122_1.jpg                -> Scene=Freestyle, SongID=346   (Thor ~Extended Mix~) | Mode=4B, Diff=SC, Info=Stable | Atlas=OK
+
+==================================================
+Category: custom_target_2 (../openmatch_songselect)
+==================================================
+  File: 20260706225702_1.jpg                -> Scene=OpenMatch, SongID=805   (PPPP (feat. Hatsune Miku, Kasane Teto)) | Mode=6B, Diff=HD, Info=Stable | Atlas=OK
+  File: 20260707180835_1.jpg                -> Scene=OpenMatch, SongID=781   (脳天直撃) | Mode=4B, Diff=SC, Info=99.28% | Atlas=OK
+  File: 20260707180850_1.jpg                -> Scene=OpenMatch, SongID=385   (염라) | Mode=4B, Diff=NM, Info=99.84% (MAX COMBO) | Atlas=OK
+  File: 20260707180900_1.jpg                -> Scene=OpenMatch, SongID=768   (Trembling Moods) | Mode=4B, Diff=SC, Info=99.18% | Atlas=OK
+  File: 20260707180927_1.jpg                -> Scene=OpenMatch, SongID=703   (Checkmate (feat. Re.may)) | Mode=4B, Diff=MX, Info=99.93% (MAX COMBO) | Atlas=OK
+  File: 20260707180933_1.jpg                -> Scene=OpenMatch, SongID=654   (1! 2! 3! 4! Streaming rn CHU!) | Mode=4B, Diff=SC, Info=96.24% | Atlas=OK
+  File: 20260707180948_1.jpg                -> Scene=OpenMatch, SongID=621   (따라와) | Mode=4B, Diff=SC, Info=99.47% | Atlas=OK
+  File: 20260707180952_1.jpg                -> Scene=OpenMatch, SongID=588   (3:33) | Mode=4B, Diff=SC, Info=99.14% | Atlas=OK
+  File: 20260707180958_1.jpg                -> Scene=OpenMatch, SongID=549   (!!New Game Start!!) | Mode=4B, Diff=SC, Info=99.45% (MAX COMBO) | Atlas=OK
+  File: 20260707181004_1.jpg                -> Scene=OpenMatch, SongID=509   (Disappearing Act) | Mode=4B, Diff=SC, Info=99.95% (MAX COMBO) | Atlas=OK
+  File: 20260707181007_1.jpg                -> Scene=OpenMatch, SongID=462   (너로피어오라 ~Original Ver.~) | Mode=4B, Diff=MX, Info=99.93% (MAX COMBO) | Atlas=OK
+  File: 20260707181016_1.jpg                -> Scene=OpenMatch, SongID=178   (Kensei) | Mode=4B, Diff=SC, Info=99.15% | Atlas=OK
+  File: 20260707181021_1.jpg                -> Scene=OpenMatch, SongID=502   (VORTEX) | Mode=4B, Diff=SC, Info=99.23% | Atlas=OK
+  File: 20260707181028_1.jpg                -> Scene=OpenMatch, SongID=323   (Supersonic 2011) | Mode=4B, Diff=SC, Info=99.86% (MAX COMBO) | Atlas=OK
+  File: 20260707181031_1.jpg                -> Scene=OpenMatch, SongID=327   (Airwave) | Mode=4B, Diff=SC, Info=99.78% (MAX COMBO) | Atlas=OK
+  File: 20260707181038_1.jpg                -> Scene=OpenMatch, SongID=350   (Access) | Mode=5B, Diff=NM, Info=100.00% (MAX COMBO) | Atlas=OK
+  File: 20260707181043_1.jpg                -> Scene=OpenMatch, SongID=170   (Urban Night) | Mode=5B, Diff=HD, Info=99.74% (MAX COMBO) | Atlas=OK
+  File: 20260707181049_1.jpg                -> Scene=OpenMatch, SongID=221   (ZET) | Mode=5B, Diff=HD, Info=99.92% (MAX COMBO) | Atlas=OK
+  File: 20260707181055_1.jpg                -> Scene=OpenMatch, SongID=373   (Airwave ~Extended Mix~) | Mode=5B, Diff=MX, Info=99.91% (MAX COMBO) | Atlas=OK
+  File: 20260707181101_1.jpg                -> Scene=OpenMatch, SongID=246   (고백, 꽃, 늑대) | Mode=6B, Diff=NM, Info=100.00% (MAX COMBO) | Atlas=OK
+  File: 20260707181106_1.jpg                -> Scene=OpenMatch, SongID=388   (Become Myself) | Mode=6B, Diff=SC, Info=99.88% (MAX COMBO) | Atlas=OK
+  File: 20260707181111_1.jpg                -> Scene=OpenMatch, SongID=48    (설레임) | Mode=8B, Diff=HD, Info=100.00% (MAX COMBO) | Atlas=OK
+  File: 20260707181119_1.jpg                -> Scene=OpenMatch, SongID=154   (Temptation) | Mode=8B, Diff=SC, Info=99.59% (MAX COMBO) | Atlas=OK
+  File: 20260707181125_1.jpg                -> Scene=OpenMatch, SongID=792   (Radiance) | Mode=8B, Diff=MX, Info=99.82% (MAX COMBO) | Atlas=OK
+
+==================================================
+Category: custom_target_3 (../freestyle_results)
+==================================================
+  File: 20260701164242_1.jpg                -> Scene=ResultFreestyle, SongID=366   (Sweet Shining Shooting Star) | Mode=4B, Diff=SC, Info=99.82% (MAX COMBO) | Atlas=OK
+  File: 20260701164800_1.jpg                -> Scene=ResultFreestyle, SongID=211   (sO mUCH iN LUV ~Melodic Twisted Mix~) | Mode=8B, Diff=SC, Info=99.66% | Atlas=OK
+  File: 20260701165356_1.jpg                -> Scene=ResultFreestyle, SongID=87    (Seeker) | Mode=6B, Diff=SC, Info=99.70% (MAX COMBO) | Atlas=OK
+  File: 20260701190128_1.jpg                -> Scene=ResultFreestyle, SongID=5     (Beautiful Day) | Mode=4B, Diff=SC, Info=99.82% (MAX COMBO) | Atlas=OK
+  File: 20260702233310_1.jpg                -> Scene=ResultFreestyle, SongID=815   (Megingjord) | Mode=8B, Diff=HD, Info=99.54% | Atlas=OK
+  File: 20260702233605_1.jpg                -> Scene=ResultFreestyle, SongID=815   (Megingjord) | Mode=8B, Diff=NM, Info=99.98% (MAX COMBO) | Atlas=OK
+  File: 20260702233900_1.jpg                -> Scene=ResultFreestyle, SongID=795   (미래소녀 (feat. 혜지)) | Mode=8B, Diff=MX, Info=99.58% | Atlas=OK
+  File: 20260708163238_1.jpg                -> Scene=ResultFreestyle, SongID=111   (Chrono Breakers) | Mode=4B, Diff=SC, Info=99.98% (MAX COMBO) | Atlas=OK
+  File: 20260708164011_1.jpg                -> Scene=ResultFreestyle, SongID=445   (Cocked Pistol) | Mode=6B, Diff=SC, Info=99.30% | Atlas=OK
+  File: 20260709010819_1.jpg                -> Scene=ResultFreestyle, SongID=381   (Ikazuchi) | Mode=4B, Diff=SC, Info=98.83% | Atlas=OK
+  File: 20260709020245_1.jpg                -> Scene=ResultFreestyle, SongID=810   (Sleipnir) | Mode=4B, Diff=SC, Info=99.00% | Atlas=OK
+  File: 20260709131647_1.jpg                -> Scene=ResultFreestyle, SongID=583   (The Tune of the Azure Light ~Parang Remix~) | Mode=6B, Diff=SC, Info=98.20% | Atlas=OK
+  File: 20260709140509_1.jpg                -> Scene=ResultFreestyle, SongID=541   (Weird Wave) | Mode=6B, Diff=SC, Info=99.87% (MAX COMBO) | Atlas=OK
+  File: 20260710011027_1.jpg                -> Scene=ResultFreestyle, SongID=566   (Vertical Eclipse) | Mode=8B, Diff=SC, Info=98.33% | Atlas=OK
+  File: 20260710011652_1.jpg                -> Scene=ResultFreestyle, SongID=810   (Sleipnir) | Mode=8B, Diff=SC, Info=97.91% | Atlas=OK
+  File: 20260710135309_1.jpg                -> Scene=ResultFreestyle, SongID=771   (Candy Girl) | Mode=5B, Diff=SC, Info=100.00% (MAX COMBO) | Atlas=OK
+  File: 20260713222750_1.jpg                -> Scene=ResultFreestyle, SongID=566   (Vertical Eclipse) | Mode=4B, Diff=SC, Info=98.15% | Atlas=OK
+  File: 20260713235416_1.jpg                -> Scene=ResultFreestyle, SongID=380   (Garakuta Doll Play) | Mode=4B, Diff=SC, Info=99.09% | Atlas=OK
+  File: 20260717004341_1.jpg                -> Scene=ResultFreestyle, SongID=784   (Baqeela) | Mode=8B, Diff=SC, Info=99.58% | Atlas=OK
+
+==================================================
+Category: custom_target_4 (../openmatch3_results)
+==================================================
+  File: 20261005145918_1.jpg                -> Scene=ResultOpen3, SongID=798   (Aria (feat. DIEIN)) | Mode=5B, Diff=SC, Info=99.98% (MAX COMBO) | Atlas=OK
+  File: 20261005150239_1.jpg                -> Scene=ResultOpen3, SongID=446   (Daydream) | Mode=5B, Diff=SC, Info=98.61% | Atlas=OK
+  File: 4b_hard_20260706223826_1.jpg        -> Scene=ResultOpen3, SongID=767   (The Castle of Báthory) | Mode=4B, Diff=HD, Info=99.98% (MAX COMBO) | Atlas=OK
+  File: 4b_maximum_20260706224158_1.jpg     -> Scene=ResultOpen3, SongID=640   (Insane Drift) | Mode=4B, Diff=MX, Info=99.96% (MAX COMBO) | Atlas=OK
+  File: 4b_normal_20260706223456_1.jpg      -> Scene=ResultOpen3, SongID=795   (미래소녀 (feat. 혜지)) | Mode=4B, Diff=NM, Info=100.00% (MAX COMBO) | Atlas=OK
+  File: 4b_sc_20260706232653_1.jpg          -> Scene=ResultOpen3, SongID=781   (脳天直撃) | Mode=4B, Diff=SC, Info=99.28% | Atlas=OK
+  File: 5b_hard_20260706224925_1.jpg        -> Scene=ResultOpen3, SongID=800   (Break The Chains (feat. Re.may)) | Mode=5B, Diff=HD, Info=99.89% (MAX COMBO) | Atlas=OK
+  File: 5b_maximum_20260706225300_1.jpg     -> Scene=ResultOpen3, SongID=802   (Dreamscape) | Mode=5B, Diff=MX, Info=99.91% (MAX COMBO) | Atlas=OK
+  File: 5b_normal_20260706224608_1.jpg      -> Scene=ResultOpen3, SongID=796   (흑사자) | Mode=5B, Diff=NM, Info=100.00% (MAX COMBO) | Atlas=OK
+  File: 5b_sc_20260706231855_1.jpg          -> Scene=ResultOpen3, SongID=812   (Summer Ride (feat. chomin, Funtwo)) | Mode=5B, Diff=SC, Info=99.81% (MAX COMBO) | Atlas=OK
+  File: 6b_hard_20260706230009_1.jpg        -> Scene=ResultOpen3, SongID=805   (PPPP (feat. Hatsune Miku, Kasane Teto)) | Mode=6B, Diff=HD, Info=99.98% (MAX COMBO) | Atlas=OK
+  File: 6b_maximum_20260706230307_1.jpg     -> Scene=ResultOpen3, SongID=806   (Proliferation) | Mode=6B, Diff=MX, Info=99.73% | Atlas=OK
+  File: 6b_normal_20260706225630_1.jpg      -> Scene=ResultOpen3, SongID=815   (Megingjord) | Mode=6B, Diff=NM, Info=99.86% (MAX COMBO) | Atlas=OK
+  File: 6b_sc_20260706232245_1.jpg          -> Scene=ResultOpen3, SongID=813   (That Girl (feat. Bira)) | Mode=6B, Diff=SC, Info=99.83% | Atlas=OK
+  File: 8b_hard_20260706231248_1.jpg        -> Scene=ResultOpen3, SongID=809   (Second Light (feat. Ahn Yeonjae)) | Mode=8B, Diff=HD, Info=99.80% (MAX COMBO) | Atlas=OK
+  File: 8b_maximum_20260706230612_1.jpg     -> Scene=ResultOpen3, SongID=807   (RE;DIEIN) | Mode=8B, Diff=MX, Info=99.62% (MAX COMBO) | Atlas=OK
+  File: 8b_normal_20260706230929_1.jpg      -> Scene=ResultOpen3, SongID=808   (Rebound Alpha) | Mode=8B, Diff=NM, Info=99.96% (MAX COMBO) | Atlas=OK
+  File: 8b_sc_20260706231610_1.jpg          -> Scene=ResultOpen3, SongID=810   (Sleipnir) | Mode=8B, Diff=SC, Info=96.17% | Atlas=OK
+
+==================================================
+Category: custom_target_5 (../other_screenshots)
+==================================================
+  File: 1783012896.jpg                      -> Scene=ResultFreestyle, SongID=794   (MEGATØNiX PHANTØM) | Mode=5B, Diff=SC, Info=99.78% | Atlas=OK
+  File: 20260701011933_1.jpg                -> Scene=Freestyle, SongID=534   (Look out ~Here comes my love~) | Mode=8B, Diff=NM, Info=100.00% (MAX COMBO) | Atlas=OK
+  File: 20260701011939_1.jpg                -> Scene=Freestyle, SongID=781   (脳天直撃) | Mode=8B, Diff=SC, Info=97.90% | Atlas=OK
+  File: 20260701123442_1.jpg                -> Scene=OpenMatch, SongID=409   (ZET ~Mr.Funky Remix~) | Mode=8B, Diff=NM, Info=100.00% (MAX COMBO) | Atlas=OK
+  File: 20260701123449_1.jpg                -> Scene=OpenMatch, SongID=702   (小緋縅(kohiodoshi)) | Mode=8B, Diff=SC, Info=97.25% | Atlas=OK
+  File: 20260701123941_1.jpg                -> Scene=ResultOpen3, SongID=802   (Dreamscape) | Mode=6B, Diff=SC, Info=99.42% (MAX COMBO) | Atlas=OK
+  File: 20260701124303_1.jpg                -> Scene=ResultOpen2, SongID=662   (Kakera) | Mode=6B, Diff=SC, Info=99.63% (MAX COMBO) | Atlas=OK
+  File: 20260701124615_1.jpg                -> Scene=ResultOpen2, SongID=714   (Rusty Shell) | Mode=8B, Diff=SC, Info=99.20% (MAX COMBO) | Atlas=OK
+  File: 20260701124917_1.jpg                -> Scene=ResultOpen2, SongID=765   (RUN & RUN) | Mode=8B, Diff=SC, Info=97.04% | Atlas=OK
+  File: 20260701164242_1.jpg                -> Scene=ResultFreestyle, SongID=366   (Sweet Shining Shooting Star) | Mode=4B, Diff=SC, Info=99.82% (MAX COMBO) | Atlas=OK
+  File: 20260701164800_1.jpg                -> Scene=ResultFreestyle, SongID=211   (sO mUCH iN LUV ~Melodic Twisted Mix~) | Mode=8B, Diff=SC, Info=99.66% | Atlas=OK
+  File: 20260701165356_1.jpg                -> Scene=ResultFreestyle, SongID=87    (Seeker) | Mode=6B, Diff=SC, Info=99.70% (MAX COMBO) | Atlas=OK
+  File: 20260701172550_1.jpg                -> Scene=Freestyle, SongID=453   (Odysseus) | Mode=6B, Diff=NM, Info=99.95% (MAX COMBO) | Atlas=OK
+  File: 20260701173729_1.jpg                -> Scene=Freestyle, SongID=453   (Odysseus) | Mode=5B, Diff=HD, Info=99.23% (MAX COMBO) | Atlas=OK
+  File: 20260701174256_1.jpg                -> Scene=Freestyle, SongID=408   (Your Smile) | Mode=5B, Diff=NM, Info=Stable | Atlas=OK
+  File: 20260701174314_1.jpg                -> Scene=Freestyle, SongID=409   (ZET ~Mr.Funky Remix~) | Mode=5B, Diff=NM, Info=Stable | Atlas=OK
+  File: 20260702232716_1.jpg                -> Scene=Freestyle, SongID=756   (Heliocentrism) | Mode=4B, Diff=SC, Info=97.25% | Atlas=OK
+  File: 20260702233310_1.jpg                -> Scene=ResultFreestyle, SongID=815   (Megingjord) | Mode=8B, Diff=HD, Info=99.54% | Atlas=OK
+  File: 20260702233605_1.jpg                -> Scene=ResultFreestyle, SongID=815   (Megingjord) | Mode=8B, Diff=NM, Info=99.98% (MAX COMBO) | Atlas=OK
+  File: 20260702233900_1.jpg                -> Scene=ResultFreestyle, SongID=795   (미래소녀 (feat. 혜지)) | Mode=8B, Diff=MX, Info=99.58% | Atlas=OK
+  File: 20260702234248_1.jpg                -> Scene=ResultOpen3, SongID=625   (Away) | Mode=6B, Diff=MX, Info=99.93% (MAX COMBO) | Atlas=OK
+  File: 20260702234552_1.jpg                -> Scene=ResultOpen3, SongID=716   (Summer Fling) | Mode=5B, Diff=HD, Info=99.78% | Atlas=OK
+  File: 20260702234845_1.jpg                -> Scene=ResultOpen3, SongID=701   (Usagi Flap) | Mode=5B, Diff=NM, Info=100.00% (MAX COMBO) | Atlas=OK
+  File: 20260702235148_1.jpg                -> Scene=ResultOpen3, SongID=297   (I want You ~반짝 반짝 Sunshine~) | Mode=5B, Diff=SC, Info=99.37% | Atlas=OK
+  File: 20260702235450_1.jpg                -> Scene=ResultOpen3, SongID=717   (Synchronized Resonance) | Mode=8B, Diff=SC, Info=99.61% | Atlas=OK
+  File: 20260702235812_1.jpg                -> Scene=ResultOpen3, SongID=704   (CHiNEM4TiC) | Mode=4B, Diff=SC, Info=99.83% | Atlas=OK
+  File: 20260703000132_1.jpg                -> Scene=ResultOpen3, SongID=384   (Trrricksters!!) | Mode=8B, Diff=SC, Info=98.09% | Atlas=OK
+  File: 20260703000421_1.jpg                -> Scene=ResultOpen3, SongID=720   (Violent (feat. SAINT MILLER)) | Mode=8B, Diff=SC, Info=97.18% | Atlas=OK
+  File: 20260703020235_1.jpg                -> Scene=ResultFreestyle, SongID=206   (For Seasons ~Air Guitar Mix~) | Mode=8B, Diff=SC, Info=99.76% (MAX COMBO) | Atlas=OK
+
+Atlas mode: all files match full-frame results

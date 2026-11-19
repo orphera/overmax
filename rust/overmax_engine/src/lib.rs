@@ -8,5 +8,5 @@ macro_rules! debug_println {
 
 pub mod capture;
 pub mod detector;
-pub mod frame;
+pub use overmax_frame as frame;
 pub mod image_index_jacket;

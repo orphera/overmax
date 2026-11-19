@@ -1,5 +1,5 @@
-use crate::frame::utils::{crop_roi, ImageView};
-use crate::frame::CapturedFrame;
+use crate::utils::{crop_roi, ImageView};
+use crate::CapturedFrame;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RawRoiRect {

@@ -5,6 +5,7 @@ members = [
     "rust/overmax_cv",
     "rust/overmax_data",
     "rust/overmax_engine",
+    "rust/overmax_frame",
     "rust/overmax_runtime",
 ]
 resolver = "2"

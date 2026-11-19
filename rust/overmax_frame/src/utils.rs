@@ -1,5 +1,5 @@
-use crate::frame::CapturedFrame;
-use crate::frame::RoiRect;
+use crate::CapturedFrame;
+use crate::RoiRect;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ImageRegion {
@@ -193,7 +193,7 @@ pub fn compute_pixel_checksum(frame: &CapturedFrame, roi: RoiRect) -> Option<u64
     Some(sum)
 }
 
-pub(crate) fn mean_abs_diff(current: &[u8], previous: &[u8]) -> f32 {
+pub fn mean_abs_diff(current: &[u8], previous: &[u8]) -> f32 {
     let sum = current
         .iter()
         .zip(previous)
@@ -205,8 +205,8 @@ pub(crate) fn mean_abs_diff(current: &[u8], previous: &[u8]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::{crop_roi, region_mean_bgr, thumbnail_changed};
-    use crate::frame::CapturedFrame;
-    use crate::frame::RoiRect;
+    use crate::CapturedFrame;
+    use crate::RoiRect;
 
     #[test]
     fn crops_bgra_region() {

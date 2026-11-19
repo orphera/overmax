@@ -3009,6 +3009,7 @@ dependencies = [
  "memmap2",
  "overmax-core",
  "overmax-data",
+ "overmax-frame",
  "overmax_cv",
  "pipewire",
  "serde",
@@ -3019,6 +3020,14 @@ dependencies = [
  "windows-sys 0.61.2",
  "x11rb",
  "zbus",
+]
+
+[[package]]
+name = "overmax-frame"
+version = "0.4.2"
+dependencies = [
+ "overmax-core",
+ "overmax_cv",
 ]
 
 [[package]]

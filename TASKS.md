@@ -242,4 +242,13 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [x] 실제 앱에서 확인: 라이트 모드 + 수동 배치에서 ⬆ 클릭으로 업로드, 스냅 모드 동작 유지, 헤더 빈 곳 드래그 유지
   - [x] 후속: 헤더 오른쪽 버튼 묶음을 `HeaderButtons`로 공유해 라이트 헤더도 일반 헤더와 같은 버튼(⚙ 🔄 📋 ⬆)·크기·간격 사용
 - [ ] **13.2 [orphera/overmax#43](https://github.com/orphera/overmax/issues/43) 기능 모듈화**
-  - 재사용에 용이하도록 overmax의 기능을 모듈화. 11번(app 경계 정리)의 후속으로 범위를 정한 뒤 진행
+  - 재사용에 용이하도록 overmax의 기능을 모듈화. 목표: 감지 단독 사용 · 플랫폼 분리 · 큰 파일 정리 (동작 불변)
+  - 계획: [2026-11-19-modularization-plan.md](docs/plans/2026-11-19-modularization-plan.md)
+  - [ ] 0. 기준선 측정
+  - [ ] 1. engine 내부 순환 끊기
+  - [ ] 2. 감지 ↔ data 분리 (`JacketIndex`, `DetectConfig`)
+  - [ ] 3. crate 분리 (`overmax_frame` / `overmax_detect` / `overmax_capture`)
+  - [ ] 4. 공개 API 정리
+  - [ ] 5. 플랫폼 분리
+  - [ ] 6. 큰 파일 분할
+  - [ ] 7. 최종 검증 (기준선 비교)

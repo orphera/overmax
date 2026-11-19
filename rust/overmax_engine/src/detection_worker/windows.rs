@@ -10,7 +10,88 @@ pub(super) fn initialize_winrt(log_tx: &Sender<String>) {
     }
 }
 
+/// Windows-only worker state. Mirrors `linux::PlatformState`.
+pub(super) struct PlatformState {
+    pub(super) cached_window_id: Option<u64>,
+}
+
+impl PlatformState {
+    pub(super) fn new() -> Self {
+        Self {
+            cached_window_id: None,
+        }
+    }
+}
+
 impl DetectionWorker {
+    pub(super) fn configure_capture(&self, capturer: &mut AdaptiveCaptureEngine) {
+        let pref = self
+            .settings
+            .screen_capture()
+            .engine
+            .parse()
+            .unwrap_or_default();
+        capturer.set_preferred_engine(pref);
+        let atlas_enabled = self.settings.screen_capture().enable_gpu_atlas;
+        capturer.set_enable_gpu_atlas(atlas_enabled);
+        let white_level = self.settings.screen_capture().hdr_sdr_white_level;
+        capturer.set_hdr_sdr_white_level(white_level);
+    }
+
+    pub(super) fn sync_capture_settings(
+        &self,
+        new_settings: &Settings,
+        capturer: &mut Box<dyn CaptureEngine>,
+    ) {
+        let old_pref: overmax_capture::PreferredCaptureEngine = self
+            .settings
+            .screen_capture()
+            .engine
+            .parse()
+            .unwrap_or_default();
+        let new_pref: overmax_capture::PreferredCaptureEngine = new_settings
+            .screen_capture()
+            .engine
+            .parse()
+            .unwrap_or_default();
+        if old_pref != new_pref {
+            self.log(format!(
+                "[Detection] capture backend updated: {old_pref:?} -> {new_pref:?}"
+            ));
+            capturer.set_preferred_engine(new_pref);
+        }
+        let old_atlas = self.settings.screen_capture().enable_gpu_atlas;
+        let new_atlas = new_settings.screen_capture().enable_gpu_atlas;
+        if old_atlas != new_atlas {
+            self.log(format!(
+                "[Detection] gpu atlas updated: {old_atlas} -> {new_atlas}"
+            ));
+            capturer.set_enable_gpu_atlas(new_atlas);
+        }
+        let old_white_level = self.settings.screen_capture().hdr_sdr_white_level;
+        let new_white_level = new_settings.screen_capture().hdr_sdr_white_level;
+        if old_white_level != new_white_level {
+            self.log(format!(
+                "[Detection] hdr sdr white level updated: {old_white_level:?} -> {new_white_level:?}"
+            ));
+            capturer.set_hdr_sdr_white_level(new_white_level);
+        }
+    }
+
+    pub(super) fn initial_detecting_output(&self, rect: WindowRect) -> DetectionOutput {
+        self.detecting_output(Some(rect), None, None)
+    }
+
+    pub(super) fn tick_platform(
+        &mut self,
+        tracker: &mut WindowTracker,
+        capturer: &mut Box<dyn CaptureEngine>,
+        pipeline: &mut DetectionPipeline,
+    ) -> TickFlow {
+        self.tick(tracker, capturer, pipeline);
+        TickFlow::Sleep
+    }
+
     pub(super) fn tick(
         &mut self,
         tracker: &WindowTracker,
@@ -26,14 +107,14 @@ impl DetectionWorker {
                 .cached_rect
                 .zip(r)
                 .is_some_and(|(old, new)| (old.width, old.height) != (new.width, new.height));
-            if self.cached_window_id != id || resized {
+            if self.platform.cached_window_id != id || resized {
                 pipeline.reset();
                 if self.was_found {
                     self.send_detection_output(self.detecting_output(r, None, None));
                     self.request_repaint();
                 }
             }
-            self.cached_window_id = id;
+            self.platform.cached_window_id = id;
             let f = tracker.is_foreground();
             self.window_scheduler.cached_fullscreen = tracker.is_fullscreen();
             self.window_scheduler.update(r, f);

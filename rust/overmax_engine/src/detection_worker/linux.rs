@@ -94,7 +94,78 @@ pub(super) fn effective_focus(
 
 pub(super) fn initialize_winrt(_log_tx: &Sender<String>) {}
 
+/// Linux-only worker state. Mirrors `windows::PlatformState`; the worker calls
+/// the same-named methods on either platform (no trait, see plan stage 5).
+pub(super) struct PlatformState {
+    #[cfg(feature = "portal-capture")]
+    pub(super) portal: Option<PortalConnection>,
+    pub(super) window_snapshot: Option<WindowSnapshot>,
+    pub(super) focus_observation: Option<FocusObservation>,
+    pub(super) focus_policy: LinuxFocusPolicy,
+}
+
+impl PlatformState {
+    pub(super) fn new() -> Self {
+        Self {
+            #[cfg(feature = "portal-capture")]
+            portal: None,
+            window_snapshot: None,
+            focus_observation: None,
+            focus_policy: LinuxFocusPolicy::new(),
+        }
+    }
+}
+
 impl DetectionWorker {
+    pub(super) fn configure_capture(&self, _capturer: &mut AdaptiveCaptureEngine) {}
+
+    pub(super) fn sync_capture_settings(
+        &self,
+        _new_settings: &Settings,
+        _capturer: &mut Box<dyn CaptureEngine>,
+    ) {
+    }
+
+    pub(super) fn initial_detecting_output(&self, _rect: WindowRect) -> DetectionOutput {
+        self.linux_detecting_output(None)
+    }
+
+    pub(super) fn tick_platform(
+        &mut self,
+        tracker: &mut WindowTracker,
+        capturer: &mut Box<dyn CaptureEngine>,
+        pipeline: &mut DetectionPipeline,
+    ) -> TickFlow {
+        #[cfg(feature = "portal-capture")]
+        let mut portal = self.platform.portal.take();
+        let result = self.tick_linux(
+            tracker,
+            capturer,
+            pipeline,
+            #[cfg(feature = "portal-capture")]
+            &mut portal,
+        );
+        #[cfg(feature = "portal-capture")]
+        {
+            self.platform.portal = portal;
+        }
+        match result {
+            LinuxTickResult::Continue => TickFlow::Sleep,
+            LinuxTickResult::Stop => TickFlow::Stop,
+            LinuxTickResult::Reconnect => {
+                std::thread::sleep(Duration::from_secs(1));
+                *tracker = WindowTracker::new(&window_title(&self.settings));
+                match AdaptiveCaptureEngine::new() {
+                    Ok(engine) => *capturer = Box::new(engine),
+                    Err(error) => {
+                        self.log(format!("[Detection] capture reconnect failed: {error}"));
+                    }
+                }
+                TickFlow::Skip
+            }
+        }
+    }
+
     pub(super) fn tick_linux(
         &mut self,
         tracker: &WindowTracker,
@@ -122,9 +193,9 @@ impl DetectionWorker {
                 Instant::now(),
             );
             if let Some(reset) = poll.reset {
-                self.window_snapshot = None;
-                self.focus_observation = None;
-                self.focus_policy.reset();
+                self.platform.window_snapshot = None;
+                self.platform.focus_observation = None;
+                self.platform.focus_policy.reset();
                 self.window_scheduler = WindowQueryScheduler::new(true);
                 match reset {
                     ResetScope::Observations => {
@@ -187,7 +258,7 @@ impl DetectionWorker {
                 return LinuxTickResult::Continue;
             }
         }
-        let previous_snapshot = self.window_snapshot;
+        let previous_snapshot = self.platform.window_snapshot;
         let queried = self.window_scheduler.should_query();
         let mut target_changed = false;
         let mut target_resized = false;
@@ -226,13 +297,14 @@ impl DetectionWorker {
                 }
             };
             let snapshot = observation.map(|(snapshot, _)| snapshot);
-            self.focus_observation = observation.map(|(_, focus)| focus);
-            target_changed = self.window_snapshot.map(|s| s.window) != snapshot.map(|s| s.window);
+            self.platform.focus_observation = observation.map(|(_, focus)| focus);
+            target_changed =
+                self.platform.window_snapshot.map(|s| s.window) != snapshot.map(|s| s.window);
             target_resized = capture_target_resized(previous_snapshot, snapshot);
             if let Err(error) = capturer.set_target(snapshot) {
                 return self.handle_linux_capture_error(capturer.as_ref(), pipeline, error);
             }
-            self.window_snapshot = snapshot;
+            self.platform.window_snapshot = snapshot;
         }
 
         let presentation = self
@@ -240,7 +312,10 @@ impl DetectionWorker {
             .lock()
             .ok()
             .and_then(|observation| *observation);
-        let focus_loss = match (self.window_snapshot.as_mut(), self.focus_observation) {
+        let focus_loss = match (
+            self.platform.window_snapshot.as_mut(),
+            self.platform.focus_observation,
+        ) {
             (Some(snapshot), Some(x11_observation)) => {
                 let now = Instant::now();
                 let observation = effective_focus(x11_observation, presentation);
@@ -248,32 +323,37 @@ impl DetectionWorker {
                 if let Some(fullscreen) = presentation.and_then(|value| value.fullscreen) {
                     snapshot.fullscreen = fullscreen;
                 }
-                let (foreground, loss) = self.focus_policy.update(observation, committed_at, now);
+                let (foreground, loss) =
+                    self.platform
+                        .focus_policy
+                        .update(observation, committed_at, now);
                 snapshot.foreground = foreground;
                 loss
             }
             _ => {
-                self.focus_policy.reset();
+                self.platform.focus_policy.reset();
                 None
             }
         };
         if queried {
             self.window_scheduler.update(
-                self.window_snapshot.map(|snapshot| snapshot.rect),
-                self.window_snapshot
+                self.platform.window_snapshot.map(|snapshot| snapshot.rect),
+                self.platform
+                    .window_snapshot
                     .is_some_and(|snapshot| snapshot.foreground),
             );
         }
         let capture_state_changed = previous_snapshot
             .map(|current| (current.window, current.foreground, current.fullscreen))
             != self
+                .platform
                 .window_snapshot
                 .map(|current| (current.window, current.foreground, current.fullscreen));
-        let overlay_snapshot_changed = previous_snapshot != self.window_snapshot;
+        let overlay_snapshot_changed = previous_snapshot != self.platform.window_snapshot;
         if capture_state_changed {
             self.capture_failure_active = false;
         }
-        if target_changed && self.window_snapshot.is_some() && self.was_found {
+        if target_changed && self.platform.window_snapshot.is_some() && self.was_found {
             self.on_capture_interrupted(pipeline, "capture target changed");
         } else if let Some(loss) = focus_loss {
             let reason = match loss {
@@ -285,7 +365,7 @@ impl DetectionWorker {
             self.on_capture_interrupted(pipeline, "capture target resized");
         }
 
-        let Some(snapshot) = self.window_snapshot else {
+        let Some(snapshot) = self.platform.window_snapshot else {
             self.on_linux_window_missing(pipeline);
             return LinuxTickResult::Continue;
         };
@@ -387,8 +467,8 @@ impl DetectionWorker {
 
     pub(super) fn linux_detecting_output(&self, capture_fatal: Option<String>) -> DetectionOutput {
         self.detecting_output(
-            self.window_snapshot.map(|s| s.rect),
-            self.window_snapshot,
+            self.platform.window_snapshot.map(|s| s.rect),
+            self.platform.window_snapshot,
             capture_fatal,
         )
     }
@@ -602,7 +682,7 @@ mod tests {
             height: 1440,
         });
         background.foreground = false;
-        worker.window_snapshot = Some(background);
+        worker.platform.window_snapshot = Some(background);
 
         assert!(!worker.on_window_found(background.rect, background.foreground));
         assert_eq!(

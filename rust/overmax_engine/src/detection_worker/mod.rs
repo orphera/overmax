@@ -24,11 +24,23 @@ mod linux;
 mod windows;
 
 #[cfg(target_os = "linux")]
-use linux::{initialize_winrt, LinuxFocusPolicy, LinuxTickResult};
+use linux::{initialize_winrt, PlatformState};
 #[cfg(all(target_os = "linux", feature = "portal-capture"))]
 use overmax_capture::{PortalCapture, PortalConnection, PortalControl, ResetScope};
 #[cfg(target_os = "windows")]
-use windows::initialize_winrt;
+use windows::{initialize_winrt, PlatformState};
+
+/// What the run loop does after one platform tick. The Windows tick always
+/// returns `Sleep`; `Skip`/`Stop` come from the Linux reconnect/fatal paths.
+#[cfg_attr(target_os = "windows", allow(dead_code))]
+enum TickFlow {
+    /// Sleep for the scheduled interval, then tick again.
+    Sleep,
+    /// Tick again immediately (the Linux reconnect path already waited).
+    Skip,
+    /// Capture is permanently unavailable; end the worker.
+    Stop,
+}
 
 pub struct WorkerControl {
     #[cfg(all(target_os = "linux", feature = "portal-capture"))]
@@ -65,7 +77,7 @@ pub fn spawn(
         .with_image_index_reload(image_index_reload_rx);
         #[cfg(all(target_os = "linux", feature = "portal-capture"))]
         {
-            worker.portal = Some(portal);
+            worker.platform.portal = Some(portal);
         }
         worker.run();
     });
@@ -103,8 +115,6 @@ impl From<&DetectionOutput> for RepaintFingerprint {
 }
 
 struct DetectionWorker {
-    #[cfg(all(target_os = "linux", feature = "portal-capture"))]
-    portal: Option<PortalConnection>,
     root: PathBuf,
     telemetry_log_path: PathBuf,
     settings: Settings,
@@ -125,14 +135,7 @@ struct DetectionWorker {
     last_scene_type: overmax_core::SceneType,
     frame_buffer: CapturedFrame,
     window_scheduler: WindowQueryScheduler,
-    #[cfg(target_os = "windows")]
-    cached_window_id: Option<u64>,
-    #[cfg(target_os = "linux")]
-    window_snapshot: Option<WindowSnapshot>,
-    #[cfg(target_os = "linux")]
-    focus_observation: Option<FocusObservation>,
-    #[cfg(target_os = "linux")]
-    focus_policy: LinuxFocusPolicy,
+    platform: PlatformState,
     #[allow(dead_code)]
     presentation_observation: SharedPresentationObservation,
     capture_failure_active: bool,
@@ -161,8 +164,6 @@ impl DetectionWorker {
         #[cfg(not(any(debug_assertions, feature = "telemetry")))]
         let _ = runtime_telemetry;
         Self {
-            #[cfg(all(target_os = "linux", feature = "portal-capture"))]
-            portal: None,
             root,
             telemetry_log_path,
             settings,
@@ -187,14 +188,7 @@ impl DetectionWorker {
                 bgra: Vec::new(),
             },
             window_scheduler: WindowQueryScheduler::new(true),
-            #[cfg(target_os = "windows")]
-            cached_window_id: None,
-            #[cfg(target_os = "linux")]
-            window_snapshot: None,
-            #[cfg(target_os = "linux")]
-            focus_observation: None,
-            #[cfg(target_os = "linux")]
-            focus_policy: LinuxFocusPolicy::new(),
+            platform: PlatformState::new(),
             presentation_observation,
             capture_failure_active: false,
             image_index_reload_rx: None,
@@ -207,34 +201,15 @@ impl DetectionWorker {
     }
 
     fn run(&mut self) {
-        #[cfg(target_os = "windows")]
-        let tracker = WindowTracker::new(&window_title(&self.settings));
-        #[cfg(target_os = "linux")]
         let mut tracker = WindowTracker::new(&window_title(&self.settings));
-        #[allow(unused_mut)]
         let mut capturer_adaptive = match AdaptiveCaptureEngine::new() {
             Ok(c) => c,
             Err(e) => return self.log(format!("[Detection] capture init failed: {e}")),
         };
-        #[cfg(target_os = "windows")]
-        {
-            let pref = self
-                .settings
-                .screen_capture()
-                .engine
-                .parse()
-                .unwrap_or_default();
-            capturer_adaptive.set_preferred_engine(pref);
-            let atlas_enabled = self.settings.screen_capture().enable_gpu_atlas;
-            capturer_adaptive.set_enable_gpu_atlas(atlas_enabled);
-            let white_level = self.settings.screen_capture().hdr_sdr_white_level;
-            capturer_adaptive.set_hdr_sdr_white_level(white_level);
-        }
+        self.configure_capture(&mut capturer_adaptive);
         let mut capturer: Box<dyn CaptureEngine> = Box::new(capturer_adaptive);
         let mut pipeline = self.build_pipeline();
         self.log("[Detection] Pure Rust Native Engine initialized".to_string());
-        #[cfg(all(target_os = "linux", feature = "portal-capture"))]
-        let mut portal = self.portal.take();
 
         loop {
             #[cfg(any(debug_assertions, feature = "telemetry"))]
@@ -243,74 +218,19 @@ impl DetectionWorker {
             }
             self.sync_live_settings(&mut capturer);
             self.reload_image_index_if_requested(&mut pipeline);
-            #[cfg(target_os = "windows")]
-            self.tick(&tracker, &mut capturer, &mut pipeline);
-            #[cfg(target_os = "linux")]
-            match self.tick_linux(
-                &tracker,
-                &mut capturer,
-                &mut pipeline,
-                #[cfg(feature = "portal-capture")]
-                &mut portal,
-            ) {
-                LinuxTickResult::Continue => {}
-                LinuxTickResult::Stop => return,
-                LinuxTickResult::Reconnect => {
-                    std::thread::sleep(Duration::from_secs(1));
-                    tracker = WindowTracker::new(&window_title(&self.settings));
-                    capturer = match AdaptiveCaptureEngine::new() {
-                        Ok(capturer) => Box::new(capturer),
-                        Err(error) => {
-                            self.log(format!("[Detection] capture reconnect failed: {error}"));
-                            continue;
-                        }
-                    };
-                    continue;
-                }
+            match self.tick_platform(&mut tracker, &mut capturer, &mut pipeline) {
+                TickFlow::Sleep => {}
+                TickFlow::Skip => continue,
+                TickFlow::Stop => return,
             }
             std::thread::sleep(self.sleep_duration());
         }
     }
 
-    fn sync_live_settings(&mut self, _capturer: &mut Box<dyn CaptureEngine>) {
+    fn sync_live_settings(&mut self, capturer: &mut Box<dyn CaptureEngine>) {
         if let Ok(guard) = self.merged_settings.lock() {
             if let Ok(new_settings) = serde_json::from_value::<Settings>(guard.clone()) {
-                #[cfg(target_os = "windows")]
-                {
-                    let old_pref: overmax_capture::PreferredCaptureEngine = self
-                        .settings
-                        .screen_capture()
-                        .engine
-                        .parse()
-                        .unwrap_or_default();
-                    let new_pref: overmax_capture::PreferredCaptureEngine = new_settings
-                        .screen_capture()
-                        .engine
-                        .parse()
-                        .unwrap_or_default();
-                    if old_pref != new_pref {
-                        self.log(format!(
-                            "[Detection] capture backend updated: {old_pref:?} -> {new_pref:?}"
-                        ));
-                        _capturer.set_preferred_engine(new_pref);
-                    }
-                    let old_atlas = self.settings.screen_capture().enable_gpu_atlas;
-                    let new_atlas = new_settings.screen_capture().enable_gpu_atlas;
-                    if old_atlas != new_atlas {
-                        self.log(format!(
-                            "[Detection] gpu atlas updated: {old_atlas} -> {new_atlas}"
-                        ));
-                        _capturer.set_enable_gpu_atlas(new_atlas);
-                    }
-                    let old_white_level = self.settings.screen_capture().hdr_sdr_white_level;
-                    let new_white_level = new_settings.screen_capture().hdr_sdr_white_level;
-                    if old_white_level != new_white_level {
-                        self.log(format!(
-                            "[Detection] hdr sdr white level updated: {old_white_level:?} -> {new_white_level:?}"
-                        ));
-                        _capturer.set_hdr_sdr_white_level(new_white_level);
-                    }
-                }
+                self.sync_capture_settings(&new_settings, capturer);
                 self.settings = new_settings;
             }
         }
@@ -405,10 +325,7 @@ impl DetectionWorker {
             }
             let _ = self.game_found_tx.send(());
             if !foreground {
-                #[cfg(target_os = "linux")]
-                self.send_detection_output(self.linux_detecting_output(None));
-                #[cfg(not(target_os = "linux"))]
-                self.send_detection_output(self.detecting_output(Some(rect), None, None));
+                self.send_detection_output(self.initial_detecting_output(rect));
             }
             self.request_repaint();
             self.log("[Detection] game window found".into());

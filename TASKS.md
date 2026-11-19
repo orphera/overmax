@@ -241,7 +241,7 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [x] 수정: 일반 모드 헤더와 같이 실제로 그려진 설정/업로드 버튼의 왼쪽 끝(`buttons_left_x`)까지만 드래그 영역으로 사용 (`drag_rect_excluding_buttons` 공유)
   - [x] 실제 앱에서 확인: 라이트 모드 + 수동 배치에서 ⬆ 클릭으로 업로드, 스냅 모드 동작 유지, 헤더 빈 곳 드래그 유지
   - [x] 후속: 헤더 오른쪽 버튼 묶음을 `HeaderButtons`로 공유해 라이트 헤더도 일반 헤더와 같은 버튼(⚙ 🔄 📋 ⬆)·크기·간격 사용
-- [ ] **13.2 [orphera/overmax#43](https://github.com/orphera/overmax/issues/43) 기능 모듈화**
+- [x] **13.2 [orphera/overmax#43](https://github.com/orphera/overmax/issues/43) 기능 모듈화**
   - 재사용에 용이하도록 overmax의 기능을 모듈화. 목표: 감지 단독 사용 · 플랫폼 분리 · 큰 파일 정리 (동작 불변)
   - 계획: [2026-11-19-modularization-plan.md](docs/plans/2026-11-19-modularization-plan.md)
   - [x] 0. 기준선 측정 ([기준선](docs/plans/2026-11-19-modularization-baseline.md))
@@ -251,6 +251,6 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [x] 4. 공개 API 정리
   - [x] 5. 플랫폼 분리
   - [x] 6. 큰 파일 분할
-  - [x] 7. 최종 검증 (기준선 비교) — 인식 109건 동일, 인게임 A/B CPU·캡처 10% 이내. Windows 수동 체크리스트는 미확인
+  - [x] 7. 최종 검증 (기준선 비교) — 인식 109건 동일, 인게임 A/B CPU·캡처 10% 이내. Windows 수동 체크리스트 15/18 확인, 3개 보류 (오픈매치 2·3인 결과, DB 동기화 버전 갱신, 업데이트 확인)
 - [x] **13.3 [orphera/overmax#44](https://github.com/orphera/overmax/issues/44) 릴리스 빌드에서 선곡·결과 화면 CPU 사용률이 높음**
   - 원인: 매 프레임 `InnerSize` → `SetWindowPos` → NVIDIA OpenGL 드라이버 스핀. `7f5df1e`에서 창 크기가 다를 때만 보내도록 수정. 선곡 화면 CPU 평균 87.4% → 6.1% (코어 1개 기준)

@@ -249,7 +249,7 @@ Overmax 활성 작업 목록 및 마일스톤 로드맵입니다.
   - [x] 2. 감지 ↔ data 분리 (`JacketIndex`, `DetectConfig`)
   - [x] 3. crate 분리 (`overmax_frame` / `overmax_detect` / `overmax_capture`)
   - [x] 4. 공개 API 정리
-  - [ ] 5. 플랫폼 분리
+  - [x] 5. 플랫폼 분리
   - [ ] 6. 큰 파일 분할
   - [ ] 7. 최종 검증 (기준선 비교)
 - [x] **13.3 [orphera/overmax#44](https://github.com/orphera/overmax/issues/44) 릴리스 빌드에서 선곡·결과 화면 CPU 사용률이 높음**

@@ -307,3 +307,32 @@ app이 쓰는 engine 내부 경로(약 40곳)를 각 crate의 루트 re-export(`
 - 이번 단계부터 WSL에 PipeWire·libclang 개발 패키지와 Xvfb·Openbox가 있다. `--features overmax-engine/portal-capture,overmax-engine/telemetry`로 clippy·테스트(engine 9개, capture), app debug·release 빌드 통과. `linux-vertical-slice-lifecycle.sh` (Xvfb + Openbox, 새 테스트 경로 `linux::window_tracker::tests::…`, `linux::capture_engine::tests::…`) 3건 통과. 분할 전 브랜치 끝(`2611fb8`)에서도 같은 게이트를 먼저 돌려 통과를 확인했다.
 - Portal 경로는 빌드와 단위 테스트까지만 확인했다. 실제 xdg-desktop-portal 세션(화면 선택·PipeWire 프레임 수신)은 실행하지 못했다. 이동한 파일: `overmax_capture/src/linux/portal/*`, `overmax_engine/src/detection_worker/linux.rs`의 Portal 분기, `overmax_app/src/ui/platform/linux/portal_capture_ui.rs`.
 - `verify_pipeline` 109건 결과 기준선과 바이트 단위 동일. `cargo build --release -p overmax-app` 성공. 감지 경로에 변경이 없어 A/B는 생략했다.
+
+### 단계 6 — 큰 파일 분할 (2026-11-19)
+
+모든 커밋은 이동 커밋이다. `X.rs`는 `X/mod.rs`로 바꾸고, 인라인 `mod tests { … }`는 `X/tests.rs`로 옮겼다. 함수 본문은 바꾸지 않았고, 커밋마다 공백을 뺀 원본과 새 파일 묶음을 비교해 같음을 확인했다.
+
+| 파일 (분할 전 줄 수) | 분할 결과 (제품 코드 기준 최대 파일) |
+|:---|:---|
+| `overmax_detect/src/detection_pipeline.rs` (1,745) | `mod.rs` 542 · `scene.rs` 389 (씬 판별 자유 함수) · `tests.rs` |
+| `overmax_detect/src/play_state.rs` (1,355) | `mod.rs` 816 · `tests.rs` |
+| `overmax_data/src/store/record_db/mod.rs` (1,189) | `mod.rs` 524 · `tests.rs` |
+| `overmax_cv/src/image.rs` (1,296) | `mod.rs` 922 · `tests.rs` — §2 목록 이후 1,000줄을 넘어 추가 |
+| `overmax_capture/src/linux/capture_engine.rs` (1,046) | `mod.rs` 829 · `tests.rs` |
+| `overmax_data/src/config/settings.rs` (1,017) | `mod.rs` 815 · `tests.rs` (테스트 뒤의 설정 구조체는 그대로 `mod.rs`) |
+| `overmax_app/src/ui/settings_ui.rs` (1,233) | `mod.rs` 203 (컨텍스트·저장·draft 헬퍼) · `general.rs` · `recommend.rs` · `varchive.rs` · `advanced.rs` (탭별) · `tests.rs` |
+| `overmax_app/src/ui/native_app.rs` (1,179) | `mod.rs` 671 · `sync.rs` 466 (V-Archive 스캔·업로드·삭제·조회 요청 처리, 자동 업로드·자동 갱신, 두 번째 `impl NativeApp`) · `tests.rs` |
+| `overmax_app/src/ui/i18n.rs` (1,483) | `mod.rs` 1,382 · `tests.rs` — **예외** (아래) |
+
+#### 결정
+
+- **`i18n/mod.rs`는 1,000줄을 넘은 채로 둔다.** 본문이 `macro_rules! t` 하나의 번역 표다. 매크로 하나는 여러 파일에 나눌 수 없고, 나누려면 키 영역별 하위 매크로로 위임하는 구조 변경(변경 커밋)이 필요하다. 표 자체는 키 단위로 읽고 고치므로 파일 길이가 기여를 막지 않는다고 판단했다.
+- 가시성 변경은 분할에 필요한 만큼만: `parse_static_scene`, 설정 탭 진입 함수 4개, `upload_result_message`(기존 테스트가 사용)가 `pub(super)`. 자식 모듈은 부모의 비공개 항목(`NativeApp` 필드, draft 헬퍼)을 그대로 쓴다.
+- `play_state`의 테스트 픽스처 `include_bytes!` 경로는 디렉터리가 한 단계 깊어져 `../test_fixtures/…`로 바뀌었다.
+- `settings_ui` 탭 분할 뒤 `advanced.rs`의 `segmented_row`·`CornerRadius`·`Stroke`는 Windows 캡처 엔진 선택에만 쓰여 Linux에서 미사용 import 경고가 났다. 같은 `#[cfg(target_os = "windows")]`로 묶었다 (`ada026f`).
+
+#### 게이트
+
+- 커밋마다 `cargo test --workspace` (249 통과 · 2 ignored), `cargo clippy --all-targets` (경고 0).
+- WSL `--features overmax-engine/portal-capture,overmax-engine/telemetry`로 workspace clippy·테스트(297 통과) 통과. clippy 경고 목록을 단계 5 머지 커밋(`7d502fb`)과 비교해 같음을 확인 (app의 기존 경고 5건, 그중 2건은 `native_app/tests.rs`로 위치만 이동). `linux-vertical-slice-lifecycle.sh` 3건 통과.
+- 감지 코드는 위치만 바뀌어 `verify_pipeline`·A/B는 단계 7 최종 검증에서 함께 잰다.

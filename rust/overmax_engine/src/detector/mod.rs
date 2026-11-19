@@ -3,6 +3,7 @@ pub mod atlas_translator;
 pub mod detection_pipeline;
 pub mod detection_worker;
 pub mod hysteresis;
+pub mod jacket_index;
 pub mod play_state;
 pub mod roi;
 pub mod roi_config;

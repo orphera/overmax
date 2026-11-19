@@ -1,12 +1,13 @@
 use crate::detector::hysteresis::HysteresisBuffer;
+use crate::detector::jacket_index::JacketIndex;
 use crate::detector::play_state::PlayStateDetector;
 use crate::detector::roi::RoiManager;
 use crate::detector::telemetry::{PipelineStatsCollector, PipelineTelemetrySnapshot};
 use crate::frame::utils::{make_thumbnail, mean_abs_diff, thumbnail_changed};
 use crate::frame::window::WindowSnapshot;
 use crate::frame::CapturedFrame;
+use crate::image_index_jacket::ImageIndexJacket;
 use overmax_core::{GameSessionState, SceneType, VerifiedPlayEvent};
-use overmax_data::ImageIndexDb;
 use std::time::Instant;
 
 const JACKET_MATCH_INTERVAL: f64 = 0.25;
@@ -82,10 +83,9 @@ pub enum JacketMatchStatus {
     Matched { song_id: i32, similarity: f32 },
 }
 
-pub struct DetectionPipeline {
+pub struct DetectionPipeline<J: JacketIndex = ImageIndexJacket> {
     pub stats: PipelineStatsCollector,
-    image_db: ImageIndexDb,
-    jacket_matcher: overmax_data::JacketMatcher,
+    jacket_index: J,
     rois: RoiManager,
     hysteresis: HysteresisBuffer,
     play_state: PlayStateDetector,
@@ -102,13 +102,11 @@ pub struct DetectionPipeline {
     recovering_from_suspension: bool,
 }
 
-impl DetectionPipeline {
-    pub fn new(image_db: ImageIndexDb) -> Self {
-        let jacket_matcher = image_db.matcher();
+impl<J: JacketIndex> DetectionPipeline<J> {
+    pub fn with_jacket_index(jacket_index: J) -> Self {
         Self {
             stats: PipelineStatsCollector::new(),
-            image_db,
-            jacket_matcher,
+            jacket_index,
             rois: RoiManager::new(1920, 1080),
             hysteresis: HysteresisBuffer::new(4, 0.5, 2, 0.25, 2),
             play_state: PlayStateDetector::new(5),
@@ -126,10 +124,9 @@ impl DetectionPipeline {
         }
     }
 
-    /// 갱신된 이미지 인덱스로 교체한다. 곡/씬 이력은 유지하고 DB와 매처만 바꾼다.
-    pub fn replace_image_db(&mut self, image_db: ImageIndexDb) {
-        self.jacket_matcher = image_db.matcher();
-        self.image_db = image_db;
+    /// 갱신된 자켓 인덱스로 교체한다. 곡/씬 이력은 유지하고 인덱스만 바꾼다.
+    pub fn replace_jacket_index(&mut self, jacket_index: J) {
+        self.jacket_index = jacket_index;
     }
 
     pub fn reset(&mut self) {
@@ -348,7 +345,7 @@ impl DetectionPipeline {
         } else {
             let is_unknown = !self.last_scene.is_record_scene();
             let (static_scene, miss_diag) =
-                parse_static_scene(frame, &self.rois, &self.jacket_matcher, is_unknown);
+                parse_static_scene(frame, &self.rois, &self.jacket_index, is_unknown);
             if let Some((scene, matched_song_id)) = static_scene {
                 if let Some(song_id) = matched_song_id {
                     self.current_song_id = Some(song_id);
@@ -415,7 +412,7 @@ impl DetectionPipeline {
     }
 
     fn update_song_id_from_jacket(&mut self, frame: &CapturedFrame, now: f64) -> JacketMatchStatus {
-        if !self.image_db.is_ready() {
+        if !self.jacket_index.is_ready() {
             return JacketMatchStatus::DbNotReady;
         }
         if now - self.last_jacket_ts < JACKET_MATCH_INTERVAL {
@@ -448,7 +445,7 @@ impl DetectionPipeline {
         jacket: &crate::frame::utils::ImageRegion,
     ) -> JacketMatchStatus {
         self.stats.record_match_jacket();
-        let Some(result) = self.jacket_matcher.match_jacket(
+        let Some(result) = self.jacket_index.match_jacket(
             &jacket.bgra,
             jacket.width as usize,
             jacket.height as usize,
@@ -519,7 +516,7 @@ impl DetectionPipeline {
             state,
             event,
             current_song_id: self.current_song_id,
-            image_db_ready: self.image_db.is_ready(),
+            image_db_ready: self.jacket_index.is_ready(),
             jacket_status,
             game_rect: None,
             window_snapshot: None,
@@ -597,7 +594,7 @@ pub fn check_open_match_badge(frame: &CapturedFrame, rois: &RoiManager) -> Optio
 fn detect_result_scene_via_edge(
     frame: &CapturedFrame,
     rois: &RoiManager,
-    matcher: &overmax_data::JacketMatcher,
+    matcher: &impl JacketIndex,
     is_unknown: bool,
 ) -> Option<(SceneType, i32)> {
     // ResultFreestyle, ResultOpen3, ResultOpen2 재킷 ROI는 같은 위치를 공유함
@@ -676,7 +673,7 @@ fn detect_result_scene_via_edge(
 fn run_jacket_match_gate(
     frame: &CapturedFrame,
     rois: &RoiManager,
-    matcher: &overmax_data::JacketMatcher,
+    matcher: &impl JacketIndex,
     scene: SceneType,
     is_unknown: bool,
     #[allow(unused_variables)] gate_label: &str,
@@ -740,7 +737,7 @@ fn run_jacket_match_gate(
 fn detect_freestyle_scene_via_edge(
     frame: &CapturedFrame,
     rois: &RoiManager,
-    matcher: &overmax_data::JacketMatcher,
+    matcher: &impl JacketIndex,
     is_unknown: bool,
 ) -> (Option<(SceneType, i32, f32)>, SceneMissDiag) {
     let (res, diag) = run_jacket_match_gate(
@@ -757,7 +754,7 @@ fn detect_freestyle_scene_via_edge(
 fn detect_openmatch_scene_via_edge(
     frame: &CapturedFrame,
     rois: &RoiManager,
-    matcher: &overmax_data::JacketMatcher,
+    matcher: &impl JacketIndex,
     is_unknown: bool,
 ) -> (Option<(SceneType, i32, f32)>, SceneMissDiag) {
     let (res, diag) = run_jacket_match_gate(
@@ -774,7 +771,7 @@ fn detect_openmatch_scene_via_edge(
 fn parse_static_scene(
     frame: &CapturedFrame,
     rois: &RoiManager,
-    matcher: &overmax_data::JacketMatcher,
+    matcher: &impl JacketIndex,
     is_unknown: bool,
 ) -> (Option<(SceneType, Option<i32>)>, SceneMissDiag) {
     // 1. 결과창 감지 우선 (Native CV)
@@ -821,7 +818,7 @@ fn parse_static_scene(
 pub fn detect_static_scene(
     frame: &CapturedFrame,
     rois: &RoiManager,
-    matcher: &overmax_data::JacketMatcher,
+    matcher: &impl JacketIndex,
 ) -> SceneType {
     parse_static_scene(frame, rois, matcher, true)
         .0
@@ -1510,7 +1507,7 @@ mod tests {
 
             // Create a fresh pipeline for each image to isolate ROI checksum caches (mode/diff, rate)
             let mut pipeline = DetectionPipeline::new(ImageIndexDb::new(db_path_str, 0.6));
-            let _ = pipeline.image_db.load();
+            let _ = pipeline.jacket_index.db_mut().load();
 
             let img = image::ImageReader::open(&path)
                 .expect("Failed to open file")

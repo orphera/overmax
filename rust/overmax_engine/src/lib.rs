@@ -9,3 +9,4 @@ macro_rules! debug_println {
 pub mod capture;
 pub mod detector;
 pub mod frame;
+pub mod image_index_jacket;

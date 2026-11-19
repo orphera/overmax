@@ -8,14 +8,14 @@ macro_rules! debug_println {
 
 #[cfg(test)]
 mod atlas_layout_tests;
-pub mod atlas_translator;
-pub mod detection_pipeline;
-pub mod hysteresis;
-pub mod jacket_index;
-pub mod play_state;
-pub mod roi;
-pub mod roi_config;
-pub mod telemetry;
+mod atlas_translator;
+mod detection_pipeline;
+mod hysteresis;
+mod jacket_index;
+mod play_state;
+mod roi;
+mod roi_config;
+mod telemetry;
 pub mod templates;
 
 pub use atlas_translator::AtlasTranslator;
@@ -26,6 +26,7 @@ pub use detection_pipeline::{
 pub use jacket_index::{JacketHit, JacketIndex};
 pub use play_state::{detect_button_mode, detect_difficulty, detect_max_combo, MIN_VALID_RATE};
 pub use roi::RoiManager;
+pub use roi_config::{GlobalRoiConfig, SceneRoiConfig};
 pub use telemetry::{
     current_timestamp_str, format_duration_us, DetectionDeliveryTelemetry, PipelineStatsCollector,
     PipelineTelemetrySnapshot, RuntimeTelemetry, TimingAggregator,

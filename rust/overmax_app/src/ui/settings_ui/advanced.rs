@@ -1,9 +1,13 @@
 //! 설정 창의 고급 탭: 저장 위치·디버그·IPC·캡처·업데이트.
 
+#[cfg(target_os = "windows")]
+use crate::ui::dialog_theme::segmented_row;
 use crate::ui::dialog_theme::{
-    field_row, section_card, segmented_row, setting_row, text_input_with_button, DialogTheme,
+    field_row, section_card, setting_row, text_input_with_button, DialogTheme,
 };
-use eframe::egui::{self, Color32, CornerRadius, RichText, Stroke};
+use eframe::egui::{self, Color32, RichText};
+#[cfg(target_os = "windows")]
+use eframe::egui::{CornerRadius, Stroke};
 
 use super::{object_section_mut, SettingsUiContext};
 use serde_json::{json, Map, Value};

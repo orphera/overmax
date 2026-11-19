@@ -1,6 +1,6 @@
 use crate::frame::CapturedFrame;
 use crate::frame::utils::{make_thumbnail, mean_abs_diff, thumbnail_changed};
-use crate::capture::window_tracker::WindowSnapshot;
+use crate::frame::window::WindowSnapshot;
 use crate::detector::hysteresis::HysteresisBuffer;
 use crate::detector::play_state::PlayStateDetector;
 use crate::detector::roi::RoiManager;
@@ -44,7 +44,7 @@ pub struct DetectionOutput {
     pub current_song_id: Option<i32>,
     pub image_db_ready: bool,
     pub jacket_status: JacketMatchStatus,
-    pub game_rect: Option<crate::capture::window_tracker::WindowRect>,
+    pub game_rect: Option<crate::frame::window::WindowRect>,
     pub window_snapshot: Option<WindowSnapshot>,
     pub capture_fatal: Option<String>,
     pub top_jacket_similarity: Option<f32>,

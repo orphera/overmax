@@ -261,7 +261,7 @@ app이 쓰는 engine 내부 경로(약 40곳)를 각 crate의 루트 re-export(`
 
 #### 목표 파일 지도
 
-`overmax_capture` (완료, `ea…` 이동 커밋 참고):
+`overmax_capture` (완료, `45ea071`·`d4b38aa`):
 
 | 이전 | 이후 |
 | :--- | :--- |

@@ -40,7 +40,7 @@
 cargo build --release -p overmax-app --bin verify_pipeline
 cd scratch/modularization_baseline
 <worktree>/target/release/verify_pipeline.exe ../freestyle_songselect ../openmatch_songselect ../freestyle_results ../openmatch3_results ../other_screenshots
-diff <worktree>/docs/plans/2026-11-19-modularization-baseline-recognition.txt scratch/verify_result.txt
+diff --strip-trailing-cr <worktree>/docs/plans/2026-11-19-modularization-baseline-recognition.txt scratch/verify_result.txt
 ```
 
 - 작업 디렉터리를 스냅샷 폴더로 두어 고정된 `cache/`를 읽고, 결과는 그 아래 `scratch/verify_result.txt`에 쓴다.

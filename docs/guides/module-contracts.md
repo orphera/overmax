@@ -10,12 +10,17 @@
 ```
 overmax_app        표현 계층 (egui View/Settings/트레이/다이얼로그) + 앱 프로세스 관리(업데이터·단일 인스턴스)
    │         └──────────────┐
-overmax_runtime             overmax_engine     감지 결과 분배·V-Archive 작업·추천 계산·IPC  /  캡처·창 추적·감지 파이프라인
+overmax_runtime             overmax_engine     감지 결과 분배·V-Archive 작업·추천 계산·IPC  /  감지 워커(캡처+감지 조립)·자켓 인덱스 어댑터
+   │                        │   ├── overmax_capture   캡처 엔진·창 추적·Portal
+   │                        │   ├── overmax_detect    감지 파이프라인·ROI·PlayState·템플릿 (`JacketIndex` trait)
+   │                        │   └── overmax_frame     공유 프레임 타입·아틀라스 슬롯 표 (capture·detect가 함께 의존)
    │                        │
 overmax_data       저장·설정·외부 API·추천 엔진
    │
 overmax_core / overmax_cv   공통 타입 · CV 알고리즘
 ```
+
+- `overmax_detect`·`overmax_capture`·`overmax_frame`은 `overmax_data`에 의존하지 않는다. data와 감지를 잇는 것은 `overmax_engine`의 `ImageIndexJacket`(`JacketIndex` 구현)과 워커다. 기존 `overmax_engine::{capture, detector, frame}::...` 경로는 re-export로 유지된다 (경로 정리는 모듈화 단계 4).
 
 - `overmax_runtime`은 감지 출력을 `overmax_core` 타입(`GameSessionState`, `VerifiedPlayEvent`)으로 받으므로 `overmax_engine`에 의존하지 않는다. 다른 감지 소스를 쓰는 프론트엔드도 runtime을 그대로 쓸 수 있다.
 

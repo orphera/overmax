@@ -126,6 +126,49 @@ fn debug_section(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContext) 
             }
         },
     );
+
+    ui.add_space(DialogTheme::GAP_MD);
+    setting_row(
+        ui,
+        crate::t!("settings-diagnostics-export"),
+        crate::t!("settings-diagnostics-export-hint"),
+        |ui| {
+            if ui
+                .button(crate::t!("settings-diagnostics-export-button"))
+                .clicked()
+            {
+                export_diagnostics(ctx);
+            }
+        },
+    );
+}
+
+fn export_diagnostics(ctx: &SettingsUiContext) {
+    use crate::system::diagnostics;
+
+    let Some(dest) = rfd::FileDialog::new()
+        .set_file_name(diagnostics::default_file_name())
+        .add_filter("zip", &["zip"])
+        .save_file()
+    else {
+        return;
+    };
+    let (description, level) = match diagnostics::export(&ctx.paths, &dest) {
+        Ok(()) => (
+            crate::t!("sys-diagnostics-export-success", path = dest.display()),
+            rfd::MessageLevel::Info,
+        ),
+        Err(error) => (
+            crate::t!("sys-diagnostics-export-failed", error = error),
+            rfd::MessageLevel::Error,
+        ),
+    };
+    let _ = rfd::MessageDialog::new()
+        .set_title("Overmax")
+        .set_description(description)
+        .set_level(level)
+        .set_buttons(rfd::MessageButtons::Ok)
+        .show();
 }
 
 /// 방송 및 외부 앱 연동(로컬 IPC) 섹션: 실시간 데이터 공유 토글 + 포트 설정 + 친절한 안내.

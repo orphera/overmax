@@ -823,6 +823,53 @@ macro_rules! t {
             Ja => "リアルタイム検出メトリクスと診断ログを表示"
         )
     };
+    ("settings-diagnostics-export") => {
+        $crate::t_select!(
+            Ko => "진단 정보 내보내기",
+            En => "Export Diagnostics",
+            Ja => "診断情報のエクスポート"
+        )
+    };
+    ("settings-diagnostics-export-hint") => {
+        $crate::t_select!(
+            Ko => "문제를 제보할 때 첨부할 로그와 설정을 zip으로 저장합니다. 계정 정보와 사용자 이름은 가려집니다.",
+            En => "Save logs and settings as a zip to attach to a bug report. Account info and user name are masked.",
+            Ja => "不具合報告に添付するログと設定をzipで保存します。アカウント情報とユーザー名は伏せられます。"
+        )
+    };
+    ("settings-diagnostics-export-button") => {
+        $crate::t_select!(
+            Ko => "zip 저장",
+            En => "Save zip",
+            Ja => "zipを保存"
+        )
+    };
+    ("sys-diagnostics-export-success", path = $path:expr) => {
+        $crate::t_select!(
+            Ko => format!("진단 정보를 저장했습니다.
+
+{}", $path),
+            En => format!("Diagnostics saved.
+
+{}", $path),
+            Ja => format!("診断情報を保存しました。
+
+{}", $path)
+        )
+    };
+    ("sys-diagnostics-export-failed", error = $err:expr) => {
+        $crate::t_select!(
+            Ko => format!("진단 정보를 저장하지 못했습니다.
+
+{}", $err),
+            En => format!("Failed to save diagnostics.
+
+{}", $err),
+            Ja => format!("診断情報を保存できませんでした。
+
+{}", $err)
+        )
+    };
     ("settings-ipc-section") => {
         $crate::t_select!(
             Ko => "방송 및 외부 앱 연동",

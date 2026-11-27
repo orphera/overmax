@@ -89,6 +89,10 @@ pub fn render_upload_history(
     // 헤더는 창 제목표시줄처럼 바깥 여백 없이 창 상단에 붙인다.
     ui.spacing_mut().item_spacing.y = 0.0;
     let dragging = render_header(ui, open, scale);
+    // 본문(스크롤 목록)은 헤더 아래에서만 그려지도록 잘라, 스크롤된 카드가 헤더를 덮지 않게 한다.
+    let mut body_clip = ui.clip_rect();
+    body_clip.min.y = body_clip.min.y.max(ui.cursor().top());
+    ui.set_clip_rect(body_clip);
     Frame::new()
         .inner_margin(Margin::same((8.0 * scale) as i8))
         .show(ui, |ui| {

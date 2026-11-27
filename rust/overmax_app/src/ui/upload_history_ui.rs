@@ -93,8 +93,16 @@ pub fn render_upload_history(
     let mut body_clip = ui.clip_rect();
     body_clip.min.y = body_clip.min.y.max(ui.cursor().top());
     ui.set_clip_rect(body_clip);
+    // 위아래 여백을 좌우보다 넓혀, 스크롤바(스크롤 영역 높이 전체에 걸침)가 헤더·창 바닥에 붙지 않게 한다.
+    let side = (8.0 * scale) as i8;
+    let end = (12.0 * scale) as i8;
     Frame::new()
-        .inner_margin(Margin::same((8.0 * scale) as i8))
+        .inner_margin(Margin {
+            left: side,
+            right: side,
+            top: end,
+            bottom: end,
+        })
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 4.0 * scale;
 

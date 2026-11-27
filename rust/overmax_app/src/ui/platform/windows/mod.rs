@@ -292,50 +292,6 @@ pub fn apply_frameless_transparent_style_by_title(title: &str) -> bool {
     }
 }
 
-/// 제목으로 찾은 보조 창을 마우스 스크린 좌표 델타만큼 옮긴다. 메인 오버레이 드래그와 같은 방식이다.
-/// `anchor`는 드래그 시작 시의 (커서 x, 커서 y, 창 x, 창 y)이고, 드래그가 끝나면 None으로 돌아간다.
-pub fn drag_window_by_title(
-    title: &str,
-    anchor: &mut Option<(i32, i32, i32, i32)>,
-    dragging: bool,
-) {
-    use windows_sys::Win32::Foundation::{POINT, RECT};
-    use windows_sys::Win32::UI::WindowsAndMessaging::*;
-
-    if !dragging {
-        *anchor = None;
-        return;
-    }
-    let Some(hwnd) = find_window_by_title(title) else {
-        return;
-    };
-    unsafe {
-        let mut cursor = POINT { x: 0, y: 0 };
-        GetCursorPos(&mut cursor);
-        if anchor.is_none() {
-            let mut rect = RECT {
-                left: 0,
-                top: 0,
-                right: 0,
-                bottom: 0,
-            };
-            GetWindowRect(hwnd, &mut rect);
-            *anchor = Some((cursor.x, cursor.y, rect.left, rect.top));
-        }
-        if let Some((start_cx, start_cy, start_wx, start_wy)) = *anchor {
-            SetWindowPos(
-                hwnd,
-                std::ptr::null_mut(),
-                start_wx + (cursor.x - start_cx),
-                start_wy + (cursor.y - start_cy),
-                0,
-                0,
-                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
-            );
-        }
-    }
-}
-
 /// 캡션/테두리를 없애고 레이어드 투명 + DWM 프레임 확장을 적용한다. Win10/11 공통 경로.
 /// `extra_ex_style`은 창 종류별 확장 스타일(오버레이만 NOACTIVATE/TOOLWINDOW)이다.
 fn apply_frameless_transparent_style(

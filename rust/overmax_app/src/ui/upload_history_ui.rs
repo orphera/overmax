@@ -86,12 +86,13 @@ pub fn render_upload_history(
         Theme::PANEL_BG,
     );
 
-    let mut dragging = false;
+    // 헤더는 창 제목표시줄처럼 바깥 여백 없이 창 상단에 붙인다.
+    ui.spacing_mut().item_spacing.y = 0.0;
+    let dragging = render_header(ui, open, scale);
     Frame::new()
         .inner_margin(Margin::same((8.0 * scale) as i8))
         .show(ui, |ui| {
-            dragging = render_header(ui, open, scale);
-            ui.add_space(6.0 * scale);
+            ui.spacing_mut().item_spacing.y = 4.0 * scale;
 
             if entries.is_empty() {
                 ui.label(
@@ -118,15 +119,26 @@ pub fn render_upload_history(
     dragging
 }
 
-/// 헤더: 메인 오버레이 헤더와 같은 색·라운드·버튼 크기를 쓴다. 제목 영역 전체가 드래그 핸들이고,
+/// 헤더: 메인 오버레이 헤더와 같은 색·버튼 크기를 쓰고, 창 상단에 붙는 제목표시줄 모양으로 그린다. 제목 영역 전체가 드래그 핸들이고,
 /// 오른쪽 ✕ 버튼만 닫기 동작을 가진다 (드래그 영역은 버튼을 덮지 않도록 버튼 왼쪽까지만 잡는다).
 fn render_header(ui: &mut egui::Ui, open: &Arc<AtomicBool>, scale: f32) -> bool {
     let button_size = 18.0 * scale;
+    // 위쪽 모서리는 창 라운드와 같게, 아래쪽은 본문과 맞닿도록 각지게 둔다.
+    let top = (14.0 * scale) as u8;
     Frame::new()
         .fill(Theme::HEADER_BG)
-        .corner_radius(CornerRadius::same((10.0 * scale) as u8))
-        .inner_margin(Margin::symmetric((12.0 * scale) as i8, (8.0 * scale) as i8))
+        .corner_radius(CornerRadius {
+            nw: top,
+            ne: top,
+            sw: 0,
+            se: 0,
+        })
+        .inner_margin(Margin::symmetric(
+            (14.0 * scale) as i8,
+            (10.0 * scale) as i8,
+        ))
         .show(ui, |ui| {
+            ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 let drag_width = (ui.available_width() - button_size).max(0.0);

@@ -133,8 +133,14 @@ fn debug_section(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContext) 
         crate::t!("settings-diagnostics-export"),
         crate::t!("settings-diagnostics-export-hint"),
         |ui| {
+            let button = egui::Button::new(
+                RichText::new(crate::t!("settings-diagnostics-export-button"))
+                    .size(DialogTheme::FONT_BODY),
+            )
+            .fill(DialogTheme::BG_CONTROL_ACTIVE)
+            .corner_radius(egui::CornerRadius::same(DialogTheme::R_SM));
             if ui
-                .button(crate::t!("settings-diagnostics-export-button"))
+                .add_sized(egui::vec2(86.0, DialogTheme::CONTROL_HEIGHT), button)
                 .clicked()
             {
                 export_diagnostics(ctx);

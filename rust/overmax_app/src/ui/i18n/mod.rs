@@ -832,9 +832,9 @@ macro_rules! t {
     };
     ("settings-diagnostics-export-hint") => {
         $crate::t_select!(
-            Ko => "문제를 제보할 때 첨부할 로그와 설정을 zip으로 저장합니다. 계정 정보와 사용자 이름은 가려집니다.",
-            En => "Save logs and settings as a zip to attach to a bug report. Account info and user name are masked.",
-            Ja => "不具合報告に添付するログと設定をzipで保存します。アカウント情報とユーザー名は伏せられます。"
+            Ko => "제보용 로그·설정을 zip으로 저장 (개인정보 가림)",
+            En => "Save logs & settings as a zip for reports (personal info masked)",
+            Ja => "報告用のログと設定をzipで保存(個人情報は非表示)"
         )
     };
     ("settings-diagnostics-export-button") => {

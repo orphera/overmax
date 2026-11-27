@@ -21,7 +21,7 @@ pub fn redirect_std_streams(data_dir: &Path) -> io::Result<Option<PathBuf>> {
     if io::stderr().is_terminal() {
         return Ok(None);
     }
-    let dir = data_dir.join(LOG_DIR);
+    let dir = log_dir(data_dir);
     fs::create_dir_all(&dir)?;
     prune_old_logs(&dir, KEEP_FILES - 1);
 
@@ -53,6 +53,11 @@ pub fn install_panic_hook() {
     }));
 }
 
+/// 로그 파일 디렉터리 (`<data_dir>/logs`)
+pub fn log_dir(data_dir: &Path) -> PathBuf {
+    data_dir.join(LOG_DIR)
+}
+
 /// 이름순(=시각순)으로 오래된 로그를 지워 `keep`개만 남긴다.
 fn prune_old_logs(dir: &Path, keep: usize) {
     let Ok(entries) = fs::read_dir(dir) else {
@@ -71,13 +76,13 @@ fn prune_old_logs(dir: &Path, keep: usize) {
     }
 }
 
-fn is_log_file(path: &Path) -> bool {
+pub(crate) fn is_log_file(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name.starts_with(LOG_PREFIX) && name.ends_with(LOG_SUFFIX))
 }
 
-fn file_stamp() -> String {
+pub(crate) fn file_stamp() -> String {
     let now = time::OffsetDateTime::now_local().unwrap_or_else(|_| time::OffsetDateTime::now_utc());
     format!(
         "{:04}{:02}{:02}-{:02}{:02}{:02}",

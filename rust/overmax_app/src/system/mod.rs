@@ -7,6 +7,7 @@ pub use overmax_runtime::{ipc_server, transport};
 
 #[cfg(target_os = "linux")]
 pub mod desktop_entry_linux;
+pub mod diagnostics;
 pub mod log_file;
 pub mod native_helpers;
 pub mod single_instance;

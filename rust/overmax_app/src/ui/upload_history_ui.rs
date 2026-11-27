@@ -154,6 +154,12 @@ fn render_header(ui: &mut egui::Ui, open: &Arc<AtomicBool>, scale: f32) -> bool 
         },
         Theme::HEADER_BG,
     );
+    // 본문과의 경계: 헤더 바닥에 1px 구분선을 긋는다.
+    ui.painter().hline(
+        rect.x_range(),
+        rect.bottom() - 0.5,
+        egui::Stroke::new(1.0, Theme::ROW_BG),
+    );
     ui.painter().text(
         egui::pos2(rect.left() + pad_x, rect.center().y),
         Align2::LEFT_CENTER,

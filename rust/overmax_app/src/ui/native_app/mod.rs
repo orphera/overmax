@@ -53,6 +53,9 @@ pub fn run_native_app() -> eframe::Result<()> {
     let Some(_single) = SingleInstanceGuard::try_acquire() else {
         std::process::exit(0);
     };
+    if let Err(e) = crate::system::log_file::redirect_std_streams(paths.data_dir()) {
+        eprintln!("[LogFile] 로그 파일 리다이렉트 실패: {e}");
+    }
 
     let app_settings: overmax_data::Settings =
         serde_json::from_value(merged.clone()).unwrap_or_default();

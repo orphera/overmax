@@ -117,4 +117,4 @@ profile.json.gz
 *.msix
 *.appx
 *.msixbundle
-
+/logs/

@@ -69,7 +69,7 @@ wgpu = { version = "30.0.0", default-features = false, features = [
 ] }
 raw-window-handle = "0.6"
 pollster = "0.4"
-rustix = { version = "1", features = ["event"] }
+rustix = { version = "1", features = ["event", "stdio"] }
 self_update = { version = "0.44.0", features = [
   "archive-tar",
   "compression-flate2",

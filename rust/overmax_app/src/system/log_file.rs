@@ -37,6 +37,22 @@ pub fn redirect_std_streams(data_dir: &Path) -> io::Result<Option<PathBuf>> {
     Ok(Some(path))
 }
 
+/// panic 발생 시각·스레드·위치와 backtrace를 stderr(리다이렉트되었다면 로그 파일)에 남긴다.
+///
+/// `RUST_BACKTRACE` 설정과 무관하게 backtrace를 강제로 수집한다. panic은 드문 경로라 비용은 문제되지 않는다.
+pub fn install_panic_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        let thread = std::thread::current();
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        eprintln!(
+            "[PANIC] {} thread '{}' {info}
+{backtrace}",
+            file_stamp(),
+            thread.name().unwrap_or("<unnamed>")
+        );
+    }));
+}
+
 /// 이름순(=시각순)으로 오래된 로그를 지워 `keep`개만 남긴다.
 fn prune_old_logs(dir: &Path, keep: usize) {
     let Ok(entries) = fs::read_dir(dir) else {

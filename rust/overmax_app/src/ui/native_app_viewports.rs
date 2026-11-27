@@ -2,7 +2,7 @@
 
 use eframe::egui::{self, RichText, ViewportBuilder, ViewportCommand};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::system::native_helpers;
 use crate::ui::debug_ui;
@@ -331,9 +331,9 @@ impl NativeApp {
         let title = crate::t!("upload-history-title").to_string();
         // 창이 생성된 뒤 첫 프레임에 한 번만 Win32 프레임리스/투명 스타일을 입힌다.
         let style_applied = Arc::new(AtomicBool::new(false));
-        // 헤더 드래그는 메인 오버레이와 같이 마우스 스크린 좌표로 창을 옮긴다 (드래그 시작 앵커 보관).
+        // 헤더 드래그는 시작 프레임에 한 번만 OS 네이티브 이동 루프(StartDrag)에 넘긴다.
         #[cfg(target_os = "windows")]
-        let drag_anchor = Arc::new(Mutex::new(None));
+        let drag_handed_off = Arc::new(AtomicBool::new(false));
 
         ctx.show_viewport_deferred(
             native_helpers::vp_upload_history(),
@@ -358,8 +358,10 @@ impl NativeApp {
                     ui.ctx().request_repaint();
                 }
                 #[cfg(target_os = "windows")]
-                if let Ok(mut anchor) = drag_anchor.lock() {
-                    platform::drag_window_by_title(&title, &mut anchor, dragging);
+                if dragging && !drag_handed_off.swap(true, Ordering::Relaxed) {
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                } else if !dragging {
+                    drag_handed_off.store(false, Ordering::Relaxed);
                 }
                 #[cfg(not(target_os = "windows"))]
                 let _ = dragging;

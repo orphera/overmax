@@ -5,10 +5,10 @@ body:
   - type: markdown
     attributes:
       value: |
-        제보 전에 **설정 → 고급 → 진단 → 진단 정보 내보내기**로 zip을 저장해 아래에 첨부해 주세요.
+        제보 전에 **설정 → 고급 → 진단 및 디버그 → 진단 정보 내보내기**로 zip을 저장해 아래에 첨부해 주세요.
         계정 정보와 사용자 이름은 자동으로 가려집니다.
 
-        Before reporting, save a zip via **Settings → Advanced → Diagnostics → Export Diagnostics** and attach it below.
+        Before reporting, save a zip via **Settings → Advanced → Diagnostics & Debug → Export Diagnostics** and attach it below.
         Account info and user name are masked automatically.
   - type: textarea
     id: what-happened

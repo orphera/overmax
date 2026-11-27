@@ -1,0 +1,38 @@
+name: 버그 제보 / Bug report
+description: Overmax가 제대로 동작하지 않을 때 / When Overmax does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        제보 전에 **설정 → 고급 → 진단 → 진단 정보 내보내기**로 zip을 저장해 아래에 첨부해 주세요.
+        계정 정보와 사용자 이름은 자동으로 가려집니다.
+
+        Before reporting, save a zip via **Settings → Advanced → Diagnostics → Export Diagnostics** and attach it below.
+        Account info and user name are masked automatically.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 어떤 문제가 있었나요? / What happened?
+      description: 어떤 화면에서 무엇을 기대했고 실제로 어땠는지 / Which screen, what you expected, what happened instead
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 방법 / Steps to reproduce
+      placeholder: |
+        1. 
+        2. 
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 진단 zip / Diagnostics zip
+      description: 내보낸 zip 파일을 여기에 끌어다 놓으세요. 스크린샷도 도움이 됩니다. / Drag the exported zip here. Screenshots help too.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Overmax 버전 / Version
+      placeholder: v0.4.2

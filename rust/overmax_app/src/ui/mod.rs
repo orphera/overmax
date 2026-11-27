@@ -1,5 +1,6 @@
 pub mod components;
 pub mod debug_ui;
+pub mod dialog_owner;
 pub mod dialog_theme;
 pub mod i18n;
 pub mod native_app;

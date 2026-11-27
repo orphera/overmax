@@ -49,7 +49,7 @@ pub(super) fn advanced_tab(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsU
                             rfd::MessageLevel::Error,
                         ),
                     };
-                    let _ = rfd::MessageDialog::new()
+                    let _ = crate::ui::dialog_owner::message_dialog()
                         .set_title(title)
                         .set_description(description)
                         .set_level(level)
@@ -152,7 +152,7 @@ fn debug_section(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContext) 
 fn export_diagnostics(ctx: &SettingsUiContext) {
     use crate::system::diagnostics;
 
-    let Some(dest) = rfd::FileDialog::new()
+    let Some(dest) = crate::ui::dialog_owner::file_dialog()
         .set_file_name(diagnostics::default_file_name())
         .add_filter("zip", &["zip"])
         .save_file()
@@ -169,7 +169,7 @@ fn export_diagnostics(ctx: &SettingsUiContext) {
             rfd::MessageLevel::Error,
         ),
     };
-    let _ = rfd::MessageDialog::new()
+    let _ = crate::ui::dialog_owner::message_dialog()
         .set_title("Overmax")
         .set_description(description)
         .set_level(level)

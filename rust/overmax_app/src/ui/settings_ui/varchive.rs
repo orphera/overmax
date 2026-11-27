@@ -239,7 +239,7 @@ fn account_path_row(ui: &mut egui::Ui, draft: &mut Value, ctx: &SettingsUiContex
         let (changed, clicked) =
             text_input_with_button(ui, &mut path_str, "", crate::t!("settings-browse"), true);
         if clicked {
-            if let Some(file_path) = rfd::FileDialog::new()
+            if let Some(file_path) = crate::ui::dialog_owner::file_dialog()
                 .add_filter("Text Files", &["txt"])
                 .pick_file()
             {

@@ -272,6 +272,23 @@ unsafe extern "system" fn overlay_subclass_proc(
     DefSubclassProc(hwnd, msg, wparam, lparam)
 }
 
+/// 보조 창용 서브클래스: 비클라이언트 영역을 0으로 만들어 상단 1px 테두리만 없앤다.
+/// `WM_NCPAINT`/`WM_NCACTIVATE`까지 가로채면 `StartDrag`(SC_MOVE)가 동작하지 않으므로 기본 처리에 맡긴다.
+unsafe extern "system" fn nccalcsize_subclass_proc(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    msg: u32,
+    wparam: usize,
+    lparam: isize,
+    _uidsubclass: usize,
+    _refdata: usize,
+) -> isize {
+    const WM_NCCALCSIZE: u32 = 0x0083;
+    if msg == WM_NCCALCSIZE && wparam != 0 {
+        return 0;
+    }
+    DefSubclassProc(hwnd, msg, wparam, lparam)
+}
+
 const OVERLAY_TITLE: &str = "Overmax";
 
 /// 메인 오버레이 창: 비활성 툴윈도우 + 포커스 비획득 + 프레임리스 투명 스타일.
@@ -297,7 +314,7 @@ pub fn apply_frameless_transparent_style_by_title(title: &str) -> bool {
 fn apply_frameless_transparent_style(
     hwnd: windows_sys::Win32::Foundation::HWND,
     extra_ex_style: i32,
-    subclass_nonclient: bool,
+    full_nonclient_subclass: bool,
 ) {
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
     unsafe {
@@ -325,10 +342,13 @@ fn apply_frameless_transparent_style(
         }
 
         // 3. 서브클래싱 등록: WM_NCCALCSIZE를 가로채 비클라이언트 캡션 버튼(- ㅁ X)을 물리적으로 제거.
-        //    이 서브클래스가 걸린 레이어드 창에서는 StartDrag(SC_MOVE)가 동작하지 않으므로,
-        //    OS 네이티브 드래그를 쓰는 보조 창은 생략한다 (docs/decisions/ui_and_i18n.md 2026-11-27).
-        if subclass_nonclient {
+        //    전체 서브클래스(NCPAINT/NCACTIVATE 포함)가 걸린 레이어드 창에서는 StartDrag(SC_MOVE)가
+        //    동작하지 않으므로, OS 네이티브 드래그를 쓰는 보조 창은 NCCALCSIZE만 처리한다
+        //    (docs/decisions/ui_and_i18n.md 2026-11-27).
+        if full_nonclient_subclass {
             SetWindowSubclass(hwnd, Some(overlay_subclass_proc), 1, 0);
+        } else {
+            SetWindowSubclass(hwnd, Some(nccalcsize_subclass_proc), 1, 0);
         }
 
         // 4. DWM에 프레임 스타일 변경 1회 통보

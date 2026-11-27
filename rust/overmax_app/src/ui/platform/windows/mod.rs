@@ -277,7 +277,7 @@ const OVERLAY_TITLE: &str = "Overmax";
 /// 메인 오버레이 창: 비활성 툴윈도우 + 포커스 비획득 + 프레임리스 투명 스타일.
 fn setup_overlay_window(hwnd: windows_sys::Win32::Foundation::HWND) {
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
-    apply_frameless_transparent_style(hwnd, (WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW) as i32);
+    apply_frameless_transparent_style(hwnd, (WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW) as i32, true);
 }
 
 /// 제목으로 찾은 보조 창(업로드 기록 등)을 메인 오버레이와 같은 프레임리스 투명 스타일로 바꾼다.
@@ -285,7 +285,7 @@ fn setup_overlay_window(hwnd: windows_sys::Win32::Foundation::HWND) {
 pub fn apply_frameless_transparent_style_by_title(title: &str) -> bool {
     match find_window_by_title(title) {
         Some(hwnd) => {
-            apply_frameless_transparent_style(hwnd, 0);
+            apply_frameless_transparent_style(hwnd, 0, false);
             true
         }
         None => false,
@@ -341,6 +341,7 @@ pub fn drag_window_by_title(
 fn apply_frameless_transparent_style(
     hwnd: windows_sys::Win32::Foundation::HWND,
     extra_ex_style: i32,
+    subclass_nonclient: bool,
 ) {
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
     unsafe {
@@ -367,8 +368,12 @@ fn apply_frameless_transparent_style(
             SetWindowLongW(hwnd, GWL_EXSTYLE, target_style);
         }
 
-        // 3. 서브클래싱 등록: WM_NCCALCSIZE를 가로채 비클라이언트 캡션 버튼(- ㅁ X)을 물리적으로 제거
-        SetWindowSubclass(hwnd, Some(overlay_subclass_proc), 1, 0);
+        // 3. 서브클래싱 등록: WM_NCCALCSIZE를 가로채 비클라이언트 캡션 버튼(- ㅁ X)을 물리적으로 제거.
+        //    이 서브클래스가 걸린 레이어드 창에서는 StartDrag(SC_MOVE)가 동작하지 않으므로,
+        //    OS 네이티브 드래그를 쓰는 보조 창은 생략한다 (docs/decisions/ui_and_i18n.md 2026-11-27).
+        if subclass_nonclient {
+            SetWindowSubclass(hwnd, Some(overlay_subclass_proc), 1, 0);
+        }
 
         // 4. DWM에 프레임 스타일 변경 1회 통보
         SetWindowPos(

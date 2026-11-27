@@ -104,6 +104,8 @@ pub fn render_upload_history(
 
             // 로컬 오프셋은 프레임당 한 번만 구한다 (행마다 OS를 조회하지 않도록).
             let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
+            // 스크롤바가 오른쪽 폭을 따로 차지하면 카드 좌우 여백이 어긋나므로 내용 위에 띄운다.
+            ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {

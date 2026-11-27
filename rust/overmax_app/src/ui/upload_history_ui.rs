@@ -123,56 +123,53 @@ pub fn render_upload_history(
 /// 오른쪽 ✕ 버튼만 닫기 동작을 가진다 (드래그 영역은 버튼을 덮지 않도록 버튼 왼쪽까지만 잡는다).
 fn render_header(ui: &mut egui::Ui, open: &Arc<AtomicBool>, scale: f32) -> bool {
     let button_size = 18.0 * scale;
+    let pad_x = 14.0 * scale;
+    let pad_y = 10.0 * scale;
+    // 헤더 영역 전체(여백 포함)를 드래그 핸들로 먼저 등록한다. ✕ 버튼은 나중에 올려 클릭이 우선한다.
+    let (rect, drag) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), button_size + pad_y * 2.0),
+        Sense::drag(),
+    );
     // 위쪽 모서리는 창 라운드와 같게, 아래쪽은 본문과 맞닿도록 각지게 둔다.
     let top = (14.0 * scale) as u8;
-    Frame::new()
-        .fill(Theme::HEADER_BG)
-        .corner_radius(CornerRadius {
+    ui.painter().rect_filled(
+        rect,
+        CornerRadius {
             nw: top,
             ne: top,
             sw: 0,
             se: 0,
-        })
-        .inner_margin(Margin::symmetric(
-            (14.0 * scale) as i8,
-            (10.0 * scale) as i8,
-        ))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
-                let drag_width = (ui.available_width() - button_size).max(0.0);
-                let (drag_rect, drag) =
-                    ui.allocate_exact_size(egui::vec2(drag_width, button_size), Sense::drag());
-                ui.painter().text(
-                    drag_rect.left_center(),
-                    Align2::LEFT_CENTER,
-                    crate::t!("upload-history-title").to_string(),
-                    FontId::proportional(14.0 * scale),
-                    Theme::TEXT_PRIMARY,
-                );
-                let dragging = drag.dragged();
+        },
+        Theme::HEADER_BG,
+    );
+    ui.painter().text(
+        egui::pos2(rect.left() + pad_x, rect.center().y),
+        Align2::LEFT_CENTER,
+        crate::t!("upload-history-title").to_string(),
+        FontId::proportional(14.0 * scale),
+        Theme::TEXT_PRIMARY,
+    );
 
-                let close = egui::Button::new(
-                    RichText::new("✕")
-                        .color(Theme::TEXT_PRIMARY)
-                        .font(FontId::proportional(10.0 * scale)),
-                )
-                .fill(Theme::SECTION_BG)
-                .corner_radius(CornerRadius::same((3.5 * scale) as u8))
-                .wrap();
-                if ui
-                    .add_sized([button_size, button_size], close.sense(Sense::click()))
-                    .on_hover_text(crate::t!("upload-history-close"))
-                    .clicked()
-                {
-                    open.store(false, Ordering::Relaxed);
-                }
-                dragging
-            })
-            .inner
-        })
-        .inner
+    let close_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.right() - pad_x - button_size / 2.0, rect.center().y),
+        egui::vec2(button_size, button_size),
+    );
+    let close = egui::Button::new(
+        RichText::new("✕")
+            .color(Theme::TEXT_PRIMARY)
+            .font(FontId::proportional(10.0 * scale)),
+    )
+    .fill(Theme::SECTION_BG)
+    .corner_radius(CornerRadius::same((3.5 * scale) as u8))
+    .wrap();
+    if ui
+        .put(close_rect, close.sense(Sense::click()))
+        .on_hover_text(crate::t!("upload-history-close"))
+        .clicked()
+    {
+        open.store(false, Ordering::Relaxed);
+    }
+    drag.dragged()
 }
 
 /// TOP N 진입 배지: 어두운 알약 위에 강조색(TEXT_ACCENT) 글자.

@@ -136,12 +136,15 @@ pub fn render_upload_history(
 fn render_header(ui: &mut egui::Ui, open: &Arc<AtomicBool>, scale: f32) -> bool {
     let button_size = 18.0 * scale;
     let pad_x = 16.0 * scale;
-    let pad_y = 14.0 * scale;
+    let pad_top = 14.0 * scale;
+    let pad_bottom = 10.0 * scale;
     // 헤더 영역 전체(여백 포함)를 드래그 핸들로 먼저 등록한다. ✕ 버튼은 나중에 올려 클릭이 우선한다.
     let (rect, drag) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), button_size + pad_y * 2.0),
+        egui::vec2(ui.available_width(), button_size + pad_top + pad_bottom),
         Sense::drag(),
     );
+    // 제목·✕ 버튼의 세로 중심 (위아래 여백이 달라 rect 중심과 다르다)
+    let row_y = rect.top() + pad_top + button_size / 2.0;
     // 위쪽 모서리는 창 라운드와 같게, 아래쪽은 본문과 맞닿도록 각지게 둔다.
     let top = (14.0 * scale) as u8;
     ui.painter().rect_filled(
@@ -161,7 +164,7 @@ fn render_header(ui: &mut egui::Ui, open: &Arc<AtomicBool>, scale: f32) -> bool 
         egui::Stroke::new(1.0, Theme::ROW_BG),
     );
     ui.painter().text(
-        egui::pos2(rect.left() + pad_x, rect.center().y),
+        egui::pos2(rect.left() + pad_x, row_y),
         Align2::LEFT_CENTER,
         crate::t!("upload-history-title").to_string(),
         FontId::proportional(14.0 * scale),
@@ -169,7 +172,7 @@ fn render_header(ui: &mut egui::Ui, open: &Arc<AtomicBool>, scale: f32) -> bool 
     );
 
     let close_rect = egui::Rect::from_center_size(
-        egui::pos2(rect.right() - pad_x - button_size / 2.0, rect.center().y),
+        egui::pos2(rect.right() - pad_x - button_size / 2.0, row_y),
         egui::vec2(button_size, button_size),
     );
     let close = egui::Button::new(
